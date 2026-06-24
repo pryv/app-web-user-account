@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import PagePlaceholder from "./components/PagePlaceholder";
+import SignIn from "./routes/SignIn";
 
 /**
  * Route map for the user-account app. Each route is a placeholder for now; the
@@ -15,7 +16,7 @@ export default function App() {
     <Layout>
       <Routes>
         {/* Auth flows */}
-        <Route path="/signin" element={<PagePlaceholder title="Sign in" description="Authenticate and grant access to the requesting app." />} />
+        <Route path="/signin" element={<SignIn />} />
         <Route path="/register" element={<PagePlaceholder title="Create account" description="Register a new Pryv account." />} />
         <Route path="/reset-password" element={<PagePlaceholder title="Reset password" description="Request a password reset link." />} />
         <Route path="/change-password" element={<PagePlaceholder title="Change password" description="Set a new password." />} />
