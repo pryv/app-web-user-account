@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/*
+ * Pryv brand theme.
+ *
+ * The brand palette and typography below are the canonical design tokens
+ * (mirrored from the shared Pryv style reference). They are exposed as theme
+ * variables so an operator can re-brand the app by overriding a handful of
+ * `--color-*` / `--font-*` values — no component edits required.
+ */
+@theme {
+  /* Core visual identity */
+  --color-pryv-red: #bd1026;
+  --color-pryv-green: #719726;
+  --color-pryv-blue: #2d68ac;
+  --color-pryv-black: #1a1a1a;
+  --color-pryv-dark-gray: #4a4a4a;
+  --color-pryv-light-gray: #c8c8c8;
+
+  /* Semantic roles (override these to re-brand) */
+  --color-primary: var(--color-pryv-green);
+  --color-success: #5cb85c;
+  --color-info: #5bc0de;
+  --color-warning: #f0ad4e;
+  --color-danger: #d9534f;
+
+  /* Surfaces & text */
+  --color-body: #f4f4f4;
+  --color-ink: var(--color-pryv-black);
+  --color-muted: var(--color-pryv-dark-gray);
+
+  /* Typography */
+  --font-sans: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-heading: "Roboto Condensed", var(--font-sans);
+
+  /* Radii */
+  --radius-sm: 2px;
+  --radius-DEFAULT: 3px;
+  --radius-lg: 5px;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+  body {
+    background-color: var(--color-body);
+    color: var(--color-ink);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 500;
+    line-height: 1.1;
+  }
+  a {
+    color: var(--color-primary);
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+}
