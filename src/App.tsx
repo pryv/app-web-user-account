@@ -5,6 +5,11 @@ import SignIn from "./routes/SignIn";
 import Register from "./routes/Register";
 import ResetPassword from "./routes/ResetPassword";
 import MfaChallenge from "./routes/MfaChallenge";
+import AccountLayout from "./routes/account/AccountLayout";
+import Profile from "./routes/account/Profile";
+import Security from "./routes/account/Security";
+import ConnectedApps from "./routes/account/ConnectedApps";
+import DataRights from "./routes/account/DataRights";
 
 /**
  * Route map for the user-account app. Each route is a placeholder for now; the
@@ -31,11 +36,13 @@ export default function App() {
         <Route path="/cmc/approve" element={<PagePlaceholder title="Approve request" description="Review and approve a cross-account request." />} />
 
         {/* Self-service account management (subject) */}
-        <Route path="/account" element={<PagePlaceholder title="Your account" description="Manage your profile, security, connected apps and data." />} />
-        <Route path="/account/profile" element={<PagePlaceholder title="Profile" description="Emails, language, password." />} />
-        <Route path="/account/security" element={<PagePlaceholder title="Security" description="Multi-factor authentication and active sessions." />} />
-        <Route path="/account/apps" element={<PagePlaceholder title="Connected apps" description="Review scopes and revoke access." />} />
-        <Route path="/account/data" element={<PagePlaceholder title="Your data" description="Export your data or delete your account." />} />
+        <Route path="/account" element={<AccountLayout />}>
+          <Route index element={<Navigate to="/account/profile" replace />} />
+          <Route path="profile" element={<Profile />} />
+          <Route path="security" element={<Security />} />
+          <Route path="apps" element={<ConnectedApps />} />
+          <Route path="data" element={<DataRights />} />
+        </Route>
 
         <Route path="/" element={<Navigate to="/signin" replace />} />
         <Route path="*" element={<PagePlaceholder title="Not found" description="This page does not exist." />} />

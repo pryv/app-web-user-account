@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
+import { useSession, type PryvConnection } from "../lib/session";
 
 /**
  * Sign-in / authorize. Calls `Service.login`; on `MfaRequiredError` it routes to
@@ -11,6 +12,7 @@ import { parseAuthParams } from "../lib/authParams";
 export default function SignIn() {
   const navigate = useNavigate();
   const { search } = useLocation();
+  const { setConnection } = useSession();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -22,10 +24,17 @@ export default function SignIn() {
     setBusy(true);
     try {
       const { appId, returnURL } = parseAuthParams(search);
-      await getService(search).login(username, password, appId);
+      const connection = (await getService(search).login(
+        username,
+        password,
+        appId,
+      )) as unknown as PryvConnection;
       // TODO: complete the auth flow (append state/poll/code to returnURL).
       if (returnURL) window.location.href = returnURL;
-      else navigate("/account");
+      else {
+        setConnection(connection);
+        navigate("/account");
+      }
     } catch (err: unknown) {
       if (isMfaRequired(err)) {
         navigate("/mfa-challenge", {
