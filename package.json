@@ -13,6 +13,7 @@
     "webserver": "backloop.dev ./dist 4443"
   },
   "dependencies": {
+    "pryv": "^3.7.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0"

@@ -2,6 +2,9 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import PagePlaceholder from "./components/PagePlaceholder";
 import SignIn from "./routes/SignIn";
+import Register from "./routes/Register";
+import ResetPassword from "./routes/ResetPassword";
+import MfaChallenge from "./routes/MfaChallenge";
 
 /**
  * Route map for the user-account app. Each route is a placeholder for now; the
@@ -17,12 +20,12 @@ export default function App() {
       <Routes>
         {/* Auth flows */}
         <Route path="/signin" element={<SignIn />} />
-        <Route path="/register" element={<PagePlaceholder title="Create account" description="Register a new Pryv account." />} />
-        <Route path="/reset-password" element={<PagePlaceholder title="Reset password" description="Request a password reset link." />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/change-password" element={<PagePlaceholder title="Change password" description="Set a new password." />} />
 
         {/* Hybrid MFA challenge — also launchable standalone by a CLI */}
-        <Route path="/mfa-challenge" element={<PagePlaceholder title="Verify it's you" description="Complete the multi-factor challenge to continue." />} />
+        <Route path="/mfa-challenge" element={<MfaChallenge />} />
 
         {/* CMC approval — triggerable by an app without a personal token */}
         <Route path="/cmc/approve" element={<PagePlaceholder title="Approve request" description="Review and approve a cross-account request." />} />

@@ -24,6 +24,25 @@ export function Button({
   return <button className={`${base} ${styles} ${className}`} {...props} />;
 }
 
+/** Inline error/notice banner. */
+export function Alert({
+  children,
+  tone = "danger",
+}: {
+  children: ReactNode;
+  tone?: "danger" | "success";
+}) {
+  const styles =
+    tone === "danger"
+      ? "border-danger/40 bg-danger/10 text-danger"
+      : "border-success/40 bg-success/10 text-success";
+  return (
+    <div className={`mb-4 rounded border px-3 py-2 text-sm ${styles}`} role="alert">
+      {children}
+    </div>
+  );
+}
+
 /** Labelled text input. */
 export function Field({
   label,

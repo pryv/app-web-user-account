@@ -1,19 +1,42 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
-import { Card, Button, Field } from "../components/ui";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Card, Button, Field, Alert } from "../components/ui";
+import { getService, isMfaRequired } from "../lib/service";
+import { parseAuthParams } from "../lib/authParams";
 
 /**
- * Sign-in / authorize. Collects credentials and (once wired to lib-js) calls
- * `Service.login`; on `MfaRequiredError` it routes to `/mfa-challenge`, and on
- * success it hands control back to the auth-completion redirect (`returnURL`).
+ * Sign-in / authorize. Calls `Service.login`; on `MfaRequiredError` it routes to
+ * `/mfa-challenge` carrying the `mfaToken`; on success it completes the auth flow.
  */
 export default function SignIn() {
+  const navigate = useNavigate();
+  const { search } = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    // TODO: call Service.login(); handle MfaRequiredError → /mfa-challenge.
+    setError(null);
+    setBusy(true);
+    try {
+      const { appId, returnURL } = parseAuthParams(search);
+      await getService(search).login(username, password, appId);
+      // TODO: complete the auth flow (append state/poll/code to returnURL).
+      if (returnURL) window.location.href = returnURL;
+      else navigate("/account");
+    } catch (err: unknown) {
+      if (isMfaRequired(err)) {
+        navigate("/mfa-challenge", {
+          state: { userId: username, mfaToken: err.mfaToken, search },
+        });
+        return;
+      }
+      setError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -22,6 +45,7 @@ export default function SignIn() {
       <p className="mb-6 text-sm text-muted">
         Sign in to grant access to the requesting app.
       </p>
+      {error && <Alert>{error}</Alert>}
       <form onSubmit={onSubmit}>
         <Field
           id="username"
@@ -40,13 +64,15 @@ export default function SignIn() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <Button type="submit">Sign in</Button>
+        <Button type="submit" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
+        </Button>
       </form>
       <div className="mt-4 flex justify-between text-sm">
-        <Link to="/reset-password" className="text-primary hover:underline">
+        <Link to={`/reset-password${search}`} className="text-primary hover:underline">
           Forgot password?
         </Link>
-        <Link to="/register" className="text-primary hover:underline">
+        <Link to={`/register${search}`} className="text-primary hover:underline">
           Create account
         </Link>
       </div>
