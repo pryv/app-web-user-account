@@ -5,6 +5,7 @@ import SignIn from "./routes/SignIn";
 import Register from "./routes/Register";
 import ResetPassword from "./routes/ResetPassword";
 import MfaChallenge from "./routes/MfaChallenge";
+import CmcApprove from "./routes/CmcApprove";
 import AccountLayout from "./routes/account/AccountLayout";
 import Profile from "./routes/account/Profile";
 import Security from "./routes/account/Security";
@@ -33,7 +34,7 @@ export default function App() {
         <Route path="/mfa-challenge" element={<MfaChallenge />} />
 
         {/* CMC approval — triggerable by an app without a personal token */}
-        <Route path="/cmc/approve" element={<PagePlaceholder title="Approve request" description="Review and approve a cross-account request." />} />
+        <Route path="/cmc/approve" element={<CmcApprove />} />
 
         {/* Self-service account management (subject) */}
         <Route path="/account" element={<AccountLayout />}>
