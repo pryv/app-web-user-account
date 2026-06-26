@@ -39,13 +39,13 @@ test.describe("smoke — public routes render", () => {
   });
 });
 
-test.describe("smoke — new routes (Plan-40 placeholders + scope-update + reset-token mode)", () => {
-  test("/auth shows the pending-Plan-40 placeholder (route exists, UI gap visible)", async ({ page }) => {
+test.describe("smoke — new routes (consent-track placeholders + scope-update + reset-token mode)", () => {
+  test("/auth shows the pending-consent-track placeholder (route exists, UI gap visible)", async ({ page }) => {
     await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Authorize access" })).toBeVisible();
   });
 
-  test("/oauth2-authorize shows the pending-Plan-40 placeholder", async ({ page }) => {
+  test("/oauth2-authorize shows the pending-consent-track placeholder", async ({ page }) => {
     await page.goto("/oauth2-authorize");
     await expect(page.getByRole("heading", { name: "OAuth2 authorize" })).toBeVisible();
   });

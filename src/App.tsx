@@ -24,11 +24,12 @@ function NavigatePreservingSearch({ to }: { to: string }) {
  * Drop-in placeholder for the access-request and OAuth2 authorize flows.
  * The legacy app-web-auth3 ships them as `/auth` (`Authorization.vue`) and
  * `/oauth2-authorize` (`OAuth2Authorize.vue`). Re-homing them into this
- * React app is owned by Plan 40 (OAuth2 consent UI). Until that lands,
- * existing operators landing here see a clear explanation rather than a
- * silent redirect, and the route exists so the URL contract holds.
+ * React app is tracked separately under the OAuth2 consent UI work. Until
+ * that lands, existing operators landing here see a clear explanation
+ * rather than a silent redirect, and the route exists so the URL contract
+ * holds.
  */
-function PendingPlan40({ title }: { title: string }) {
+function PendingConsentTrack({ title }: { title: string }) {
   return (
     <PagePlaceholder
       title={title}
@@ -66,9 +67,9 @@ export default function App() {
         <Route path="/cmc/approve" element={<CmcApprove />} />
         <Route path="/cmc-scope-update" element={<CmcScopeUpdate />} />
 
-        {/* Access-request + OAuth2 consent UI — pending Plan 40 re-home. */}
-        <Route path="/auth" element={<PendingPlan40 title="Authorize access" />} />
-        <Route path="/oauth2-authorize" element={<PendingPlan40 title="OAuth2 authorize" />} />
+        {/* Access-request + OAuth2 consent UI — re-home pending. */}
+        <Route path="/auth" element={<PendingConsentTrack title="Authorize access" />} />
+        <Route path="/oauth2-authorize" element={<PendingConsentTrack title="OAuth2 authorize" />} />
 
         {/* Self-service account management (subject) */}
         <Route path="/account" element={<AccountLayout />}>
