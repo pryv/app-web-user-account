@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { Pencil } from "lucide-react";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useSession } from "../../lib/session";
 
@@ -85,7 +86,7 @@ export default function Profile() {
                 setEditingEmail(true);
               }}
             >
-              Edit
+              <Pencil size={14} aria-hidden className="mr-1" /> Edit
             </Button>
           </div>
         ) : (

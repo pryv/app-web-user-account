@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ShieldOff, XCircle, Copy } from "lucide-react";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useSession, signinPath } from "../../lib/session";
 
@@ -201,7 +202,21 @@ export default function Security() {
         </div>
         {recoveryCodes && (
           <Alert tone="success">
-            <div className="mb-1 font-medium">MFA enabled — save these recovery codes:</div>
+            <div className="mb-1 flex items-center justify-between gap-2 font-medium">
+              <span>MFA enabled — save these recovery codes:</span>
+              <button
+                type="button"
+                title="Copy to clipboard"
+                onClick={() => {
+                  if (navigator.clipboard) {
+                    void navigator.clipboard.writeText(recoveryCodes.join("\n"));
+                  }
+                }}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-success/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
+              >
+                <Copy size={14} aria-hidden /> Copy
+              </button>
+            </div>
             <ul className="font-mono text-xs">
               {recoveryCodes.map((c) => (
                 <li key={c}>{c}</li>
@@ -258,8 +273,9 @@ export default function Security() {
             type="button"
             onClick={deactivate}
             disabled={disableBusy}
-            className="rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
           >
+            <ShieldOff size={14} aria-hidden />
             {disableBusy ? "Disabling…" : "Disable MFA"}
           </button>
         </div>
@@ -300,8 +316,9 @@ export default function Security() {
                 type="button"
                 onClick={() => revokeSession(s.id)}
                 disabled={revoking === s.id}
-                className="rounded border border-danger px-3 py-1 text-xs text-danger hover:bg-danger/10 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-xs text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
               >
+                <XCircle size={12} aria-hidden />
                 {revoking === s.id ? "Revoking…" : "Revoke"}
               </button>
             </div>

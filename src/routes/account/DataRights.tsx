@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../../components/ui";
+import { Trash2 } from "lucide-react";
 import { useSession, signinPath } from "../../lib/session";
 
 /**
@@ -94,8 +95,9 @@ export default function DataRights() {
           type="button"
           onClick={deleteAccount}
           disabled={!matched || deleting}
-          className="rounded border border-danger px-4 py-2 text-sm text-danger hover:bg-danger/10 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded border border-danger px-4 py-2 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
         >
+          <Trash2 size={14} aria-hidden />
           {deleting ? "Deleting…" : "Delete my account"}
         </button>
       </Card>

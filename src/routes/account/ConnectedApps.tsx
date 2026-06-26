@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { RefreshCw, XCircle } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
 import { useSession, signinPath } from "../../lib/session";
 
@@ -113,8 +114,9 @@ export default function ConnectedApps() {
               <button
                 onClick={() => revoke(a.id)}
                 disabled={revoking === a.id}
-                className="rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
               >
+                <XCircle size={14} aria-hidden />
                 {revoking === a.id ? "Revoking…" : "Revoke"}
               </button>
             </div>
@@ -122,8 +124,8 @@ export default function ConnectedApps() {
         ))}
       </div>
       <div className="mt-4">
-        <Button variant="ghost" type="button" onClick={() => void load()}>
-          Refresh
+        <Button variant="ghost" type="button" onClick={() => void load()} className="w-auto">
+          <RefreshCw size={14} aria-hidden className="mr-1" /> Refresh
         </Button>
       </div>
     </section>

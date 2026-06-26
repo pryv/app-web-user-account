@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "webserver": "backloop.dev ./dist 4443",
     "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/roboto": "^5.2.10",
