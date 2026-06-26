@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { parseAuthParams } from "../lib/authParams";
+import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
+import { useSession, type PryvConnection } from "../lib/session";
 
 interface MfaState {
   userId?: string;
@@ -18,6 +19,7 @@ interface MfaState {
 export default function MfaChallenge() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { setConnection } = useSession();
   const state = (location.state ?? {}) as MfaState;
   const search = state.search ?? location.search;
   const params = new URLSearchParams(location.search);
@@ -37,10 +39,22 @@ export default function MfaChallenge() {
     setError(null);
     setBusy(true);
     try {
-      await getService(search).mfaVerify(userId, mfaToken, code);
-      const { returnURL } = parseAuthParams(search);
-      if (returnURL) window.location.href = returnURL;
-      else navigate("/account");
+      const connection = (await getService(search).mfaVerify(
+        userId,
+        mfaToken,
+        code,
+      )) as unknown as PryvConnection;
+      const { returnURL, serviceInfoUrl, state: csrfState } = parseAuthParams(search);
+      setConnection(connection, serviceInfoUrl);
+      if (returnURL) {
+        window.location.href = buildCompletionUrl(
+          returnURL,
+          connection.endpoint,
+          csrfState,
+        );
+      } else {
+        navigate("/account");
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Verification failed.");
     } finally {

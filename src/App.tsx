@@ -4,6 +4,7 @@ import PagePlaceholder from "./components/PagePlaceholder";
 import SignIn from "./routes/SignIn";
 import Register from "./routes/Register";
 import ResetPassword from "./routes/ResetPassword";
+import ChangePassword from "./routes/ChangePassword";
 import MfaChallenge from "./routes/MfaChallenge";
 import CmcApprove from "./routes/CmcApprove";
 import AccountLayout from "./routes/account/AccountLayout";
@@ -28,7 +29,7 @@ export default function App() {
         <Route path="/signin" element={<SignIn />} />
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/change-password" element={<PagePlaceholder title="Change password" description="Set a new password." />} />
+        <Route path="/change-password" element={<ChangePassword />} />
 
         {/* Hybrid MFA challenge — also launchable standalone by a CLI */}
         <Route path="/mfa-challenge" element={<MfaChallenge />} />

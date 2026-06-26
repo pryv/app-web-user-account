@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired } from "../lib/service";
-import { parseAuthParams } from "../lib/authParams";
+import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
 import { useSession, type PryvConnection } from "../lib/session";
 
 /**
@@ -23,16 +23,20 @@ export default function SignIn() {
     setError(null);
     setBusy(true);
     try {
-      const { appId, returnURL, serviceInfoUrl } = parseAuthParams(search);
+      const { appId, returnURL, serviceInfoUrl, state } = parseAuthParams(search);
       const connection = (await getService(search).login(
         username,
         password,
         appId,
       )) as unknown as PryvConnection;
-      // TODO: complete the auth flow (append state/poll/code to returnURL).
-      if (returnURL) window.location.href = returnURL;
-      else {
-        setConnection(connection, serviceInfoUrl);
+      setConnection(connection, serviceInfoUrl);
+      if (returnURL) {
+        window.location.href = buildCompletionUrl(
+          returnURL,
+          connection.endpoint,
+          state,
+        );
+      } else {
         navigate("/account");
       }
     } catch (err: unknown) {

@@ -4,6 +4,8 @@ import Pryv from "pryv";
 /** Minimal shape of a Pryv `Connection` that the account pages rely on. */
 export interface PryvConnection {
   apiEndpoint: string;
+  /** Same as apiEndpoint but with the bearer token stripped (safe to share). */
+  endpoint: string;
   username(): Promise<string>;
   accessInfo(forceRefresh?: boolean): Promise<unknown>;
   api(calls: Array<{ method: string; params: unknown }>): Promise<unknown[]>;

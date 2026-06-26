@@ -19,6 +19,8 @@ export interface AuthParams {
   appId: string;
   /** Auth-completion redirect target (the OAuth2 `redirect_uri` analog). */
   returnURL: string | null;
+  /** Calling-app supplied state, reflected back on completion for CSRF protection. */
+  state: string | null;
 }
 
 export function parseAuthParams(search: string): AuthParams {
@@ -27,5 +29,30 @@ export function parseAuthParams(search: string): AuthParams {
     serviceInfoUrl: params.get("pryvServiceInfoUrl"),
     appId: params.get("requestingAppId") || DEFAULT_APP_ID,
     returnURL: params.get("returnURL"),
+    state: params.get("state"),
   };
+}
+
+/**
+ * Builds the URL the user is redirected to after a successful sign-in.
+ *
+ * Contract (intentionally minimal — no long-term secrets in GET):
+ * - `state` (when provided by the calling app) — reflected unchanged for CSRF
+ *   protection.
+ * - `pryvApiEndpoint` — the user's per-account API base **without** the
+ *   personal token. The calling app uses this to know which Pryv to talk to;
+ *   it must run its own access-request flow to obtain its own token.
+ *
+ * Token-embedded URLs MUST NOT appear here — GET parameters end up in browser
+ * history, server access logs, and Referer headers.
+ */
+export function buildCompletionUrl(
+  returnURL: string,
+  endpointWithoutToken: string,
+  state: string | null,
+): string {
+  const url = new URL(returnURL);
+  if (state) url.searchParams.set("state", state);
+  url.searchParams.set("pryvApiEndpoint", endpointWithoutToken);
+  return url.toString();
 }
