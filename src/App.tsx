@@ -34,7 +34,10 @@ export default function App() {
         {/* Hybrid MFA challenge — also launchable standalone by a CLI */}
         <Route path="/mfa-challenge" element={<MfaChallenge />} />
 
-        {/* CMC approval — triggerable by an app without a personal token */}
+        {/* CMC approval — triggerable by an app without a personal token.
+            `/cmc-accept` is the canonical path expected by @pryv/cmc.requestAccept;
+            `/cmc/approve` is kept as a shorter alias. */}
+        <Route path="/cmc-accept" element={<CmcApprove />} />
         <Route path="/cmc/approve" element={<CmcApprove />} />
 
         {/* Self-service account management (subject) */}
