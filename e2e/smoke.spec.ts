@@ -39,6 +39,29 @@ test.describe("smoke — public routes render", () => {
   });
 });
 
+test.describe("smoke — new routes (Plan-40 placeholders + scope-update + reset-token mode)", () => {
+  test("/auth shows the pending-Plan-40 placeholder (route exists, UI gap visible)", async ({ page }) => {
+    await page.goto("/auth");
+    await expect(page.getByRole("heading", { name: "Authorize access" })).toBeVisible();
+  });
+
+  test("/oauth2-authorize shows the pending-Plan-40 placeholder", async ({ page }) => {
+    await page.goto("/oauth2-authorize");
+    await expect(page.getByRole("heading", { name: "OAuth2 authorize" })).toBeVisible();
+  });
+
+  test("/reset-password?resetToken=… switches into set-new-password mode", async ({ page }) => {
+    await page.goto("/reset-password?resetToken=test-token-123");
+    await expect(page.getByRole("heading", { name: "Set a new password" })).toBeVisible();
+    await expect(page.getByLabel("New password")).toBeVisible();
+  });
+
+  test("/cmc-scope-update without scopeRequestEventId shows an explanatory alert", async ({ page }) => {
+    await page.goto("/cmc-scope-update");
+    await expect(page.getByRole("alert")).toContainText("missing its scope-request reference");
+  });
+});
+
 test.describe("smoke — account guards bounce to /signin (with preserved pryvServiceInfoUrl)", () => {
   test("/account/profile without session → /signin (carries pryvServiceInfoUrl)", async ({ page }) => {
     await page.goto(`/account/profile?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
