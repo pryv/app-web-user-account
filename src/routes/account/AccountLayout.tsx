@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useSession } from "../../lib/session";
+import { LogOut } from "lucide-react";
+import { useSession, signinPath } from "../../lib/session";
 
 const TABS = [
   { to: "/account/profile", label: "Profile" },
@@ -19,7 +20,7 @@ export default function AccountLayout() {
   const navigate = useNavigate();
 
   if (!connection) {
-    return <Navigate to={`/signin${search}`} replace />;
+    return <Navigate to={signinPath(search)} replace />;
   }
 
   function signOut() {
@@ -27,8 +28,15 @@ export default function AccountLayout() {
     // remains valid on the server (intentional: the user might want to sign
     // back in immediately). To also revoke server-side, use the Revoke
     // button in /account/apps on the user's own session access.
+    //
+    // Order matters: navigate FIRST so we leave the /account route before
+    // setConnection(null) re-renders AccountLayout with connection===null,
+    // which would otherwise fire its own <Navigate to={signinPath()}> with
+    // localStorage already cleared — losing the pryvServiceInfoUrl on the
+    // redirect.
+    const target = signinPath(search);
+    navigate(target, { replace: true });
     setConnection(null);
-    navigate("/signin", { replace: true });
   }
 
   return (
@@ -38,9 +46,9 @@ export default function AccountLayout() {
         <button
           type="button"
           onClick={signOut}
-          className="text-sm text-primary hover:underline"
+          className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Sign out
+          <LogOut size={14} aria-hidden /> Sign out
         </button>
       </div>
       <nav className="mb-6 flex flex-wrap gap-1 border-b border-pryv-light-gray">

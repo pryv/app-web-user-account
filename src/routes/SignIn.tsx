@@ -37,7 +37,17 @@ export default function SignIn() {
           state,
         );
       } else {
-        navigate("/account");
+        // Carry pryvServiceInfoUrl into the account section so sign-out and
+        // every account-side <Navigate> can preserve it from useLocation().search
+        // without depending on localStorage state (which gets cleared when
+        // setConnection(null) runs, racing AccountLayout's re-render).
+        // Note: navigate to /account/profile (not just /account) — the index
+        // Navigate inside the /account layout strips the query when it
+        // forwards to /account/profile.
+        const target = serviceInfoUrl
+          ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
+          : "/account/profile";
+        navigate(target);
       }
     } catch (err: unknown) {
       if (isMfaRequired(err)) {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../../components/ui";
-import { useSession } from "../../lib/session";
+import { useSession, signinPath } from "../../lib/session";
 
 /**
  * Data rights (GDPR / Art.17).
@@ -46,8 +46,10 @@ export default function DataRights() {
         throw new Error("Delete failed (" + res.status + "): " + body.slice(0, 200));
       }
       // Server confirmed deletion — wipe local session and bounce home.
+      // Navigate FIRST — see AccountLayout signOut for the same race fix.
+      const target = signinPath();
+      navigate(target, { replace: true });
       setConnection(null);
-      navigate("/signin", { replace: true });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not delete account.");
     } finally {

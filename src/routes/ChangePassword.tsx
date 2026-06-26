@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { useSession } from "../lib/session";
+import { useSession, signinPath } from "../lib/session";
 
 /**
  * Subject-side password change. Calls `account.changePassword` on the user's
@@ -18,7 +18,7 @@ export default function ChangePassword() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  if (!connection) return <Navigate to={`/signin${search}`} replace />;
+  if (!connection) return <Navigate to={signinPath(search)} replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

@@ -21,6 +21,33 @@ const SessionContext = createContext<Session | undefined>(undefined);
 const STORE_KEY_API = "pryv.session.apiEndpoint";
 const STORE_KEY_SERVICE = "pryv.session.serviceInfoUrl";
 
+/**
+ * Build the `/signin` path with `pryvServiceInfoUrl` preserved.
+ *
+ * Prefers the URL passed in (typically `useLocation().search`), so a
+ * just-opened `/account/...` deep-link keeps its service-info on the
+ * round-trip to /signin. Falls back to the last persisted session's
+ * service-info URL so a clean sign-out → sign-in lands the user on the
+ * right Pryv instance without needing the calling app to re-include the
+ * param.
+ */
+export function signinPath(searchOrUndefined?: string): string {
+  let serviceInfoUrl: string | null = null;
+  if (searchOrUndefined) {
+    const sp = new URLSearchParams(searchOrUndefined);
+    serviceInfoUrl = sp.get("pryvServiceInfoUrl");
+  }
+  if (!serviceInfoUrl) {
+    try {
+      serviceInfoUrl = localStorage.getItem(STORE_KEY_SERVICE);
+    } catch {
+      serviceInfoUrl = null;
+    }
+  }
+  if (!serviceInfoUrl) return "/signin";
+  return "/signin?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl);
+}
+
 function readStored(): PryvConnection | null {
   try {
     const apiEndpoint = localStorage.getItem(STORE_KEY_API);

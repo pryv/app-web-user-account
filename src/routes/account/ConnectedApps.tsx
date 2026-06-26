@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button, Alert } from "../../components/ui";
-import { useSession } from "../../lib/session";
+import { useSession, signinPath } from "../../lib/session";
 
 interface Access {
   id: string;
@@ -70,8 +70,11 @@ export default function ConnectedApps() {
       ])) as Array<{ error?: { message: string } }>;
       if (res?.error) throw new Error(res.error.message);
       if (id === selfAccessId) {
+        // Navigate FIRST so AccountLayout doesn't re-render with
+        // connection===null and clobber the URL with a queryless /signin.
+        const target = signinPath();
+        navigate(target, { replace: true });
         setConnection(null);
-        navigate("/signin", { replace: true });
         return;
       }
       await load();

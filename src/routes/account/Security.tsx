@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../../components/ui";
-import { useSession } from "../../lib/session";
+import { useSession, signinPath } from "../../lib/session";
 
 interface Access {
   id: string;
@@ -179,8 +179,10 @@ export default function Security() {
       ])) as Array<{ error?: { message: string } }>;
       if (res?.error) throw new Error(res.error.message);
       if (id === selfId) {
+        // Navigate FIRST — see AccountLayout signOut for the same race fix.
+        const target = signinPath();
+        navigate(target, { replace: true });
         setConnection(null);
-        navigate("/signin", { replace: true });
         return;
       }
       await loadSessions();

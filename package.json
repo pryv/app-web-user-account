@@ -11,10 +11,14 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "webserver": "backloop.dev ./dist 4443",
-    "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll"
+    "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/roboto": "^5.2.10",
+    "@fontsource/roboto-condensed": "^5.2.8",
     "@pryv/cmc": "^3.7.1",
+    "lucide-react": "^1.21.0",
     "pryv": "^3.7.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -26,10 +30,13 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
+    "@vitest/coverage-v8": "^4.1.9",
     "backloop.dev": "^3.0.3",
+    "jsdom": "^29.1.1",
     "oxlint": "^1.69.0",
     "tailwindcss": "^4.3.1",
     "typescript": "~6.0.2",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
   }
 }

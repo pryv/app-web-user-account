@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import PagePlaceholder from "./components/PagePlaceholder";
 import SignIn from "./routes/SignIn";
@@ -21,6 +21,12 @@ import DataRights from "./routes/account/DataRights";
  * contract — the auth-completion `returnURL` is owned by those flows and is NOT
  * the same as the `backUrl` cancel affordance handled by the Layout.
  */
+/** Internal redirect that forwards the current `?…` query through. */
+function NavigatePreservingSearch({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={to + search} replace />;
+}
+
 export default function App() {
   return (
     <Layout>
@@ -42,14 +48,14 @@ export default function App() {
 
         {/* Self-service account management (subject) */}
         <Route path="/account" element={<AccountLayout />}>
-          <Route index element={<Navigate to="/account/profile" replace />} />
+          <Route index element={<NavigatePreservingSearch to="/account/profile" />} />
           <Route path="profile" element={<Profile />} />
           <Route path="security" element={<Security />} />
           <Route path="apps" element={<ConnectedApps />} />
           <Route path="data" element={<DataRights />} />
         </Route>
 
-        <Route path="/" element={<Navigate to="/signin" replace />} />
+        <Route path="/" element={<NavigatePreservingSearch to="/signin" />} />
         <Route path="*" element={<PagePlaceholder title="Not found" description="This page does not exist." />} />
       </Routes>
     </Layout>
