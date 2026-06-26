@@ -23,7 +23,7 @@ export default function SignIn() {
     setError(null);
     setBusy(true);
     try {
-      const { appId, returnURL } = parseAuthParams(search);
+      const { appId, returnURL, serviceInfoUrl } = parseAuthParams(search);
       const connection = (await getService(search).login(
         username,
         password,
@@ -32,7 +32,7 @@ export default function SignIn() {
       // TODO: complete the auth flow (append state/poll/code to returnURL).
       if (returnURL) window.location.href = returnURL;
       else {
-        setConnection(connection);
+        setConnection(connection, serviceInfoUrl);
         navigate("/account");
       }
     } catch (err: unknown) {

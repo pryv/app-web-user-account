@@ -8,8 +8,24 @@
  * variables so an operator can re-brand the app by overriding a handful of
  * `--color-*` / `--font-*` values — no component edits required.
  */
+/*
+ * Brand tokens — emitted unconditionally (not under @theme) so all six ship
+ * even when no current utility class references them. Operators re-brand by
+ * overriding any of these in their own CSS; the override takes effect even
+ * for components added later.
+ */
+:root {
+  --color-pryv-red: #bd1026;
+  --color-pryv-green: #719726;
+  --color-pryv-blue: #2d68ac;
+  --color-pryv-black: #1a1a1a;
+  --color-pryv-dark-gray: #4a4a4a;
+  --color-pryv-light-gray: #c8c8c8;
+}
+
 @theme {
-  /* Core visual identity */
+  /* Brand tokens registered with Tailwind (mirrored from :root above) so
+   * utilities like `text-pryv-red` resolve at build time. */
   --color-pryv-red: #bd1026;
   --color-pryv-green: #719726;
   --color-pryv-blue: #2d68ac;
