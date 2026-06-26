@@ -51,13 +51,16 @@ export default function AccountLayout() {
           <LogOut size={14} aria-hidden /> Sign out
         </button>
       </div>
-      <nav className="mb-6 flex flex-wrap gap-1 border-b border-pryv-light-gray">
+      <nav
+        aria-label="Account sections"
+        className="mb-6 flex flex-wrap gap-1 border-b border-divider"
+      >
         {TABS.map((t) => (
           <NavLink
             key={t.to}
             to={t.to}
             className={({ isActive }) =>
-              `-mb-px border-b-2 px-3 py-2 text-sm ${
+              `-mb-px flex-1 border-b-2 px-3 py-2 text-center text-sm transition-colors sm:flex-none ${
                 isActive
                   ? "border-primary text-primary"
                   : "border-transparent text-muted hover:text-ink"

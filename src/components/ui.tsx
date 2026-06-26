@@ -1,9 +1,10 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 /** Brand-themed surface card. */
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-lg border border-pryv-light-gray bg-white p-6 shadow-sm ${className}`}>
+    <div className={`rounded-lg border border-divider bg-card p-6 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -26,7 +27,7 @@ export function Button({
   return <button className={`${base} ${styles} ${className}`} {...props} />;
 }
 
-/** Inline error/notice banner. */
+/** Inline error/notice banner with a tone-matched icon. */
 export function Alert({
   children,
   tone = "danger",
@@ -40,9 +41,14 @@ export function Alert({
       : tone === "success"
       ? "border-success/40 bg-success/10 text-success"
       : "border-info/40 bg-info/10 text-info";
+  const Icon = tone === "danger" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
   return (
-    <div className={`mb-4 rounded border px-3 py-2 text-sm ${styles}`} role="alert">
-      {children}
+    <div
+      className={`mb-4 flex gap-2 rounded border px-3 py-2 text-sm ${styles}`}
+      role="alert"
+    >
+      <Icon size={16} aria-hidden className="mt-[2px] shrink-0" />
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -61,7 +67,7 @@ export function Field({
       </label>
       <input
         id={id}
-        className="w-full rounded border border-pryv-light-gray bg-white px-3 py-2 text-sm transition-colors outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 disabled:bg-body disabled:text-muted"
+        className="w-full rounded border border-divider bg-card text-ink px-3 py-2 text-sm transition-colors outline-none focus:border-primary focus:ring-2 focus:ring-primary/40 disabled:bg-body disabled:text-muted"
         {...props}
       />
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}

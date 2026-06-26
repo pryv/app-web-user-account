@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen bg-body text-ink">
-      <header className="flex items-center justify-between border-b border-pryv-light-gray bg-white px-4 py-3">
+      <header className="flex items-center justify-between border-b border-divider bg-card px-4 py-3">
         <span className="font-heading text-lg font-medium text-pryv-red">Pryv</span>
         {backTo.url && (
           <a href={backTo.url} className="text-sm text-primary hover:underline">

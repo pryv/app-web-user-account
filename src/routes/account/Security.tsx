@@ -265,7 +265,7 @@ export default function Security() {
             </Button>
           </form>
         )}
-        <div className="mt-3 border-t border-pryv-light-gray pt-3">
+        <div className="mt-3 border-t border-divider pt-3">
           <p className="mb-2 text-xs text-muted">
             Already enrolled? Disable it here:
           </p>
@@ -295,7 +295,7 @@ export default function Security() {
           {sessions?.map((s) => (
             <div
               key={s.id}
-              className="flex items-center justify-between gap-3 rounded border border-pryv-light-gray p-3"
+              className="flex items-center justify-between gap-3 rounded border border-divider p-3"
             >
               <div className="min-w-0">
                 <div className="truncate text-sm">

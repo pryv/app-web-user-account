@@ -216,7 +216,7 @@ export default function CmcApprove() {
           type="button"
           disabled={!offer || working !== null}
           onClick={decline}
-          className="inline-flex w-full items-center justify-center rounded border border-pryv-light-gray px-4 py-2 text-sm hover:bg-body disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center rounded border border-divider px-4 py-2 text-sm hover:bg-body disabled:opacity-50"
         >
           {working === "refuse" ? "Declining…" : "Decline"}
         </button>

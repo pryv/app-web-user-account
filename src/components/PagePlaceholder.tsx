@@ -13,7 +13,7 @@ export default function PagePlaceholder({
     <section>
       <h1 className="mb-2 text-2xl">{title}</h1>
       <p className="text-muted">{description}</p>
-      <p className="mt-6 rounded bg-white p-3 text-sm text-muted">
+      <p className="mt-6 rounded bg-card p-3 text-sm text-muted">
         Not implemented yet.
       </p>
     </section>

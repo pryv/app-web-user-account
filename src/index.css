@@ -13,6 +13,10 @@
  * even when no current utility class references them. Operators re-brand by
  * overriding any of these in their own CSS; the override takes effect even
  * for components added later.
+ *
+ * Semantic surface/text tokens (`--color-body`, `--color-ink`, `--color-muted`,
+ * `--color-card`) are also mirrored here for the same reason — and to give
+ * operators a single set of variables to override for dark-mode.
  */
 :root {
   --color-pryv-red: #bd1026;
@@ -21,6 +25,28 @@
   --color-pryv-black: #1a1a1a;
   --color-pryv-dark-gray: #4a4a4a;
   --color-pryv-light-gray: #c8c8c8;
+
+  --color-body: #f4f4f4;
+  --color-ink: var(--color-pryv-black);
+  --color-muted: var(--color-pryv-dark-gray);
+  --color-card: #ffffff;
+  --color-divider: var(--color-pryv-light-gray);
+}
+
+/*
+ * Default dark-mode palette. Triggered only when the user's OS is in dark
+ * mode AND the operator hasn't pinned the theme. To force light or dark
+ * regardless of the OS, override these variables on `:root` (or
+ * `[data-theme=light]`/`[data-theme=dark]` if you wire the attribute).
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-body: #131516;
+    --color-ink: #f0f0f0;
+    --color-muted: #a8aaae;
+    --color-card: #1d2022;
+    --color-divider: #2c2f33;
+  }
 }
 
 @theme {
@@ -40,10 +66,14 @@
   --color-warning: #f0ad4e;
   --color-danger: #d9534f;
 
-  /* Surfaces & text */
+  /* Surfaces & text — mirrors of the :root definitions; the :root vars are
+   * the canonical override surface (they're emitted unconditionally and pick
+   * up the dark-mode media query). */
   --color-body: #f4f4f4;
-  --color-ink: var(--color-pryv-black);
-  --color-muted: var(--color-pryv-dark-gray);
+  --color-ink: #1a1a1a;
+  --color-muted: #4a4a4a;
+  --color-card: #ffffff;
+  --color-divider: #c8c8c8;
 
   /* Typography */
   --font-sans: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -58,16 +88,25 @@
 @layer base {
   html {
     font-family: var(--font-sans);
+    /* Modular scale: major-third (1.333). 16px → 21.3 → 28.4 → 37.9 */
+    font-size: 16px;
+    line-height: 1.5;
   }
   body {
     background-color: var(--color-body);
     color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
     font-weight: 500;
-    line-height: 1.1;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
   }
+  h1 { font-size: 1.778rem; margin-bottom: 0.5rem; }   /* ~28.4px */
+  h2 { font-size: 1.333rem; margin-bottom: 0.5rem; }   /* ~21.3px */
+  h3 { font-size: 1.111rem; margin-bottom: 0.25rem; }  /* ~17.8px */
   a {
     color: var(--color-primary);
   }
