@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, Button, Alert } from "../../components/ui";
 import { useSession } from "../../lib/session";
 
@@ -12,8 +13,10 @@ interface Access {
 
 /** List the account's app accesses and let the subject revoke them. */
 export default function ConnectedApps() {
-  const { connection } = useSession();
+  const { connection, setConnection } = useSession();
+  const navigate = useNavigate();
   const [accesses, setAccesses] = useState<Access[] | null>(null);
+  const [selfAccessId, setSelfAccessId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
 
@@ -31,12 +34,34 @@ export default function ConnectedApps() {
     }
   }, [connection]);
 
+  // Note which access ID belongs to the current session so we can warn the
+  // subject before they revoke themselves and clean up the local session
+  // when they do.
+  useEffect(() => {
+    if (!connection) return;
+    connection
+      .accessInfo()
+      .then((info: unknown) => {
+        const id = (info as { id?: string } | null)?.id;
+        if (id) setSelfAccessId(id);
+      })
+      .catch(() => {
+        /* non-fatal — self-access marker is a UX helper, not required */
+      });
+  }, [connection]);
+
   useEffect(() => {
     void load();
   }, [load]);
 
   async function revoke(id: string) {
     if (!connection) return;
+    if (id === selfAccessId) {
+      const ok = window.confirm(
+        "This is the access you used to sign in. Revoking it will sign you out immediately. Continue?",
+      );
+      if (!ok) return;
+    }
     setRevoking(id);
     setError(null);
     try {
@@ -44,6 +69,11 @@ export default function ConnectedApps() {
         { method: "accesses.delete", params: { id } },
       ])) as Array<{ error?: { message: string } }>;
       if (res?.error) throw new Error(res.error.message);
+      if (id === selfAccessId) {
+        setConnection(null);
+        navigate("/signin", { replace: true });
+        return;
+      }
       await load();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not revoke access.");
@@ -65,7 +95,14 @@ export default function ConnectedApps() {
           <Card key={a.id}>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="font-medium">{a.name}</div>
+                <div className="font-medium">
+                  {a.name}
+                  {a.id === selfAccessId && (
+                    <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                      this session
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-muted">
                   {a.type ?? "app"} · {a.permissions?.length ?? 0} permission(s)
                 </div>
