@@ -8,6 +8,7 @@ import ChangePassword from "./routes/ChangePassword";
 import MfaChallenge from "./routes/MfaChallenge";
 import CmcApprove from "./routes/CmcApprove";
 import CmcScopeUpdate from "./routes/CmcScopeUpdate";
+import Auth from "./routes/Auth";
 import AccountLayout from "./routes/account/AccountLayout";
 import Profile from "./routes/account/Profile";
 import Security from "./routes/account/Security";
@@ -21,19 +22,18 @@ function NavigatePreservingSearch({ to }: { to: string }) {
 }
 
 /**
- * Drop-in placeholder for the access-request and OAuth2 authorize flows.
- * The legacy app-web-auth3 ships them as `/auth` (`Authorization.vue`) and
- * `/oauth2-authorize` (`OAuth2Authorize.vue`). Re-homing them into this
- * React app is tracked separately under the OAuth2 consent UI work. Until
- * that lands, existing operators landing here see a clear explanation
- * rather than a silent redirect, and the route exists so the URL contract
- * holds.
+ * Drop-in placeholder for the OAuth2 authorize flow.
+ * The legacy app-web-auth3 ships it as `/oauth2-authorize`
+ * (`OAuth2Authorize.vue` + `OAuth2Consent.vue`). The React port is tracked
+ * as Phase G; until it lands, operators landing here see a clear
+ * explanation rather than a silent redirect, and the route exists so the
+ * URL contract holds.
  */
 function PendingConsentTrack({ title }: { title: string }) {
   return (
     <PagePlaceholder
       title={title}
-      description="This page is the OAuth2 / access-request consent flow. It is being re-homed from the legacy auth app and is not yet wired in this build. Until then, use the legacy app-web-auth3 deploy for this specific flow, or sign in directly at /signin."
+      description="This page is the OAuth2 consent flow. It is being re-homed from the legacy auth app and is not yet wired in this build. Until then, use the legacy app-web-auth3 deploy for this specific flow."
     />
   );
 }
@@ -67,8 +67,9 @@ export default function App() {
         <Route path="/cmc/approve" element={<CmcApprove />} />
         <Route path="/cmc-scope-update" element={<CmcScopeUpdate />} />
 
-        {/* Access-request + OAuth2 consent UI — re-home pending. */}
-        <Route path="/auth" element={<PendingConsentTrack title="Authorize access" />} />
+        {/* Access-request consent flow (legacy popup-and-poll). */}
+        <Route path="/auth" element={<Auth />} />
+        {/* OAuth2 authorize — port pending (Phase G). */}
         <Route path="/oauth2-authorize" element={<PendingConsentTrack title="OAuth2 authorize" />} />
 
         {/* Self-service account management (subject) */}

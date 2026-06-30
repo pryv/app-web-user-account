@@ -40,9 +40,48 @@ test.describe("smoke — public routes render", () => {
 });
 
 test.describe("smoke — new routes (consent-track placeholders + scope-update + reset-token mode)", () => {
-  test("/auth shows the pending-consent-track placeholder (route exists, UI gap visible)", async ({ page }) => {
+  test("/auth without `poll` shows an explanatory init error", async ({ page }) => {
     await page.goto("/auth");
     await expect(page.getByRole("heading", { name: "Authorize access" })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText("Missing the `poll` query parameter");
+  });
+
+  test("/auth with `poll` shows the sign-in form after loading the access state", async ({ page }) => {
+    // Mock the poll URL response so we don't need a live server.
+    await page.route("**/reg.example.test/access/abc", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "NEED_SIGNIN",
+          requestingAppId: "test-caller",
+          requestedPermissions: [{ streamId: "diary", defaultName: "Diary", level: "manage" }],
+        }),
+      }),
+    );
+    // Service-info (used to build a Service for login probing).
+    await page.route("**/reg.example.test/service/info", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          access: "https://access.example.test/access/",
+          register: "https://reg.example.test/",
+          api: "https://{username}.example.test/",
+          name: "Example",
+          serial: 1,
+          version: "test",
+          eventTypes: "https://example.test/etypes.json",
+        }),
+      }),
+    );
+    await page.goto(
+      "/auth?poll=" +
+        encodeURIComponent("https://reg.example.test/access/abc") +
+        "&pryvServiceInfoUrl=" +
+        encodeURIComponent("https://reg.example.test/service/info"),
+    );
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByText("test-caller", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   });
 
   test("/oauth2-authorize shows the pending-consent-track placeholder", async ({ page }) => {
