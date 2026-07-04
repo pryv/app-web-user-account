@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "postbuild": "node scripts/spa-fallback.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
-    "webserver": "backloop.dev ./dist 4443",
+    "webserver": "node scripts/spa-fallback.mjs && backloop.dev ./dist 4443",
     "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
     "test": "vitest run",
     "e2e": "playwright test"
@@ -19,8 +20,10 @@
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/roboto-condensed": "^5.2.8",
     "@pryv/cmc": "^3.7.1",
+    "@pryv/socket.io": "^3.8.0",
+    "events": "^3.3.0",
     "lucide-react": "^1.21.0",
-    "pryv": "^3.7.1",
+    "pryv": "^3.8.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0"

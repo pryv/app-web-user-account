@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { RefreshCw, XCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { RefreshCw, ScrollText } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
-import { useSession, signinPath } from "../../lib/session";
+import { useSession } from "../../lib/session";
+import { subscribeToAccessChanges } from "../../lib/socket";
 
 interface Access {
   id: string;
@@ -12,14 +13,15 @@ interface Access {
   lastUsed?: number;
 }
 
-/** List the account's app accesses and let the subject revoke them. */
+/**
+ * List the account's app accesses. Each row links to the audit-access
+ * details page, which hosts the Revoke action.
+ */
 export default function ConnectedApps() {
-  const { connection, setConnection } = useSession();
-  const navigate = useNavigate();
+  const { connection } = useSession();
   const [accesses, setAccesses] = useState<Access[] | null>(null);
   const [selfAccessId, setSelfAccessId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!connection) return;
@@ -55,36 +57,24 @@ export default function ConnectedApps() {
     void load();
   }, [load]);
 
-  async function revoke(id: string) {
+  // Live refresh: the server pushes `accessChanged` over Socket.IO whenever
+  // an access is created, modified or revoked (e.g. by another app or an
+  // access-request consent in a different tab). Loss of the socket is
+  // non-fatal — the manual Refresh path stays available.
+  const [live, setLive] = useState(false);
+  useEffect(() => {
     if (!connection) return;
-    if (id === selfAccessId) {
-      const ok = window.confirm(
-        "This is the access you used to sign in. Revoking it will sign you out immediately. Continue?",
-      );
-      if (!ok) return;
-    }
-    setRevoking(id);
-    setError(null);
-    try {
-      const [res] = (await connection.api([
-        { method: "accesses.delete", params: { id } },
-      ])) as Array<{ error?: { message: string } }>;
-      if (res?.error) throw new Error(res.error.message);
-      if (id === selfAccessId) {
-        // Navigate FIRST so AccountLayout doesn't re-render with
-        // connection===null and clobber the URL with a queryless /signin.
-        const target = signinPath();
-        navigate(target, { replace: true });
-        setConnection(null);
-        return;
-      }
-      await load();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not revoke access.");
-    } finally {
-      setRevoking(null);
-    }
-  }
+    setLive(true);
+    const unsubscribe = subscribeToAccessChanges(
+      connection,
+      () => void load(),
+      () => setLive(false),
+    );
+    return () => {
+      setLive(false);
+      unsubscribe();
+    };
+  }, [connection, load]);
 
   return (
     <section>
@@ -111,22 +101,26 @@ export default function ConnectedApps() {
                   {a.type ?? "app"} · {a.permissions?.length ?? 0} permission(s)
                 </div>
               </div>
-              <button
-                onClick={() => revoke(a.id)}
-                disabled={revoking === a.id}
-                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+              <Link
+                to={`/account/audit-access/${encodeURIComponent(a.id)}`}
+                className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <XCircle size={14} aria-hidden />
-                {revoking === a.id ? "Revoking…" : "Revoke"}
-              </button>
+                <ScrollText size={14} aria-hidden />
+                Details
+              </Link>
             </div>
           </Card>
         ))}
       </div>
-      <div className="mt-4">
+      <div className="mt-4 flex items-center gap-3">
         <Button variant="ghost" type="button" onClick={() => void load()} className="w-auto">
           <RefreshCw size={14} aria-hidden className="mr-1" /> Refresh
         </Button>
+        {live && (
+          <span className="text-xs text-muted" title="Connected via Socket.IO — this list updates automatically">
+            ● live updates on
+          </span>
+        )}
       </div>
     </section>
   );

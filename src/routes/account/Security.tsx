@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ShieldOff, XCircle, Copy } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ShieldOff, Copy, ScrollText } from "lucide-react";
 import { Card, Button, Field, Alert } from "../../components/ui";
-import { useSession, signinPath } from "../../lib/session";
+import { useSession } from "../../lib/session";
 
 interface Access {
   id: string;
@@ -23,8 +23,7 @@ interface Access {
  * /confirm + /deactivate); these aren't exposed via lib-js's batch API.
  */
 export default function Security() {
-  const { connection, setConnection } = useSession();
-  const navigate = useNavigate();
+  const { connection } = useSession();
 
   // MFA enable flow state
   const [phone, setPhone] = useState("");
@@ -43,7 +42,6 @@ export default function Security() {
   const [sessions, setSessions] = useState<Access[] | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
 
   useEffect(() => {
     if (!connection) return;
@@ -167,32 +165,6 @@ export default function Security() {
     }
   }
 
-  async function revokeSession(id: string) {
-    if (!connection) return;
-    if (id === selfId) {
-      if (!window.confirm("This is the session you're using to sign in. Revoking it will sign you out. Continue?")) return;
-    }
-    setRevoking(id);
-    setSessionsError(null);
-    try {
-      const [res] = (await connection.api([
-        { method: "accesses.delete", params: { id } },
-      ])) as Array<{ error?: { message: string } }>;
-      if (res?.error) throw new Error(res.error.message);
-      if (id === selfId) {
-        // Navigate FIRST — see AccountLayout signOut for the same race fix.
-        const target = signinPath();
-        navigate(target, { replace: true });
-        setConnection(null);
-        return;
-      }
-      await loadSessions();
-    } catch (err: unknown) {
-      setSessionsError(err instanceof Error ? err.message : "Could not revoke session.");
-    } finally {
-      setRevoking(null);
-    }
-  }
 
   return (
     <section className="space-y-4">
@@ -312,15 +284,13 @@ export default function Security() {
                     : "Never used"}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => revokeSession(s.id)}
-                disabled={revoking === s.id}
-                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-xs text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+              <Link
+                to={`/account/audit-access/${encodeURIComponent(s.id)}`}
+                className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <XCircle size={12} aria-hidden />
-                {revoking === s.id ? "Revoking…" : "Revoke"}
-              </button>
+                <ScrollText size={12} aria-hidden />
+                Details
+              </Link>
             </div>
           ))}
         </div>

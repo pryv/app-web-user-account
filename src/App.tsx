@@ -14,6 +14,7 @@ import Profile from "./routes/account/Profile";
 import Security from "./routes/account/Security";
 import ConnectedApps from "./routes/account/ConnectedApps";
 import DataRights from "./routes/account/DataRights";
+import AuditAccess from "./routes/account/AuditAccess";
 
 /** Internal redirect that forwards the current `?…` query through. */
 function NavigatePreservingSearch({ to }: { to: string }) {
@@ -79,6 +80,7 @@ export default function App() {
           <Route path="security" element={<Security />} />
           <Route path="apps" element={<ConnectedApps />} />
           <Route path="data" element={<DataRights />} />
+          <Route path="audit-access/:accessId" element={<AuditAccess />} />
         </Route>
 
         {/* Landing + 404 */}
