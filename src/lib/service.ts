@@ -20,6 +20,33 @@ export function getService(search: string = window.location.search) {
   return cached.service;
 }
 
+/**
+ * Resolve a user-typed identifier (username or email) to the username that
+ * per-user API URLs are built from. Passing an email straight to
+ * `Service.login` / `requestPasswordReset` breaks URL construction (the `@`
+ * reads as credentials on DNS-based platforms), so emails are first resolved
+ * through the register's public `/:email/uid` lookup
+ * (`Service.userIdForEmail`). Usernames are lowercase-only by contract —
+ * normalise so a capitalised entry still resolves.
+ */
+export async function resolveUserId(
+  service: { userIdForEmail?: (email: string) => Promise<string | null> },
+  input: string,
+): Promise<string> {
+  const id = input.trim().toLowerCase();
+  if (!id.includes("@")) return id;
+  if (typeof service.userIdForEmail !== "function") {
+    throw new Error(
+      "This platform does not support email lookup — please use your username.",
+    );
+  }
+  const username = await service.userIdForEmail(id);
+  if (!username) {
+    throw new Error("No account found for this email address.");
+  }
+  return username;
+}
+
 /** Narrow check for the MFA-required signal thrown by `Service.login`. */
 export function isMfaRequired(
   err: unknown,

@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { parseAuthParams } from "../lib/authParams";
+import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
+import { useSession, type PryvConnection } from "../lib/session";
+import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
 
 interface FlatHosting {
   key: string;
@@ -15,6 +17,8 @@ interface FlatHosting {
 /** Account registration via `Service.createUser`. */
 export default function Register() {
   const { search } = useLocation();
+  const navigate = useNavigate();
+  const { setConnection } = useSession();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,17 +61,22 @@ export default function Register() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!isValidUsername(username)) {
+      setError("Invalid username — " + USERNAME_RULES);
+      return;
+    }
     if (password !== confirm) {
       setError("Passwords do not match.");
       return;
     }
     setBusy(true);
     try {
-      const { appId } = parseAuthParams(search);
+      const { appId, returnURL, serviceInfoUrl, state } = parseAuthParams(search);
+      const service = getService(search);
       // Email is optional; generate a placeholder when empty so the server's
       // required-field check passes (mirrors legacy `generateRandomEmailIfNeeded`).
       const finalEmail = email && email.length > 0 ? email : randomLocalPart() + "@pryv.io";
-      await getService(search).createUser({
+      await service.createUser({
         username,
         email: finalEmail,
         password,
@@ -77,7 +86,33 @@ export default function Register() {
         // call failed) fall back to the legacy `auto` sentinel.
         hosting: selectedHosting || "auto",
       });
-      setDone(true);
+      // Sign the fresh account in directly (same path as /signin) so the
+      // user doesn't have to re-enter the credentials they just chose.
+      try {
+        const connection = (await service.login(
+          username,
+          password,
+          appId,
+        )) as unknown as PryvConnection;
+        setConnection(connection, serviceInfoUrl);
+        if (returnURL) {
+          window.location.href = buildCompletionUrl(
+            returnURL,
+            connection.endpoint,
+            state,
+          );
+        } else {
+          const target = serviceInfoUrl
+            ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
+            : "/account/profile";
+          navigate(target);
+        }
+        return;
+      } catch {
+        // Account exists but auto-sign-in failed (e.g. platform-side MFA
+        // policy) — fall back to the confirmation card with the sign-in link.
+        setDone(true);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed.");
     } finally {
@@ -108,8 +143,9 @@ export default function Register() {
           id="username"
           label="Username"
           autoComplete="username"
+          hint={USERNAME_RULES}
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
           required
         />
         <Field

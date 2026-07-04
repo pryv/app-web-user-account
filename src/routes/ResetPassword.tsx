@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { getService } from "../lib/service";
+import { getService, resolveUserId } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 
 /**
@@ -25,10 +25,11 @@ export default function ResetPassword() {
     try {
       const { appId } = parseAuthParams(search);
       const service = getService(search);
+      const userId = await resolveUserId(service, username);
       if (resetToken) {
-        await service.resetPassword(username, newPassword, resetToken, appId);
+        await service.resetPassword(userId, newPassword, resetToken, appId);
       } else {
-        await service.requestPasswordReset(username, appId);
+        await service.requestPasswordReset(userId, appId);
       }
       setDone(true);
     } catch (err: unknown) {
