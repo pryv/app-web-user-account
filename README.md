@@ -38,15 +38,46 @@ npm run build    # type-check + production build
 npm run preview  # preview the production build
 ```
 
-## Back-navigation contract
+## Integrating from your app (third-party hooks)
 
-Pages accept `backUrl` + `backLabel` query parameters to render a
-"← Back to {label}" link and return the user to the opening app. `backUrl` is
-validated against an allowlist of trusted origins to prevent open-redirects.
+Any app can hand its users over to this account app and get them back. A
+runnable sample lives in [`examples/third-party-app/`](examples/third-party-app/)
+— a single static HTML page you can copy from.
+
+Every route accepts these query parameters:
+
+| Param | Meaning |
+|---|---|
+| `pryvServiceInfoUrl` | Which Pryv platform to talk to (required on entry links). |
+| `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
+| `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
+
+**Hand-off targets:**
+
+- `/signin?pryvServiceInfoUrl=…&returnURL=<your-url>&state=<csrf>` — sign the
+  user in, then redirect to `returnURL` with `state` (reflected unchanged) and
+  `pryvApiEndpoint` (the user's API base **without** any token) appended. Use
+  this to learn who/where the user is; to obtain a token, run an
+  access request (below).
+- `/account/profile`, `/account/security`, `/account/apps`, `/account/data`,
+  `/change-password`, `/reset-password` — self-service pages; combine with
+  `backUrl`/`backLabel` so users find their way back to you.
+- `/auth` — the access-request consent flow. Don't link it directly: create an
+  access request (lib-js `Pryv.Browser.setupAuth(...)` or
+  `POST {register}/access`, optionally passing `authUrl` pointing at this
+  app's `/auth` if the platform's `access:trustedAuthUrls` allows it) and open
+  the `authUrl` the server returns.
+
+**Sessions:** a successful sign-in is persisted in the browser
+(`localStorage`), so a returning user gets a "Continue as {username}" step
+instead of retyping credentials — with a "Not me — use another account"
+escape so a shared browser can't silently act (or grant access) under the
+wrong account.
 
 > Note: `backUrl` is a user-initiated *cancel / go-back* affordance. It is
 > separate from the authentication-completion redirect (`returnURL` /
-> OAuth2 `redirect_uri`), which the auth flow handles on its own.
+> OAuth2 `redirect_uri`), which the auth flow handles on its own. It never
+> carries tokens.
 
 ## Replacing `app-web-auth3` on an operator platform
 

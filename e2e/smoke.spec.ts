@@ -112,11 +112,16 @@ test.describe("smoke — account guards bounce to /signin (with preserved pryvSe
     await page.goto(`/change-password?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
     await expect(page).toHaveURL(new RegExp(`/signin\\?pryvServiceInfoUrl=${encodeURIComponent(SVC).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   });
+
+  test("/account/audit-access/:id without session → /signin (carries pryvServiceInfoUrl)", async ({ page }) => {
+    await page.goto(`/account/audit-access/ck123?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
+    await expect(page).toHaveURL(new RegExp(`/signin\\?pryvServiceInfoUrl=${encodeURIComponent(SVC).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  });
 });
 
 test.describe("smoke — sign-in mocked happy path + sign-out URL preservation regression", () => {
-  test("sign-in → /account/profile?pryvServiceInfoUrl=…; sign-out → /signin?pryvServiceInfoUrl=…", async ({ page }) => {
-    // Mock service-info, hostings, and the per-user auth/login + access-info endpoints.
+  /** Mock service-info and the per-user auth/login + access-info endpoints. */
+  async function mockPlatform(page: import("@playwright/test").Page) {
     await page.route("**/reg.example.test/service/info", (route) =>
       route.fulfill({
         contentType: "application/json",
@@ -140,7 +145,13 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
     await page.route("**/alice.example.test/access-info", (route) =>
       route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ id: "self-access", name: "pryv-user-account", type: "personal" }),
+        body: JSON.stringify({
+          id: "self-access",
+          name: "pryv-user-account",
+          type: "personal",
+          user: { username: "alice" },
+          meta: { apiVersion: "test", serverTime: 1750000000, serial: "1" },
+        }),
       }),
     );
     await page.route("**/alice.example.test/", (route) =>
@@ -151,6 +162,10 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
         ]),
       }),
     );
+  }
+
+  test("sign-in → /account/profile?pryvServiceInfoUrl=…; sign-out → /signin?pryvServiceInfoUrl=…", async ({ page }) => {
+    await mockPlatform(page);
 
     await page.goto(`/signin?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
     await page.getByLabel("Username or email").fill("alice");
@@ -165,5 +180,26 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(new RegExp(`/signin\\?pryvServiceInfoUrl=${encodeURIComponent(SVC).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  });
+
+  test("returning user sees Continue-as; 'Not me' clears the session back to the form", async ({ page }) => {
+    await mockPlatform(page);
+
+    // First sign-in persists the session.
+    await page.goto(`/signin?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
+    await page.getByLabel("Username or email").fill("alice");
+    await page.getByLabel("Password").fill("hunter2");
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+
+    // Revisit /signin: continue-as card instead of the credentials form.
+    await page.goto(`/signin?pryvServiceInfoUrl=${encodeURIComponent(SVC)}`);
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Continue as alice/ })).toBeVisible();
+
+    // "Not me" clears the stored session and shows the form.
+    await page.getByRole("button", { name: /Not me/ }).click();
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByLabel("Username or email")).toBeVisible();
   });
 });

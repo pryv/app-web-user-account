@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import Pryv from "pryv";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { isMfaRequired } from "../lib/service";
+import { isMfaRequired, resolveUserId } from "../lib/service";
+import { useSession, storedServiceInfoUrl, type PryvConnection } from "../lib/session";
 import {
   loadAccessState,
   updateAccessState,
@@ -57,6 +58,7 @@ function parseAuthQuery(search: string): AuthQuery {
 export default function Auth() {
   const { search } = useLocation();
   const query = parseAuthQuery(search);
+  const { connection: storedConnection, setConnection } = useSession();
 
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [serviceInfo, setServiceInfo] = useState<{ register?: string; support?: string; api?: string } | null>(null);
@@ -76,6 +78,63 @@ export default function Auth() {
 
   const [check, setCheck] = useState<AppCheck | null>(null);
   const [finishing, setFinishing] = useState(false);
+
+  // Persisted session (localStorage) — usable for this consent when it
+  // belongs to the same platform. The user can always pick "Not me".
+  const flowSvcInfoUrl =
+    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
+  const storedUsable =
+    storedConnection !== null &&
+    flowSvcInfoUrl !== null &&
+    storedServiceInfoUrl() === flowSvcInfoUrl;
+  const [knownUsername, setKnownUsername] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storedUsable || !storedConnection) {
+      setKnownUsername(null);
+      return;
+    }
+    let cancelled = false;
+    storedConnection
+      .username()
+      .then((u) => {
+        if (!cancelled) setKnownUsername(u);
+      })
+      .catch(() => {
+        if (!cancelled) setKnownUsername(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [storedUsable, storedConnection]);
+
+  async function continueAsStored() {
+    if (!storedConnection) return;
+    const conn = storedConnection as unknown as { token?: string; endpoint: string };
+    if (!conn.token) {
+      setConnection(null);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // The consent-completion payload needs the username; the form was
+      // skipped, so resolve it from the stored session.
+      const asUser = knownUsername ?? (await storedConnection.username());
+      setUsername(asUser);
+      setPersonalToken(conn.token);
+      setApiEndpoint(conn.endpoint);
+      await runCheckApp(conn.endpoint, conn.token, asUser);
+    } catch {
+      // Stored token no longer valid (revoked/expired) — drop it and let the
+      // user sign in normally.
+      setConnection(null);
+      setPersonalToken(null);
+      setApiEndpoint(null);
+      setError("Your previous session is no longer valid — please sign in.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   // Initial load: pull access state + service-info.
   useEffect(() => {
@@ -128,10 +187,14 @@ export default function Auth() {
       // Build a Service from the serviceInfo we already have (so we don't re-fetch).
       const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
       const service = svcInfoUrl ? new Pryv.Service(svcInfoUrl) : new Pryv.Service("");
+      // Emails resolve to the username first; the resolved id feeds login,
+      // the MFA steps and the api-endpoint template below.
+      const userId = await resolveUserId(service, username);
+      setUsername(userId);
       // Service.login signature: (username, password, appId).
       let connection;
       try {
-        connection = (await service.login(username.trim(), password, APP_ID)) as unknown as {
+        connection = (await service.login(userId, password, APP_ID)) as unknown as {
           token: string;
           endpoint: string;
           apiEndpoint: string;
@@ -139,7 +202,7 @@ export default function Auth() {
       } catch (err) {
         if (isMfaRequired(err)) {
           const mt = (err as { mfaToken: string }).mfaToken;
-          await service.mfaChallenge(username.trim(), mt);
+          await service.mfaChallenge(userId, mt);
           setMfaToken(mt);
           return;
         }
@@ -147,6 +210,10 @@ export default function Auth() {
       }
       setPersonalToken(connection.token);
       setApiEndpoint(connection.endpoint);
+      // Persist the session so the next auth request (or /account visit)
+      // skips the credentials — the pre-consent card offers "Not me" to
+      // switch accounts instead.
+      setConnection(connection as unknown as PryvConnection, svcInfoUrl);
       await runCheckApp(connection.endpoint, connection.token);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed.");
@@ -172,6 +239,9 @@ export default function Auth() {
         (serviceInfo?.api ? serviceInfo.api.replace("{username}", username.trim()) : "");
       setPersonalToken(persoToken);
       setApiEndpoint(endpoint);
+      if (conn.token && conn.endpoint) {
+        setConnection(conn as unknown as PryvConnection, svcInfoUrl ?? null);
+      }
       setMfaToken(null);
       setMfaCode("");
       await runCheckApp(endpoint, persoToken);
@@ -182,33 +252,35 @@ export default function Auth() {
     }
   }
 
-  async function runCheckApp(endpoint: string, token: string) {
+  async function runCheckApp(endpoint: string, token: string, asUser?: string) {
     if (!accessState) return;
+    // != null (not !== undefined): the poll state carries explicit `null`s
+    // for absent fields, and the check-app schema rejects e.g. clientData:null.
     const checkData = {
       requestingAppId: accessState.requestingAppId || APP_ID,
       requestedPermissions: accessState.requestedPermissions || [],
-      ...(accessState.deviceName !== undefined ? { deviceName: accessState.deviceName } : {}),
-      ...(accessState.token !== undefined ? { token: accessState.token } : {}),
-      ...(accessState.expireAfter !== undefined ? { expireAfter: accessState.expireAfter } : {}),
-      ...(accessState.clientData !== undefined ? { clientData: accessState.clientData } : {}),
+      ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
+      ...(accessState.token != null ? { token: accessState.token } : {}),
+      ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
+      ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
     };
     const result = await checkAppAccess(endpoint, token, checkData);
     if (result.matchingAccess) {
       // Already authorized — short-circuit through close_or_redirect with the
       // existing access token.
-      await finalizeAccepted(result.matchingAccess.token, endpoint);
+      await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
       return;
     }
     setCheck(result);
   }
 
-  async function finalizeAccepted(token: string, endpoint: string) {
+  async function finalizeAccepted(token: string, endpoint: string, asUser?: string) {
     if (!accessState || !query.pollUrl) return;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
     const accepted: Partial<AccessState> = {
       status: "ACCEPTED",
       apiEndpoint: apiEp,
-      username,
+      username: asUser ?? username,
       token,
     };
     await updateAccessState(query.pollUrl, accepted);
@@ -227,10 +299,10 @@ export default function Auth() {
         permissions: check.checkedPermissions || [],
         name: accessState.requestingAppId || APP_ID,
         type: "app",
-        ...(accessState.deviceName !== undefined ? { deviceName: accessState.deviceName } : {}),
-        ...(accessState.token !== undefined ? { token: accessState.token } : {}),
-        ...(accessState.expireAfter !== undefined ? { expireAfter: accessState.expireAfter } : {}),
-        ...(accessState.clientData !== undefined ? { clientData: accessState.clientData } : {}),
+        ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
+        ...(accessState.token != null ? { token: accessState.token } : {}),
+        ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
+        ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
       });
       await finalizeAccepted(created.token, apiEndpoint);
     } catch (err: unknown) {
@@ -301,7 +373,7 @@ export default function Auth() {
             </li>
           ))}
         </ul>
-        {accessState.expireAfter !== undefined && (
+        {accessState.expireAfter != null && (
           <p className="mb-2 text-sm">
             <strong>Expires after:</strong> {accessState.expireAfter}s
           </p>
@@ -368,7 +440,49 @@ export default function Auth() {
     );
   }
 
+  // Already signed in on this platform (persisted session): offer to
+  // continue to the consent step directly, with an explicit way out so a
+  // shared browser doesn't grant access under the wrong account.
+  if (storedUsable && !personalToken) {
+    return (
+      <Card>
+        <h1 className="mb-1 text-2xl">Welcome back</h1>
+        <p className="mb-6 text-sm text-muted">
+          You are signed in{knownUsername ? (
+            <>
+              {" "}as <strong>{knownUsername}</strong>
+            </>
+          ) : null}
+          . Continue to review the access requested by{" "}
+          <strong>{accessState.requestingAppId || "the requesting app"}</strong>?
+        </p>
+        {error && <Alert>{error}</Alert>}
+        <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
+          {busy ? "Checking…" : `Continue${knownUsername ? ` as ${knownUsername}` : ""}`}
+        </Button>
+        <button
+          type="button"
+          onClick={() => setConnection(null)}
+          disabled={busy}
+          className="mt-3 w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+        >
+          Not me — use another account
+        </button>
+        <Button variant="ghost" type="button" onClick={refuse} disabled={busy || finishing} className="mt-3">
+          Cancel
+        </Button>
+      </Card>
+    );
+  }
+
   // Sign-in form (initial state).
+  // Register / password-reset links need the platform's service-info URL;
+  // same resolution order as submitLogin. They open in a new tab so this
+  // popup keeps its pending access request (poll context) alive.
+  const linksSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
+  const linksSearch = linksSvcInfoUrl
+    ? `?pryvServiceInfoUrl=${encodeURIComponent(linksSvcInfoUrl)}`
+    : "";
   return (
     <Card>
       <h1 className="mb-1 text-2xl">Sign in</h1>
@@ -404,6 +518,22 @@ export default function Auth() {
           </Button>
         </div>
       </form>
+      <div className="mt-4 flex justify-between text-sm">
+        <Link
+          to={`/reset-password${linksSearch}`}
+          target="_blank"
+          className="text-primary hover:underline"
+        >
+          Forgot password?
+        </Link>
+        <Link
+          to={`/register${linksSearch}`}
+          target="_blank"
+          className="text-primary hover:underline"
+        >
+          Create account
+        </Link>
+      </div>
       {serviceInfo?.support && (
         <p className="mt-6 text-sm text-muted">
           Questions? Visit our{" "}

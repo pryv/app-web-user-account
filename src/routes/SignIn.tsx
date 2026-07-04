@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { getService, isMfaRequired } from "../lib/service";
+import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
 import { useSession, type PryvConnection } from "../lib/session";
 
@@ -12,47 +12,77 @@ import { useSession, type PryvConnection } from "../lib/session";
 export default function SignIn() {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const { setConnection } = useSession();
+  const { connection, setConnection } = useSession();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // A session persisted from an earlier sign-in (localStorage) lets the user
+  // continue without re-entering credentials. "Not me" clears it so a
+  // different account can sign in — important when this page completes an
+  // auth hand-off for a third-party app.
+  const [knownUsername, setKnownUsername] = useState<string | null>(null);
+  useEffect(() => {
+    if (!connection) {
+      setKnownUsername(null);
+      return;
+    }
+    let cancelled = false;
+    connection
+      .username()
+      .then((u) => {
+        if (!cancelled) setKnownUsername(u);
+      })
+      .catch(() => {
+        if (!cancelled) setKnownUsername(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connection]);
+
+  function completeSignedIn(conn: PryvConnection, serviceInfoUrl: string | null, returnURL: string | null, state: string | null) {
+    if (returnURL) {
+      window.location.href = buildCompletionUrl(returnURL, conn.endpoint, state);
+      return;
+    }
+    const target = serviceInfoUrl
+      ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
+      : "/account/profile";
+    navigate(target);
+  }
+
+  function continueAs() {
+    if (!connection) return;
+    const { returnURL, serviceInfoUrl, state } = parseAuthParams(search);
+    completeSignedIn(connection, serviceInfoUrl, returnURL, state);
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setBusy(true);
+    let userId = username;
     try {
       const { appId, returnURL, serviceInfoUrl, state } = parseAuthParams(search);
-      const connection = (await getService(search).login(
-        username,
+      const service = getService(search);
+      userId = await resolveUserId(service, username);
+      const connection = (await service.login(
+        userId,
         password,
         appId,
       )) as unknown as PryvConnection;
       setConnection(connection, serviceInfoUrl);
-      if (returnURL) {
-        window.location.href = buildCompletionUrl(
-          returnURL,
-          connection.endpoint,
-          state,
-        );
-      } else {
-        // Carry pryvServiceInfoUrl into the account section so sign-out and
-        // every account-side <Navigate> can preserve it from useLocation().search
-        // without depending on localStorage state (which gets cleared when
-        // setConnection(null) runs, racing AccountLayout's re-render).
-        // Note: navigate to /account/profile (not just /account) — the index
-        // Navigate inside the /account layout strips the query when it
-        // forwards to /account/profile.
-        const target = serviceInfoUrl
-          ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
-          : "/account/profile";
-        navigate(target);
-      }
+      // Carry pryvServiceInfoUrl into the account section so sign-out and
+      // every account-side <Navigate> can preserve it from useLocation().search
+      // without depending on localStorage state (which gets cleared when
+      // setConnection(null) runs, racing AccountLayout's re-render).
+      completeSignedIn(connection, serviceInfoUrl, returnURL, state);
     } catch (err: unknown) {
       if (isMfaRequired(err)) {
         navigate("/mfa-challenge", {
-          state: { userId: username, mfaToken: err.mfaToken, search },
+          state: { userId, mfaToken: err.mfaToken, search },
         });
         return;
       }
@@ -60,6 +90,32 @@ export default function SignIn() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (connection) {
+    return (
+      <Card>
+        <h1 className="mb-1 text-2xl">Welcome back</h1>
+        <p className="mb-6 text-sm text-muted">
+          You are already signed in{knownUsername ? (
+            <>
+              {" "}as <strong>{knownUsername}</strong>
+            </>
+          ) : null}
+          .
+        </p>
+        <Button type="button" onClick={continueAs}>
+          Continue{knownUsername ? ` as ${knownUsername}` : ""}
+        </Button>
+        <button
+          type="button"
+          onClick={() => setConnection(null)}
+          className="mt-3 w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          Not me — use another account
+        </button>
+      </Card>
+    );
   }
 
   return (

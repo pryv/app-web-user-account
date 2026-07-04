@@ -48,6 +48,15 @@ export function signinPath(searchOrUndefined?: string): string {
   return "/signin?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl);
 }
 
+/** Service-info URL of the persisted session (platform-match checks). */
+export function storedServiceInfoUrl(): string | null {
+  try {
+    return localStorage.getItem(STORE_KEY_SERVICE);
+  } catch {
+    return null;
+  }
+}
+
 function readStored(): PryvConnection | null {
   try {
     const apiEndpoint = localStorage.getItem(STORE_KEY_API);

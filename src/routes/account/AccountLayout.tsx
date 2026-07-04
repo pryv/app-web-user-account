@@ -58,7 +58,7 @@ export default function AccountLayout() {
         {TABS.map((t) => (
           <NavLink
             key={t.to}
-            to={t.to}
+            to={t.to + search}
             className={({ isActive }) =>
               `-mb-px flex-1 border-b-2 px-3 py-2 text-center text-sm transition-colors sm:flex-none ${
                 isActive

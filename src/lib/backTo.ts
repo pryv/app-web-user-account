@@ -10,29 +10,29 @@
  * *cancel / go-back* affordance and must never be conflated with — or override —
  * the auth-completion redirect or an OAuth2 `redirect_uri`.
  *
- * Security: `backUrl` is attacker-controllable, so it MUST be validated against
- * an allowlist of trusted origins before use, to prevent open-redirects. The
- * allowlist comes from the service's trusted-apps configuration; until that is
- * wired in, only same-origin and explicitly-listed origins are accepted.
+ * Security: `backUrl` is attacker-controllable. It is restricted to
+ * http(s) URLs (no `javascript:`/`data:` schemes), and the rendered link
+ * always displays the target HOST next to the label, so a link to an
+ * unexpected site is visible to the user instead of looking endorsed by
+ * this page. It is a plain navigation the user chooses to click — it never
+ * carries tokens and never overrides the auth-completion redirect.
  */
 
 export interface BackTo {
   url: string | null;
   label: string | null;
+  /** Host of `url`, displayed next to the label (anti-phishing cue). */
+  host: string | null;
 }
 
-// TODO: replace with the trusted-apps origin list fetched from service-info.
-const ALLOWED_ORIGINS: string[] = [
-  typeof window !== "undefined" ? window.location.origin : "",
-];
-
-function isAllowed(rawUrl: string): boolean {
+function parseHttpUrl(rawUrl: string): URL | null {
   try {
-    const parsed = new URL(rawUrl, window.location.origin);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-    return ALLOWED_ORIGINS.includes(parsed.origin);
+    const base = typeof window !== "undefined" ? window.location.origin : undefined;
+    const parsed = new URL(rawUrl, base);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -41,8 +41,10 @@ export function parseBackTo(search: string): BackTo {
   const params = new URLSearchParams(search);
   const rawUrl = params.get("backUrl");
   const label = params.get("backLabel");
+  const parsed = rawUrl ? parseHttpUrl(rawUrl) : null;
   return {
-    url: rawUrl && isAllowed(rawUrl) ? rawUrl : null,
+    url: parsed ? parsed.toString() : null,
     label: label?.trim() || null,
+    host: parsed ? parsed.host : null,
   };
 }
