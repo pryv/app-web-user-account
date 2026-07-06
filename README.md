@@ -68,6 +68,15 @@ Every route accepts these query parameters:
   app's `/auth` if the platform's `access:trustedAuthUrls` allows it) and open
   the `authUrl` the server returns.
 
+**Data export (Art. 15/20):** the Data-rights tab's **Start export** hands off
+to [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp)
+— the subject signs in there and downloads a portable ZIP series. No token is
+passed in the URL (the backup app authenticates the subject itself). The
+hand-off target defaults to
+`https://pryv.github.io/pryv-account-backup-webapp/`; operators hosting their
+own rebranded backup app point at it with the `VITE_BACKUP_WEBAPP_URL`
+build-time env var.
+
 **Sessions:** a successful sign-in is persisted in the browser
 (`localStorage`), so a returning user gets a "Continue as {username}" step
 instead of retyping credentials — with a "Not me — use another account"

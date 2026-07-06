@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Card, Button, Field, Alert } from "../../components/ui";
-import { Trash2 } from "lucide-react";
-import { useSession, signinPath } from "../../lib/session";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Card, Field, Alert } from "../../components/ui";
+import { Trash2, Download } from "lucide-react";
+import { useSession, signinPath, storedServiceInfoUrl } from "../../lib/session";
+import { parseAuthParams } from "../../lib/authParams";
 
 /**
  * Data rights (GDPR / Art.17).
@@ -11,15 +12,22 @@ import { useSession, signinPath } from "../../lib/session";
  * public `auth.delete` route). Requires the subject to re-confirm the
  * destructive action by typing their username.
  *
- * Export: structured stub — the eventual integration is the
- * `@pryv/account-backup` library (browser-isomorphic), but it isn't
- * published on npm yet, so wiring it as a runtime dep would require
- * a git URL operators wouldn't expect on this public app. The button is
- * disabled with a status line until that ships.
+ * Export: hands off to `pryv-account-backup-webapp` (operator-hostable
+ * sample that consumes the browser-isomorphic `@pryv/account-backup`
+ * fetchers and streams ZIPs). We link out rather than embed the library —
+ * `@pryv/account-backup` is git-clone-only, so vendoring it would force
+ * every operator fork to carry an extra repo. No token crosses the URL;
+ * the subject authenticates in the backup app. Operators point at their own
+ * deploy via `VITE_BACKUP_WEBAPP_URL`.
  */
+const BACKUP_WEBAPP_URL =
+  import.meta.env.VITE_BACKUP_WEBAPP_URL ||
+  "https://pryv.github.io/pryv-account-backup-webapp/";
+
 export default function DataRights() {
   const { connection, setConnection } = useSession();
   const navigate = useNavigate();
+  const { search } = useLocation();
   const [username, setUsername] = useState<string | null>(null);
   const [confirm, setConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -31,6 +39,17 @@ export default function DataRights() {
   }, [connection]);
 
   const matched = !!username && confirm === username;
+
+  // Build the backup hand-off URL: pre-fill the platform + offer a back link.
+  // No token — the subject signs in at the backup app.
+  function exportUrl(): string {
+    const svc = parseAuthParams(search).serviceInfoUrl ?? storedServiceInfoUrl();
+    const u = new URL(BACKUP_WEBAPP_URL);
+    if (svc) u.searchParams.set("pryvServiceInfoUrl", svc);
+    u.searchParams.set("backUrl", window.location.href);
+    u.searchParams.set("backLabel", "Account");
+    return u.toString();
+  }
 
   async function deleteAccount() {
     if (!connection || !username) return;
@@ -65,14 +84,19 @@ export default function DataRights() {
           Export your data
         </div>
         <p className="mb-3 text-sm text-muted">
-          Download a copy of all the data in your account.
+          Download a portable copy of all the data in your account, as a series
+          of ZIP files. This opens the account-backup app, where you sign in and
+          run the export.
         </p>
-        <Button type="button" disabled>
+        <a
+          href={exportUrl()}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <Download size={14} aria-hidden />
           Start export
-        </Button>
-        <p className="mt-2 text-xs text-muted">
-          Browser-side export is pending the @pryv/account-backup release.
-        </p>
+        </a>
       </Card>
       <Card>
         <div className="mb-1 text-xs uppercase tracking-wide text-danger">
