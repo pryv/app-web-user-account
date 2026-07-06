@@ -1,0 +1,193 @@
+import { describe, it, expect, vi, afterEach } from "vitest";
+import {
+  parseOAuthState,
+  serviceInfoUrlFromPryvApi,
+  scopeLabel,
+  oauth2Accept,
+  oauth2Refuse,
+  type OAuthFlowError,
+} from "./oauth2Flow";
+
+// Helpers --------------------------------------------------------------
+
+function base64url(s: string): string {
+  return btoa(s).replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function makeSignedState(payload: Record<string, unknown> = {}, sig = "fake-mac"): string {
+  const body = base64url(
+    JSON.stringify({
+      clientId: "myapp",
+      redirectUri: "https://app.example/cb",
+      state: "csrf-1",
+      codeChallenge: "cc",
+      codeChallengeMethod: "S256",
+      scope: ["pryv:read", "pryv:write"],
+      iat: 1700000000,
+      exp: 1700000300,
+      ...payload,
+    }),
+  );
+  return body + "." + sig;
+}
+
+function mockFetchOnce(status: number, body: unknown) {
+  const fn = vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  });
+  vi.stubGlobal("fetch", fn);
+  return fn;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+// ----------------------------------------------------------------------
+
+describe("parseOAuthState", () => {
+  it("decodes the payload into display fields", () => {
+    const s = parseOAuthState(makeSignedState());
+    expect(s.clientId).toBe("myapp");
+    expect(s.redirectUri).toBe("https://app.example/cb");
+    expect(s.scope).toEqual(["pryv:read", "pryv:write"]);
+    expect(s.userIdHint).toBeNull();
+    expect(s.iat).toBe(1700000000);
+    expect(s.exp).toBe(1700000300);
+  });
+
+  it("exposes userIdHint when present", () => {
+    const s = parseOAuthState(makeSignedState({ userIdHint: "alice" }));
+    expect(s.userIdHint).toBe("alice");
+  });
+
+  it("filters non-string entries out of scope and defaults missing fields", () => {
+    const s = parseOAuthState(makeSignedState({ scope: ["pryv:read", 42, null], clientId: 7 }));
+    expect(s.scope).toEqual(["pryv:read"]);
+    expect(s.clientId).toBe("");
+  });
+
+  it("throws on empty state", () => {
+    expect(() => parseOAuthState("")).toThrow(/required/);
+  });
+
+  it("throws on missing signature separator", () => {
+    expect(() => parseOAuthState("no-dot-here")).toThrow(/malformed|separator/);
+    expect(() => parseOAuthState(".starts-with-dot")).toThrow(/malformed|separator/);
+    expect(() => parseOAuthState("ends-with-dot.")).toThrow(/malformed|separator/);
+  });
+
+  it("throws on invalid base64 payload", () => {
+    expect(() => parseOAuthState("!!!not-base64!!!.sig")).toThrow(/base64/);
+  });
+
+  it("throws on non-JSON payload", () => {
+    expect(() => parseOAuthState(base64url("not json") + ".sig")).toThrow(/JSON/);
+  });
+
+  it("throws when the payload is not an object", () => {
+    expect(() => parseOAuthState(base64url('"a string"') + ".sig")).toThrow(/object/);
+    expect(() => parseOAuthState(base64url("[1,2]") + ".sig")).toThrow(/object/);
+  });
+});
+
+describe("serviceInfoUrlFromPryvApi", () => {
+  it("appends /reg/service/info, stripping a trailing slash", () => {
+    expect(serviceInfoUrlFromPryvApi("https://demo.backloop.dev:2443")).toBe(
+      "https://demo.backloop.dev:2443/reg/service/info",
+    );
+    expect(serviceInfoUrlFromPryvApi("https://demo.backloop.dev:2443/")).toBe(
+      "https://demo.backloop.dev:2443/reg/service/info",
+    );
+  });
+});
+
+describe("scopeLabel", () => {
+  it("labels the three well-known scopes and passes others through", () => {
+    expect(scopeLabel("pryv:read")).toBe("Read your data");
+    expect(scopeLabel("pryv:write")).toBe("Create and modify data on your behalf");
+    expect(scopeLabel("pryv:manage")).toBe("Manage access tokens and account settings");
+    expect(scopeLabel("custom:thing")).toBe("custom:thing");
+  });
+});
+
+describe("oauth2Accept", () => {
+  const opts = {
+    pryvApi: "https://reg.test/",
+    signedState: makeSignedState(),
+    username: "alice",
+    personalToken: "tok-1",
+    grantedScope: ["pryv:read"],
+  };
+
+  it("POSTs state + session + grantedScope and returns redirectTo", async () => {
+    const fetchMock = mockFetchOnce(200, { redirectTo: "https://app.example/cb?code=c1" });
+    const redirectTo = await oauth2Accept(opts);
+    expect(redirectTo).toBe("https://app.example/cb?code=c1");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://reg.test/oauth2/authorize/accept");
+    const body = JSON.parse(init.body);
+    expect(body).toEqual({
+      state: opts.signedState,
+      username: "alice",
+      userToken: "tok-1",
+      grantedScope: ["pryv:read"],
+    });
+  });
+
+  it("propagates RFC-shaped errors with oauthError + status", async () => {
+    mockFetchOnce(400, { error: "invalid_request", error_description: "bad_signature" });
+    const err = (await oauth2Accept(opts).catch((e) => e)) as OAuthFlowError;
+    expect(err.message).toBe("bad_signature");
+    expect(err.oauthError).toBe("invalid_request");
+    expect(err.status).toBe(400);
+  });
+
+  it("falls back to a generic message on a non-JSON error body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 502, json: () => Promise.reject(new Error("x")) }),
+    );
+    const err = (await oauth2Accept(opts).catch((e) => e)) as OAuthFlowError;
+    expect(err.message).toMatch(/HTTP 502/);
+    expect(err.status).toBe(502);
+  });
+
+  it("throws when the server response misses redirectTo", async () => {
+    mockFetchOnce(200, {});
+    await expect(oauth2Accept(opts)).rejects.toThrow(/redirectTo/);
+  });
+});
+
+describe("oauth2Refuse", () => {
+  it("POSTs the state only and returns redirectTo", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      redirectTo: "https://app.example/cb?error=access_denied",
+    });
+    const signedState = makeSignedState();
+    const redirectTo = await oauth2Refuse({ pryvApi: "https://reg.test", signedState });
+    expect(redirectTo).toBe("https://app.example/cb?error=access_denied");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://reg.test/oauth2/authorize/refuse");
+    expect(JSON.parse(init.body)).toEqual({ state: signedState });
+  });
+
+  it("propagates RFC-shaped errors", async () => {
+    mockFetchOnce(400, { error: "invalid_request" });
+    const err = (await oauth2Refuse({ pryvApi: "https://reg.test", signedState: makeSignedState() }).catch(
+      (e) => e,
+    )) as OAuthFlowError;
+    expect(err.message).toBe("invalid_request");
+    expect(err.oauthError).toBe("invalid_request");
+  });
+
+  it("rejects a missing signedState before any network call", async () => {
+    const fetchMock = mockFetchOnce(200, {});
+    await expect(oauth2Refuse({ pryvApi: "https://reg.test", signedState: "" })).rejects.toThrow(
+      /signedState/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

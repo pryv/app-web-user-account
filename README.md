@@ -67,6 +67,17 @@ Every route accepts these query parameters:
   `POST {register}/access`, optionally passing `authUrl` pointing at this
   app's `/auth` if the platform's `access:trustedAuthUrls` allows it) and open
   the `authUrl` the server returns.
+- `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
+  directly either: your app starts at the core's `GET /oauth2/authorize`
+  (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and
+  the core 302-redirects the browser here with `state` (an HMAC-signed
+  payload the page decodes for display only — the server re-verifies it on
+  accept/refuse) and `pryvApi` (the API endpoint the page calls back). The
+  user signs in (username or email, MFA-aware), reviews the requested scopes
+  (unticking a scope grants only the remaining subset), and Accept/Reject
+  sends the browser to your `redirect_uri` with the authorization code or
+  `error=access_denied`. The core must be configured with `oauth:consentUrl`
+  pointing at this route (e.g. `https://<your-deploy>/oauth2-authorize`).
 
 **Data export (Art. 15/20):** the Data-rights tab's **Start export** hands off
 to [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp)
@@ -103,8 +114,8 @@ like, configure your platform to point there.
 | Password reset (request + token modes) | `/access/reset-password.html`, `/access/reset` | `/reset-password` (request) and `/reset-password?resetToken=…` (set new) |
 | Change password (signed-in) | `/access/change-password.html`, `/access/change-password` | `/change-password` |
 | MFA challenge | (handled inline; CLI flow is new) | `/mfa-challenge` |
-| Access-request authorization | `/access/access.html`, `/access/auth` | `/auth` — **route stub today**, real component lands with the OAuth2 consent UI work; until then operators that need this flow keep `app-web-auth3` deployed alongside |
-| OAuth2 authorize | `/access/oauth2-authorize.html`, `/access/oauth2-authorize` | `/oauth2-authorize` — **same stub** as `/auth` above |
+| Access-request authorization | `/access/access.html`, `/access/auth` | `/auth` |
+| OAuth2 authorize | `/access/oauth2-authorize.html`, `/access/oauth2-authorize` | `/oauth2-authorize` — set the core's `oauth:consentUrl` to this URL |
 | CMC accept hand-off | `/access/cmc-accept` | `/cmc-accept` (and `/cmc/approve` alias) |
 | CMC scope-update hand-off | `/access/cmc-scope-update` | `/cmc-scope-update` |
 | Self-service account management | (not in app-web-auth3) | `/account/{profile,security,apps,data}` |
@@ -114,8 +125,9 @@ like, configure your platform to point there.
 1. **Deploy `app-web-user-account`** at a URL of your choice (Vite produces a
    static bundle; serve any way you like — gh-pages, S3+CloudFront, nginx).
 2. **Point your platform config** at the new paths:
-   - `auth.authUrl` → `<your-deploy>/auth` (note: see "What still needs the
-     legacy app" below)
+   - `auth.authUrl` → `<your-deploy>/auth`
+   - `oauth.consentUrl` → `<your-deploy>/oauth2-authorize` (if OAuth2 is
+     enabled on your platform)
    - `service.access.url` / equivalent → `<your-deploy>/signin`
    - any custom email templates that link into the legacy `.html` paths →
      update the links to the new canonical paths
@@ -128,13 +140,10 @@ like, configure your platform to point there.
 
 ### What still needs the legacy `app-web-auth3`
 
-The **access-request authorization flow** (`/auth`) and the **OAuth2 authorize
-endpoint** (`/oauth2-authorize`) are not yet implemented in React in this app —
-the routes exist and render a placeholder so callers see an explanation, not a
-404. Until the consent UI port lands, operators who need these flows keep
-`app-web-auth3` deployed alongside `app-web-user-account` and point their
-`auth.authUrl` at the legacy host for those two URLs only. All other flows can
-move to this app today.
+Nothing — every flow `app-web-auth3` served has a counterpart here, including
+the access-request authorization flow (`/auth`) and the OAuth2 consent page
+(`/oauth2-authorize`). Operators can retire their `app-web-auth3` deployment
+once their platform configuration points at this app.
 
 ## License
 
