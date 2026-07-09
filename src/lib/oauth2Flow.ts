@@ -20,11 +20,39 @@
  * component) — the service-info URL is derived from `pryvApi` below.
  */
 
+/** Localized text map: language code → string (e.g. `{ en: "…" }`). */
+export type LocalizableText = Record<string, string>;
+
+/**
+ * One entry of the granular permission set — the full Pryv
+ * `accesses.create` lexicon: a stream permission (`streamId` + `level`,
+ * optional display names) or a feature permission (e.g.
+ * `{ feature: "selfRevoke", setting: "forbidden" }`).
+ */
+export type OfferPermission =
+  | { streamId: string; level: string; defaultName?: string; name?: string }
+  | { feature: string; setting: string };
+
+/**
+ * The consent offer resolved server-side at authorize time and carried
+ * in the signed state: the granular permissions the app asks for plus
+ * the consent texts to display. Display-only here — the server
+ * re-validates the granted subset against its signed copy.
+ */
+export interface OAuthOffer {
+  offerName: string;
+  permissions: OfferPermission[];
+  title: LocalizableText | null;
+  description: LocalizableText | null;
+  consent: LocalizableText | null;
+}
+
 /** Display fields decoded from the signed state payload. */
 export interface OAuthState {
   clientId: string;
   redirectUri: string;
   scope: string[];
+  offer: OAuthOffer | null;
   userIdHint: string | null;
   iat: number | null;
   exp: number | null;
@@ -79,10 +107,49 @@ export function parseOAuthState(signedState: string): OAuthState {
     clientId: typeof p.clientId === "string" ? p.clientId : "",
     redirectUri: typeof p.redirectUri === "string" ? p.redirectUri : "",
     scope: Array.isArray(p.scope) ? p.scope.filter((s): s is string => typeof s === "string") : [],
+    offer: parseOffer(p.offer),
     userIdHint: typeof p.userIdHint === "string" ? p.userIdHint : null,
     iat: typeof p.iat === "number" ? p.iat : null,
     exp: typeof p.exp === "number" ? p.exp : null,
   };
+}
+
+function parseOffer(v: unknown): OAuthOffer | null {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (!Array.isArray(o.permissions)) return null;
+  const permissions = o.permissions.filter(
+    (p): p is OfferPermission =>
+      typeof p === "object" &&
+      p != null &&
+      (typeof (p as Record<string, unknown>).streamId === "string" ||
+        typeof (p as Record<string, unknown>).feature === "string"),
+  );
+  if (permissions.length === 0) return null;
+  return {
+    offerName: typeof o.offerName === "string" ? o.offerName : "",
+    permissions,
+    title: asTextMap(o.title),
+    description: asTextMap(o.description),
+    consent: asTextMap(o.consent),
+  };
+}
+
+function asTextMap(v: unknown): LocalizableText | null {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>).filter(
+    ([, s]) => typeof s === "string",
+  ) as [string, string][];
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
+/** Pick the best language variant from a localized text map. */
+export function pickText(t: LocalizableText | null, lang = "en"): string {
+  if (t == null) return "";
+  if (typeof t[lang] === "string") return t[lang];
+  if (typeof t.en === "string") return t.en;
+  const first = Object.values(t)[0];
+  return typeof first === "string" ? first : "";
 }
 
 /**
@@ -171,32 +238,51 @@ function registrableDomain(host: string): string {
   return labels.slice(-2).join(".");
 }
 
-/** Human label for the well-known scopes; anything else passes through raw. */
-export function scopeLabel(scope: string): string {
-  if (scope === "pryv:read") return "Read your data";
-  if (scope === "pryv:write") return "Create and modify data on your behalf";
-  if (scope === "pryv:manage") return "Manage access tokens and account settings";
-  return scope;
+const LEVEL_LABELS: Record<string, string> = {
+  read: "Read",
+  contribute: "Add and modify",
+  manage: "Fully manage",
+  "create-only": "Add (write-only)",
+  none: "No access to",
+};
+
+/**
+ * Human label for one granular permission entry. Stream permissions
+ * render as "<level verb> “<stream name>”"; known feature permissions
+ * get a dedicated wording, unknown ones fall back to `feature: setting`.
+ */
+export function permissionLabel(p: OfferPermission): string {
+  if ("streamId" in p && typeof p.streamId === "string") {
+    const target =
+      p.streamId === "*" ? "all your data" : `“${p.name ?? p.defaultName ?? p.streamId}”`;
+    return `${LEVEL_LABELS[p.level] ?? p.level} ${target}`;
+  }
+  const f = p as { feature: string; setting: string };
+  if (f.feature === "selfRevoke" && f.setting === "forbidden") {
+    return "The app cannot revoke its own access (only you can)";
+  }
+  return `${f.feature}: ${f.setting}`;
 }
 
 /**
  * POST `{pryvApi}/oauth2/authorize/accept` with the signed state, the user's
- * authenticated session, and the granted-scope subset. The server mints the
- * access (full accesses.create chain) and returns the redirect URL the
- * browser should navigate to.
+ * authenticated session, and the granted permission subset (the entries the
+ * user kept ticked — validated ⊆ the signed offer by the server). The server
+ * establishes the durable consent (data-grant) and mints the session access,
+ * then returns the redirect URL the browser should navigate to.
  */
 export async function oauth2Accept(opts: {
   pryvApi: string;
   signedState: string;
   username: string;
   personalToken: string;
-  grantedScope: string[];
+  grantedPermissions: OfferPermission[];
 }): Promise<string> {
   return postOAuth(opts.pryvApi, "/oauth2/authorize/accept", {
     state: opts.signedState,
     username: opts.username,
     userToken: opts.personalToken,
-    grantedScope: opts.grantedScope,
+    grantedPermissions: opts.grantedPermissions,
   });
 }
 

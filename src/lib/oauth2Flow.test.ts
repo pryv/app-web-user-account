@@ -3,11 +3,28 @@ import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
-  scopeLabel,
+  permissionLabel,
+  pickText,
   oauth2Accept,
   oauth2Refuse,
   type OAuthFlowError,
 } from "./oauth2Flow";
+
+// Full-lexicon offer as the server embeds it in the signed state.
+const SAMPLE_OFFER = {
+  offerName: "study-A",
+  capabilityUrl: "https://CapTok@myapp.example.com/",
+  capabilityId: "cap-42",
+  offerEventId: "ev-offer-1",
+  permissions: [
+    { streamId: "health", level: "read", defaultName: "Health" },
+    { streamId: "diary", level: "contribute" },
+    { feature: "selfRevoke", setting: "forbidden" },
+  ],
+  title: { en: "Example study" },
+  description: { en: "Share health data." },
+  consent: { en: "I agree to share with the study." },
+};
 
 // Helpers --------------------------------------------------------------
 
@@ -23,7 +40,8 @@ function makeSignedState(payload: Record<string, unknown> = {}, sig = "fake-mac"
       state: "csrf-1",
       codeChallenge: "cc",
       codeChallengeMethod: "S256",
-      scope: ["pryv:read", "pryv:write"],
+      scope: ["cmc:study-A"],
+      offer: SAMPLE_OFFER,
       iat: 1700000000,
       exp: 1700000300,
       ...payload,
@@ -49,11 +67,15 @@ afterEach(() => {
 // ----------------------------------------------------------------------
 
 describe("parseOAuthState", () => {
-  it("decodes the payload into display fields", () => {
+  it("decodes the payload into display fields, including the granular offer", () => {
     const s = parseOAuthState(makeSignedState());
     expect(s.clientId).toBe("myapp");
     expect(s.redirectUri).toBe("https://app.example/cb");
-    expect(s.scope).toEqual(["pryv:read", "pryv:write"]);
+    expect(s.scope).toEqual(["cmc:study-A"]);
+    expect(s.offer?.offerName).toBe("study-A");
+    expect(s.offer?.permissions).toEqual(SAMPLE_OFFER.permissions);
+    expect(s.offer?.title).toEqual({ en: "Example study" });
+    expect(s.offer?.consent).toEqual({ en: "I agree to share with the study." });
     expect(s.userIdHint).toBeNull();
     expect(s.iat).toBe(1700000000);
     expect(s.exp).toBe(1700000300);
@@ -65,9 +87,15 @@ describe("parseOAuthState", () => {
   });
 
   it("filters non-string entries out of scope and defaults missing fields", () => {
-    const s = parseOAuthState(makeSignedState({ scope: ["pryv:read", 42, null], clientId: 7 }));
-    expect(s.scope).toEqual(["pryv:read"]);
+    const s = parseOAuthState(makeSignedState({ scope: ["cmc:study-A", 42, null], clientId: 7 }));
+    expect(s.scope).toEqual(["cmc:study-A"]);
     expect(s.clientId).toBe("");
+  });
+
+  it("yields offer=null when the state carries none or it is malformed", () => {
+    expect(parseOAuthState(makeSignedState({ offer: undefined })).offer).toBeNull();
+    expect(parseOAuthState(makeSignedState({ offer: { permissions: [] } })).offer).toBeNull();
+    expect(parseOAuthState(makeSignedState({ offer: "junk" })).offer).toBeNull();
   });
 
   it("throws on empty state", () => {
@@ -158,25 +186,46 @@ describe("assertTrustedPryvApi", () => {
   });
 });
 
-describe("scopeLabel", () => {
-  it("labels the three well-known scopes and passes others through", () => {
-    expect(scopeLabel("pryv:read")).toBe("Read your data");
-    expect(scopeLabel("pryv:write")).toBe("Create and modify data on your behalf");
-    expect(scopeLabel("pryv:manage")).toBe("Manage access tokens and account settings");
-    expect(scopeLabel("custom:thing")).toBe("custom:thing");
+describe("permissionLabel + pickText", () => {
+  it("labels stream permissions with level verb + display name", () => {
+    expect(permissionLabel({ streamId: "health", level: "read", defaultName: "Health" })).toBe(
+      "Read “Health”",
+    );
+    expect(permissionLabel({ streamId: "diary", level: "contribute" })).toBe(
+      "Add and modify “diary”",
+    );
+    expect(permissionLabel({ streamId: "*", level: "manage" })).toBe("Fully manage all your data");
+  });
+
+  it("labels known feature permissions and falls back for unknown ones", () => {
+    expect(permissionLabel({ feature: "selfRevoke", setting: "forbidden" })).toMatch(
+      /cannot revoke its own access/,
+    );
+    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
+  });
+
+  it("pickText prefers the requested language, then en, then first", () => {
+    expect(pickText({ en: "Hello", fr: "Bonjour" }, "fr")).toBe("Bonjour");
+    expect(pickText({ en: "Hello", fr: "Bonjour" })).toBe("Hello");
+    expect(pickText({ de: "Hallo" })).toBe("Hallo");
+    expect(pickText(null)).toBe("");
   });
 });
 
 describe("oauth2Accept", () => {
+  const granted = [
+    { streamId: "health", level: "read" },
+    { feature: "selfRevoke", setting: "forbidden" },
+  ];
   const opts = {
     pryvApi: "https://reg.test/",
     signedState: makeSignedState(),
     username: "alice",
     personalToken: "tok-1",
-    grantedScope: ["pryv:read"],
+    grantedPermissions: granted,
   };
 
-  it("POSTs state + session + grantedScope and returns redirectTo", async () => {
+  it("POSTs state + session + grantedPermissions (full lexicon) and returns redirectTo", async () => {
     const fetchMock = mockFetchOnce(200, { redirectTo: "https://app.example/cb?code=c1" });
     const redirectTo = await oauth2Accept(opts);
     expect(redirectTo).toBe("https://app.example/cb?code=c1");
@@ -187,7 +236,7 @@ describe("oauth2Accept", () => {
       state: opts.signedState,
       username: "alice",
       userToken: "tok-1",
-      grantedScope: ["pryv:read"],
+      grantedPermissions: granted,
     });
   });
 

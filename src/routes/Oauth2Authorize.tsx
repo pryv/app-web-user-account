@@ -7,7 +7,8 @@ import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
-  scopeLabel,
+  permissionLabel,
+  pickText,
   oauth2Accept,
   oauth2Refuse,
   type OAuthState,
@@ -52,7 +53,17 @@ function initFromQuery(search: string): InitResult {
       trustedOrigins: TRUSTED_API_ORIGINS,
       selfOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
     });
-    return { oauthState: parseOAuthState(signedState), signedState, pryvApi, initError: null };
+    const oauthState = parseOAuthState(signedState);
+    if (oauthState.offer == null) {
+      return {
+        oauthState: null,
+        signedState,
+        pryvApi,
+        initError:
+          "This authorization request carries no consent offer — restart the flow from the app.",
+      };
+    }
+    return { oauthState, signedState, pryvApi, initError: null };
   } catch (err: unknown) {
     return {
       oauthState: null,
@@ -94,7 +105,7 @@ export default function Oauth2Authorize() {
   const [personalToken, setPersonalToken] = useState<string | null>(null);
 
   const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() =>
-    (oauthState?.scope ?? []).map(() => true),
+    (oauthState?.offer?.permissions ?? []).map(() => true),
   );
 
   function makeService() {
@@ -159,17 +170,22 @@ export default function Oauth2Authorize() {
   }
 
   async function accept() {
-    if (!oauthState || !personalToken) return;
+    if (!oauthState?.offer || !personalToken) return;
     setBusy(true);
     setError(null);
     try {
-      const grantedScope = oauthState.scope.filter((_s, i) => grantedFlags[i]);
+      const grantedPermissions = oauthState.offer.permissions.filter((_p, i) => grantedFlags[i]);
+      if (grantedPermissions.length === 0) {
+        setError("Keep at least one permission ticked, or use Reject.");
+        setBusy(false);
+        return;
+      }
       const redirectTo = await oauth2Accept({
         pryvApi,
         signedState,
         username,
         personalToken,
-        grantedScope,
+        grantedPermissions,
       });
       window.location.assign(redirectTo);
     } catch (err: unknown) {
@@ -240,35 +256,43 @@ export default function Oauth2Authorize() {
     );
   }
 
-  // Consent panel — visible once signed in (+ MFA). Unticking a scope
-  // downgrades: the app receives only the ticked subset.
-  if (personalToken) {
+  // Consent panel — visible once signed in (+ MFA). Renders the offer's
+  // granular permission set (full lexicon, incl. feature permissions);
+  // unticking downgrades: the app receives only the ticked subset.
+  if (personalToken && oauthState.offer) {
+    const offer = oauthState.offer;
+    const title = pickText(offer.title);
+    const description = pickText(offer.description);
+    const consentText = pickText(offer.consent);
     return (
       <Card>
         <h1 id="oauthClientIdText" className="mb-2 text-2xl">
           <strong>{oauthState.clientId}</strong>
         </h1>
+        {title && <p className="mb-1 text-lg font-medium">{title}</p>}
+        {description && <p className="mb-2 text-sm text-muted">{description}</p>}
         <p className="mb-2 text-sm">is requesting permission:</p>
-        {oauthState.scope.length > 0 ? (
-          <ul className="mb-2 space-y-1 text-sm">
-            {oauthState.scope.map((s, i) => (
-              <li key={s} className="rounded bg-body px-3 py-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    id={"oauthScope-" + i}
-                    type="checkbox"
-                    checked={grantedFlags[i]}
-                    onChange={(e) =>
-                      setGrantedFlags(grantedFlags.map((f, j) => (j === i ? e.target.checked : f)))
-                    }
-                  />
-                  <span>{scopeLabel(s)}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mb-2 text-sm italic text-muted">No scopes requested.</p>
+        <ul className="mb-2 space-y-1 text-sm">
+          {offer.permissions.map((p, i) => (
+            <li key={i} className="rounded bg-body px-3 py-2">
+              <label className="flex items-center gap-2">
+                <input
+                  id={"oauthScope-" + i}
+                  type="checkbox"
+                  checked={grantedFlags[i]}
+                  onChange={(e) =>
+                    setGrantedFlags(grantedFlags.map((f, j) => (j === i ? e.target.checked : f)))
+                  }
+                />
+                <span>{permissionLabel(p)}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+        {consentText && (
+          <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
+            {consentText}
+          </p>
         )}
         <p className="mb-4 text-sm text-muted">
           Untick to deny specific permissions; the app will receive only the permissions you keep
