@@ -6,11 +6,18 @@ import { isMfaRequired, resolveUserId } from "../lib/service";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
+  assertTrustedPryvApi,
   scopeLabel,
   oauth2Accept,
   oauth2Refuse,
   type OAuthState,
 } from "../lib/oauth2Flow";
+
+/** Operator allowlist of trusted core origins for `pryvApi` (build-time env). */
+const TRUSTED_API_ORIGINS = (import.meta.env.VITE_OAUTH_TRUSTED_API_ORIGINS ?? "")
+  .split(",")
+  .map((s: string) => s.trim())
+  .filter(Boolean);
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -40,6 +47,11 @@ function initFromQuery(search: string): InitResult {
     };
   }
   try {
+    // Reject an untrusted `pryvApi` BEFORE anything sends credentials to it.
+    assertTrustedPryvApi(pryvApi, {
+      trustedOrigins: TRUSTED_API_ORIGINS,
+      selfOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
     return { oauthState: parseOAuthState(signedState), signedState, pryvApi, initError: null };
   } catch (err: unknown) {
     return {

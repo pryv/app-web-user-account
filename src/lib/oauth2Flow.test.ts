@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
+  assertTrustedPryvApi,
   scopeLabel,
   oauth2Accept,
   oauth2Refuse,
@@ -101,6 +102,59 @@ describe("serviceInfoUrlFromPryvApi", () => {
     expect(serviceInfoUrlFromPryvApi("https://demo.backloop.dev:2443/")).toBe(
       "https://demo.backloop.dev:2443/reg/service/info",
     );
+  });
+});
+
+describe("assertTrustedPryvApi", () => {
+  const self = "https://app.example.com";
+
+  it("accepts an allowlisted origin regardless of the self-domain", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://core.other-tld.net/", {
+        trustedOrigins: ["https://core.other-tld.net"],
+        selfOrigin: self,
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects an origin that is not in a configured allowlist", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://attacker.com/", {
+        trustedOrigins: ["https://core.example.com"],
+        selfOrigin: self,
+      }),
+    ).toThrow(/allowlist/);
+  });
+
+  it("falls back to same registrable-domain when no allowlist is set", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://core.example.com/", { selfOrigin: self }),
+    ).not.toThrow();
+  });
+
+  it("rejects a cross-domain pryvApi with no allowlist (phishing vector)", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://attacker.com/", { selfOrigin: self }),
+    ).toThrow(/cross-domain/);
+  });
+
+  it("refuses a non-https pryvApi (except loopback)", () => {
+    expect(() => assertTrustedPryvApi("http://core.example.com/", { selfOrigin: self })).toThrow(
+      /https/,
+    );
+    expect(() => assertTrustedPryvApi("http://127.0.0.1:3000/", { selfOrigin: self })).not.toThrow();
+  });
+
+  it("throws on a malformed pryvApi", () => {
+    expect(() => assertTrustedPryvApi("not a url", { selfOrigin: self })).toThrow(/valid URL/);
+  });
+
+  it("fails closed when neither an allowlist nor a self-origin is provided", () => {
+    expect(() => assertTrustedPryvApi("https://attacker.com/")).toThrow(/no trusted origin/);
+  });
+
+  it("still allows a loopback pryvApi with no trust anchor (local dev)", () => {
+    expect(() => assertTrustedPryvApi("http://127.0.0.1:3000/")).not.toThrow();
   });
 });
 

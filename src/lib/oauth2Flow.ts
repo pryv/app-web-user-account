@@ -94,6 +94,83 @@ export function serviceInfoUrlFromPryvApi(pryvApi: string): string {
   return pryvApi.replace(/\/$/, "") + "/reg/service/info";
 }
 
+/**
+ * Guard against consent phishing. `pryvApi` is a query parameter that decides
+ * where this page sends the user's password (on sign-in) and personal token
+ * (on Accept). An attacker who lures a victim to this trusted consent origin
+ * with `?pryvApi=https://attacker` would harvest both — so `pryvApi` must be
+ * constrained to a trusted core before we ever call login/accept.
+ *
+ * Two layers, most-specific first:
+ *   1. If the operator configured an allowlist (`trustedOrigins`, from the
+ *      `VITE_OAUTH_TRUSTED_API_ORIGINS` build-time env), require an exact
+ *      origin match — this is the authoritative, recommended control.
+ *   2. Otherwise fall back to requiring `pryvApi` to share the consent UI's own
+ *      registrable domain (`selfOrigin`): operators deploy the core and this
+ *      app under one parent domain (e.g. `core.example.com` + `app.example.com`),
+ *      so an off-platform `attacker.com` is rejected without any config.
+ *
+ * Always requires https (http only for loopback, for local development).
+ * Throws on any violation — the caller renders it as an init error.
+ */
+export function assertTrustedPryvApi(
+  pryvApi: string,
+  opts: { trustedOrigins?: string[]; selfOrigin?: string } = {},
+): void {
+  let url: URL;
+  try {
+    url = new URL(pryvApi);
+  } catch {
+    throw new Error("oauth2: `pryvApi` is not a valid URL.");
+  }
+  const host = url.hostname;
+  const isLoopback =
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback)) {
+    throw new Error("oauth2: refusing insecure `pryvApi` — https is required.");
+  }
+
+  const allow = (opts.trustedOrigins ?? []).map((o) => o.trim()).filter(Boolean);
+  if (allow.length > 0) {
+    if (!allow.includes(url.origin)) {
+      throw new Error("oauth2: `pryvApi` origin is not in the trusted allowlist.");
+    }
+    return;
+  }
+
+  // No explicit allowlist: a loopback core is local development — allow it.
+  if (isLoopback) return;
+
+  // Fail closed: with no allowlist AND no self-origin to compare against, there
+  // is no trust anchor, so refuse rather than accept an arbitrary host.
+  if (!opts.selfOrigin) {
+    throw new Error("oauth2: no trusted origin configured for `pryvApi`.");
+  }
+  let self: URL;
+  try {
+    self = new URL(opts.selfOrigin);
+  } catch {
+    throw new Error("oauth2: cannot determine a trusted origin for `pryvApi`.");
+  }
+  if (registrableDomain(host) !== registrableDomain(self.hostname)) {
+    throw new Error(
+      "oauth2: `pryvApi` is cross-domain and no trusted allowlist is configured.",
+    );
+  }
+}
+
+/**
+ * Best-effort registrable domain (eTLD+1 without a public-suffix list): the
+ * last two dot-separated labels. Sufficient for the same-parent-domain
+ * fallback; operators on multi-label public suffixes (e.g. `*.co.uk`) or
+ * cross-domain deployments should set `VITE_OAUTH_TRUSTED_API_ORIGINS`.
+ */
+function registrableDomain(host: string): string {
+  const labels = host.split(".");
+  if (labels.length <= 2) return host;
+  return labels.slice(-2).join(".");
+}
+
 /** Human label for the well-known scopes; anything else passes through raw. */
 export function scopeLabel(scope: string): string {
   if (scope === "pryv:read") return "Read your data";

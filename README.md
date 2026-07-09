@@ -79,6 +79,16 @@ Every route accepts these query parameters:
   `error=access_denied`. The core must be configured with `oauth:consentUrl`
   pointing at this route (e.g. `https://<your-deploy>/oauth2-authorize`).
 
+  **Security — trusted `pryvApi`:** the page sends the user's password (sign-in)
+  and personal token (Accept) to the `pryvApi` origin, so it must be a core you
+  trust, not an attacker-supplied one. Set `VITE_OAUTH_TRUSTED_API_ORIGINS`
+  (comma-separated origins, e.g. `https://core.example.com`) at build time to an
+  allowlist of your core origin(s); the page rejects any other `pryvApi`. If you
+  don't set it, the page falls back to accepting only a `pryvApi` on the same
+  registrable domain as this deploy (so `https://attacker.com` is refused, but a
+  multi-label public suffix such as `*.co.uk` or a cross-domain core needs the
+  explicit allowlist). Non-https `pryvApi` is always refused (loopback aside).
+
 **Data export (Art. 15/20):** the Data-rights tab's **Start export** hands off
 to [`pryv-account-backup-webapp`](https://github.com/pryv/pryv-account-backup-webapp)
 — the subject signs in there and downloads a portable ZIP series. No token is
