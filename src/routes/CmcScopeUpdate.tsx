@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import * as cmc from "@pryv/cmc";
-import { Card, Button, Alert } from "../components/ui";
+import { Card, Alert } from "../components/ui";
 import { useSession } from "../lib/session";
+import { PermissionList } from "../components/consent/PermissionList";
+import { ConsentActions } from "../components/consent/ConsentActions";
+import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -47,14 +50,65 @@ function deliverResult(
  * set via `proposeScopeUpdate`; the user (provider side) lands here to accept
  * or refuse, then the outcome is delivered back via the same popup-postMessage
  * / redirect-with-cmcScopeUpdateResult contract as the cmc-accept page.
+ *
+ * The scope-request event lives on the user's own account (collector
+ * stream), so the proposed `newPermissions` are read with the session and
+ * rendered with the shared consent kit before the user decides.
  */
 export default function CmcScopeUpdate() {
   const { connection } = useSession();
   const { search } = useLocation();
   const params = parseParams(search);
+  const [proposal, setProposal] = useState<{
+    newPermissions: OfferPermission[];
+    message: string | null;
+  } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
+
+  // Load the scope-request event to show WHAT the collector proposes —
+  // the user should never approve an unseen permission set.
+  useEffect(() => {
+    if (!connection || !params.scopeRequestEventId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [res] = (await connection.api([
+          { method: "events.getOne", params: { id: params.scopeRequestEventId } },
+        ])) as Array<{
+          event?: { content?: { newPermissions?: OfferPermission[]; message?: unknown } };
+          error?: { message: string };
+        }>;
+        if (cancelled) return;
+        if (res?.error) throw new Error(res.error.message);
+        const content = res?.event?.content;
+        if (!content || !Array.isArray(content.newPermissions)) {
+          throw new Error("The scope-update request carries no permission set.");
+        }
+        // `message` may be a plain string or a localized text map.
+        const message =
+          typeof content.message === "string"
+            ? content.message
+            : content.message != null && typeof content.message === "object"
+              ? pickText(content.message as LocalizableText)
+              : "";
+        setProposal({
+          newPermissions: content.newPermissions,
+          message: message || null,
+        });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        setLoadError(
+          err instanceof Error ? err.message : "Could not load the scope-update request.",
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, params.scopeRequestEventId]);
 
   if (!params.scopeRequestEventId) {
     return (
@@ -148,23 +202,29 @@ export default function CmcScopeUpdate() {
       <p className="mb-4 text-sm text-muted">
         The collector is requesting a change to the permissions you previously granted.
       </p>
+      {loadError && <Alert>{loadError}</Alert>}
       {error && <Alert>{error}</Alert>}
+      {proposal && (
+        <>
+          {proposal.message && <p className="mb-4 text-sm text-muted">{proposal.message}</p>}
+          <p className="mb-2 text-sm">Proposed permissions:</p>
+          <PermissionList entries={consentEntries(proposal.newPermissions)} />
+        </>
+      )}
+      {!proposal && !loadError && (
+        <p className="mb-4 text-sm text-muted">Loading the proposed permissions…</p>
+      )}
       <div className="mb-4 rounded bg-body p-3 text-xs break-all text-muted">
         Request id: {params.scopeRequestEventId}
       </div>
-      <div className="flex gap-3">
-        <Button type="button" disabled={working !== null} onClick={accept}>
-          {working === "accept" ? "Approving…" : "Approve"}
-        </Button>
-        <button
-          type="button"
-          disabled={working !== null}
-          onClick={refuse}
-          className="inline-flex w-full items-center justify-center rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-        >
-          {working === "refuse" ? "Declining…" : "Decline"}
-        </button>
-      </div>
+      <ConsentActions
+        busy={working}
+        disabled={!proposal}
+        acceptLabel="Approve"
+        refuseLabel="Decline"
+        onAccept={() => void accept()}
+        onRefuse={() => void refuse()}
+      />
     </Card>
   );
 }

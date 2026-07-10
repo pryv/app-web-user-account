@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import * as cmc from "@pryv/cmc";
-import { Card, Button, Alert } from "../components/ui";
+import { Card, Alert } from "../components/ui";
 import { useSession } from "../lib/session";
-// Shared permission-label vocabulary (full lexicon: stream AND feature
-// permissions) — one render implementation across consent surfaces.
-import { permissionLabel, type OfferPermission } from "../lib/oauth2Flow";
+import { PermissionList } from "../components/consent/PermissionList";
+import { ConsentActions } from "../components/consent/ConsentActions";
+import { consentEntries, type OfferPermission } from "../lib/consent";
 
 interface OfferView {
   requester: { username: string | null; host: string; displayName?: string };
@@ -59,6 +59,13 @@ function deliverResult(
  * Cross-account approval. Reads the capability offer, lets the subject Approve
  * or Decline, and reports the outcome back via the @pryv/cmc hand-off contract
  * (popup postMessage / redirect with `?cmcAcceptResult=<json>`).
+ *
+ * Permission render + Approve/Decline come from the shared consent kit.
+ * The `@pryv/cmc` accept contract is all-or-nothing (no granted subset on
+ * the accept trigger), so every entry renders locked. Unlike the OAuth
+ * consent (always fresh sign-in), this surface reuses the persisted account
+ * session — the capability hand-off already binds the request to a specific
+ * subject, and the in-app approval UX relies on the session.
  */
 export default function CmcApprove() {
   const { connection } = useSession();
@@ -200,28 +207,17 @@ export default function CmcApprove() {
           {offer.consent && Object.values(offer.consent)[0] && (
             <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
           )}
-          <ul className="mb-4 space-y-1 text-sm">
-            {offer.requestedPermissions.map((p, i) => (
-              <li key={i} className="rounded bg-body px-3 py-2 break-all">
-                {permissionLabel(p)}
-              </li>
-            ))}
-          </ul>
+          <PermissionList entries={consentEntries(offer.requestedPermissions)} />
         </>
       )}
-      <div className="flex gap-3">
-        <Button type="button" disabled={!offer || working !== null} onClick={approve}>
-          {working === "accept" ? "Approving…" : "Approve"}
-        </Button>
-        <button
-          type="button"
-          disabled={!offer || working !== null}
-          onClick={decline}
-          className="inline-flex w-full items-center justify-center rounded border border-divider px-4 py-2 text-sm hover:bg-body disabled:opacity-50"
-        >
-          {working === "refuse" ? "Declining…" : "Decline"}
-        </button>
-      </div>
+      <ConsentActions
+        busy={working}
+        disabled={!offer}
+        acceptLabel="Approve"
+        refuseLabel="Decline"
+        onAccept={() => void approve()}
+        onRefuse={() => void decline()}
+      />
     </Card>
   );
 }

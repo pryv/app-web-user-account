@@ -1,8 +1,11 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Pryv from "pryv";
-import { Card, Button, Field, Alert } from "../components/ui";
-import { isMfaRequired, resolveUserId } from "../lib/service";
+import { Card, Button, Alert } from "../components/ui";
+import { ConsentSignIn } from "../components/consent/ConsentSignIn";
+import { PermissionList } from "../components/consent/PermissionList";
+import { ConsentActions } from "../components/consent/ConsentActions";
+import { consentEntries, type OfferPermission } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, type PryvConnection } from "../lib/session";
 import {
   loadAccessState,
@@ -51,6 +54,12 @@ function parseAuthQuery(search: string): AuthQuery {
  * to `pollUrl`; finally we either close the popup or redirect to
  * `returnURL` with the legacy `prYv*` params the lib-js consumer reads.
  *
+ * Sign-in, permission render and Accept/Reject come from the shared
+ * consent kit (`components/consent/`); this container keeps only the
+ * legacy wire protocol (poll state, check-app, access creation). The
+ * legacy access-request grammar has no `mandatory`/`allowUserChoice`
+ * annotations — the permission list renders all-or-nothing.
+ *
  * Mirrors app-web-auth3's `Authorization.vue` + `bits/Permissions.vue` +
  * `ops/{login,check_access,accept_access,refuse_access,close_or_redirect,
  * mfa_verify}` — same wire shape, same outcomes.
@@ -65,19 +74,15 @@ export default function Auth() {
   const [initError, setInitError] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const [mfaToken, setMfaToken] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
 
   // Personal-token + apiEndpoint captured after successful login (+ MFA).
   const [personalToken, setPersonalToken] = useState<string | null>(null);
   const [apiEndpoint, setApiEndpoint] = useState<string | null>(null);
 
   const [check, setCheck] = useState<AppCheck | null>(null);
-  const [finishing, setFinishing] = useState(false);
+  const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
@@ -178,78 +183,9 @@ export default function Auth() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function submitLogin(e: FormEvent) {
-    e.preventDefault();
-    if (!serviceInfo) return;
-    setBusy(true);
-    setError(null);
-    try {
-      // Build a Service from the serviceInfo we already have (so we don't re-fetch).
-      const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
-      const service = svcInfoUrl ? new Pryv.Service(svcInfoUrl) : new Pryv.Service("");
-      // Emails resolve to the username first; the resolved id feeds login,
-      // the MFA steps and the api-endpoint template below.
-      const userId = await resolveUserId(service, username);
-      setUsername(userId);
-      // Service.login signature: (username, password, appId).
-      let connection;
-      try {
-        connection = (await service.login(userId, password, APP_ID)) as unknown as {
-          token: string;
-          endpoint: string;
-          apiEndpoint: string;
-        };
-      } catch (err) {
-        if (isMfaRequired(err)) {
-          const mt = (err as { mfaToken: string }).mfaToken;
-          await service.mfaChallenge(userId, mt);
-          setMfaToken(mt);
-          return;
-        }
-        throw err;
-      }
-      setPersonalToken(connection.token);
-      setApiEndpoint(connection.endpoint);
-      // Persist the session so the next auth request (or /account visit)
-      // skips the credentials — the pre-consent card offers "Not me" to
-      // switch accounts instead.
-      setConnection(connection as unknown as PryvConnection, svcInfoUrl);
-      await runCheckApp(connection.endpoint, connection.token);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitMfa(e: FormEvent) {
-    e.preventDefault();
-    if (!mfaToken) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
-      const service = new Pryv.Service(svcInfoUrl ?? "");
-      const token = (await service.mfaVerify(username.trim(), mfaToken, mfaCode)) as unknown as string;
-      // `mfaVerify` returns a Connection; pull its token + endpoint.
-      const conn = token as unknown as { token: string; endpoint: string };
-      const persoToken = conn.token ?? (token as unknown as string);
-      const endpoint =
-        conn.endpoint ??
-        (serviceInfo?.api ? serviceInfo.api.replace("{username}", username.trim()) : "");
-      setPersonalToken(persoToken);
-      setApiEndpoint(endpoint);
-      if (conn.token && conn.endpoint) {
-        setConnection(conn as unknown as PryvConnection, svcInfoUrl ?? null);
-      }
-      setMfaToken(null);
-      setMfaCode("");
-      await runCheckApp(endpoint, persoToken);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "MFA verification failed.");
-    } finally {
-      setBusy(false);
-    }
+  function makeService() {
+    const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
+    return new Pryv.Service(svcInfoUrl ?? "");
   }
 
   async function runCheckApp(endpoint: string, token: string, asUser?: string) {
@@ -289,7 +225,7 @@ export default function Auth() {
 
   async function accept() {
     if (!accessState || !apiEndpoint || !personalToken || !check) return;
-    setFinishing(true);
+    setFinishing("accept");
     setError(null);
     try {
       if (check.mismatchingAccess) {
@@ -308,13 +244,13 @@ export default function Auth() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not accept.");
     } finally {
-      setFinishing(false);
+      setFinishing(null);
     }
   }
 
   async function refuse() {
     if (!accessState || !query.pollUrl) return;
-    setFinishing(true);
+    setFinishing("refuse");
     setError(null);
     try {
       const refused: Partial<AccessState> = {
@@ -329,7 +265,7 @@ export default function Auth() {
       }
       closeOrRedirect(query.pollUrl, { ...accessState, ...refused }, query.cli);
     } finally {
-      setFinishing(false);
+      setFinishing(null);
     }
   }
 
@@ -352,27 +288,17 @@ export default function Auth() {
   }
 
   // Permissions panel — visible after sign-in (+ MFA) when check-app returns
-  // checkedPermissions and no matchingAccess short-circuited the flow.
+  // checkedPermissions and no matchingAccess short-circuited the flow. The
+  // legacy grammar has no user-choice annotations: all entries render locked.
   if (check && check.checkedPermissions) {
+    const entries = consentEntries(check.checkedPermissions as OfferPermission[]);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           <strong>{accessState.requestingAppId}</strong>
         </h1>
         <p className="mb-2 text-sm">is requesting permission:</p>
-        <ul className="mb-4 space-y-1 text-sm">
-          {check.checkedPermissions.map((p, i) => (
-            <li key={i} className="rounded bg-body px-3 py-2">
-              <span className="font-medium text-primary">{p.level}</span>
-              <span className="text-muted"> on </span>
-              <span className="break-all">
-                {p.streamId === "*"
-                  ? "* (all data)"
-                  : p.name || p.defaultName || p.streamId}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <PermissionList entries={entries} />
         {accessState.expireAfter != null && (
           <p className="mb-2 text-sm">
             <strong>Expires after:</strong> {accessState.expireAfter}s
@@ -384,58 +310,11 @@ export default function Auth() {
           </Alert>
         )}
         {error && <Alert>{error}</Alert>}
-        <div className="flex gap-3">
-          <Button type="button" disabled={finishing} onClick={accept}>
-            {finishing ? "Approving…" : "Accept"}
-          </Button>
-          <button
-            type="button"
-            disabled={finishing}
-            onClick={refuse}
-            className="inline-flex w-full items-center justify-center rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-          >
-            {finishing ? "Declining…" : "Reject"}
-          </button>
-        </div>
-      </Card>
-    );
-  }
-
-  // MFA dialog (inline panel) — shown when login surfaces an mfaToken.
-  if (mfaToken) {
-    return (
-      <Card>
-        <h1 className="mb-1 text-2xl">Verify it's you</h1>
-        <p className="mb-4 text-sm text-muted">
-          Enter the verification code we sent to confirm sign-in.
-        </p>
-        {error && <Alert>{error}</Alert>}
-        <form onSubmit={submitMfa}>
-          <Field
-            id="mfaCode"
-            label="Verification code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={mfaCode}
-            onChange={(e) => setMfaCode(e.target.value)}
-            required
-          />
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy || !mfaCode}>
-              {busy ? "Verifying…" : "Verify"}
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setMfaToken(null);
-                setMfaCode("");
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
+        <ConsentActions
+          busy={finishing}
+          onAccept={() => void accept()}
+          onRefuse={() => void refuse()}
+        />
       </Card>
     );
   }
@@ -468,82 +347,80 @@ export default function Auth() {
         >
           Not me — use another account
         </button>
-        <Button variant="ghost" type="button" onClick={refuse} disabled={busy || finishing} className="mt-3">
+        <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
           Cancel
         </Button>
       </Card>
     );
   }
 
-  // Sign-in form (initial state).
+  // Shared sign-in gate (initial state).
   // Register / password-reset links need the platform's service-info URL;
-  // same resolution order as submitLogin. They open in a new tab so this
+  // same resolution order as makeService. They open in a new tab so this
   // popup keeps its pending access request (poll context) alive.
   const linksSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
   const linksSearch = linksSvcInfoUrl
     ? `?pryvServiceInfoUrl=${encodeURIComponent(linksSvcInfoUrl)}`
     : "";
   return (
-    <Card>
-      <h1 className="mb-1 text-2xl">Sign in</h1>
-      <p className="mb-6 text-sm text-muted">
-        Sign in to grant access to{" "}
-        <strong>{accessState.requestingAppId || "the requesting app"}</strong>.
-      </p>
-      {error && <Alert>{error}</Alert>}
-      <form onSubmit={submitLogin}>
-        <Field
-          id="usernameOrEmail"
-          label="Username or email"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-        <Field
-          id="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            {busy ? "Signing in…" : "Sign In"}
-          </Button>
-          <Button variant="ghost" type="button" onClick={refuse} disabled={busy || finishing}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-      <div className="mt-4 flex justify-between text-sm">
-        <Link
-          to={`/reset-password${linksSearch}`}
-          target="_blank"
-          className="text-primary hover:underline"
-        >
-          Forgot password?
-        </Link>
-        <Link
-          to={`/register${linksSearch}`}
-          target="_blank"
-          className="text-primary hover:underline"
-        >
-          Create account
-        </Link>
-      </div>
-      {serviceInfo?.support && (
-        <p className="mt-6 text-sm text-muted">
-          Questions? Visit our{" "}
-          <a href={serviceInfo.support} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-            helpdesk
-          </a>
-          .
-        </p>
-      )}
-    </Card>
+    <ConsentSignIn
+      makeService={makeService}
+      appId={APP_ID}
+      prompt={
+        <>
+          Sign in to grant access to{" "}
+          <strong>{accessState.requestingAppId || "the requesting app"}</strong>.
+        </>
+      }
+      onSignedIn={async (s) => {
+        // The MFA verify path may return a bare token without an endpoint —
+        // fall back to the service-info api template.
+        const endpoint =
+          s.endpoint ??
+          (serviceInfo?.api ? serviceInfo.api.replace("{username}", s.username) : "");
+        setUsername(s.username);
+        setPersonalToken(s.personalToken);
+        setApiEndpoint(endpoint);
+        // Persist the session so the next auth request (or /account visit)
+        // skips the credentials — the pre-consent card offers "Not me" to
+        // switch accounts instead.
+        if (s.endpoint) {
+          setConnection(s.connection as PryvConnection, flowSvcInfoUrl);
+        }
+        await runCheckApp(endpoint, s.personalToken, s.username);
+      }}
+      onCancel={() => void refuse()}
+      cancelDisabled={finishing !== null}
+      footer={
+        <>
+          <div className="mt-4 flex justify-between text-sm">
+            <Link
+              to={`/reset-password${linksSearch}`}
+              target="_blank"
+              className="text-primary hover:underline"
+            >
+              Forgot password?
+            </Link>
+            <Link
+              to={`/register${linksSearch}`}
+              target="_blank"
+              className="text-primary hover:underline"
+            >
+              Create account
+            </Link>
+          </div>
+          {serviceInfo?.support && (
+            <p className="mt-6 text-sm text-muted">
+              Questions? Visit our{" "}
+              <a href={serviceInfo.support} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                helpdesk
+              </a>
+              .
+            </p>
+          )}
+        </>
+      }
+    />
   );
 }
 

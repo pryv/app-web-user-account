@@ -20,20 +20,11 @@
  * component) — the service-info URL is derived from `pryvApi` below.
  */
 
-/** Localized text map: language code → string (e.g. `{ en: "…" }`). */
-export type LocalizableText = Record<string, string>;
+import type { LocalizableText, OfferPermission } from "./consent";
 
-/**
- * One entry of the granular permission set — the full Pryv
- * `accesses.create` lexicon: a stream permission (`streamId` + `level`,
- * optional display names) or a feature permission (e.g.
- * `{ feature: "selfRevoke", setting: "forbidden" }`). The consent-layer
- * `mandatory` flag marks entries the user cannot untick.
- */
-export type OfferPermission = (
-  | { streamId: string; level: string; defaultName?: string; name?: string }
-  | { feature: string; setting: string }
-) & { mandatory?: boolean };
+// Permission vocabulary + display model live in `lib/consent.ts` (shared by
+// every consent surface); re-exported here for the OAuth flow's callers.
+export type { LocalizableText, OfferPermission } from "./consent";
 
 /**
  * The consent offer resolved server-side at authorize time and carried
@@ -52,15 +43,6 @@ export interface OAuthOffer {
   title: LocalizableText | null;
   description: LocalizableText | null;
   consent: LocalizableText | null;
-}
-
-/**
- * Whether one offered entry is locked on the consent screen (cannot be
- * unticked): everything is locked unless the offer allows user choice,
- * and `mandatory` entries stay locked regardless.
- */
-export function isPermissionLocked(offer: OAuthOffer, p: OfferPermission): boolean {
-  return offer.allowUserChoice !== true || p.mandatory === true;
 }
 
 /** Display fields decoded from the signed state payload. */
@@ -160,15 +142,6 @@ function asTextMap(v: unknown): LocalizableText | null {
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
-/** Pick the best language variant from a localized text map. */
-export function pickText(t: LocalizableText | null, lang = "en"): string {
-  if (t == null) return "";
-  if (typeof t[lang] === "string") return t[lang];
-  if (typeof t.en === "string") return t.en;
-  const first = Object.values(t)[0];
-  return typeof first === "string" ? first : "";
-}
-
 /**
  * Service-info URL for the platform `pryvApi` belongs to. Every core serves
  * `/reg/service/info` at its root, so this works for both single-core
@@ -253,32 +226,6 @@ function registrableDomain(host: string): string {
   const labels = host.split(".");
   if (labels.length <= 2) return host;
   return labels.slice(-2).join(".");
-}
-
-const LEVEL_LABELS: Record<string, string> = {
-  read: "Read",
-  contribute: "Add and modify",
-  manage: "Fully manage",
-  "create-only": "Add (write-only)",
-  none: "No access to",
-};
-
-/**
- * Human label for one granular permission entry. Stream permissions
- * render as "<level verb> “<stream name>”"; known feature permissions
- * get a dedicated wording, unknown ones fall back to `feature: setting`.
- */
-export function permissionLabel(p: OfferPermission): string {
-  if ("streamId" in p && typeof p.streamId === "string") {
-    const target =
-      p.streamId === "*" ? "all your data" : `“${p.name ?? p.defaultName ?? p.streamId}”`;
-    return `${LEVEL_LABELS[p.level] ?? p.level} ${target}`;
-  }
-  const f = p as { feature: string; setting: string };
-  if (f.feature === "selfRevoke" && f.setting === "forbidden") {
-    return "The app cannot revoke its own access (only you can)";
-  }
-  return `${f.feature}: ${f.setting}`;
 }
 
 /**

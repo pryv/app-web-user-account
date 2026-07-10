@@ -1,15 +1,15 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import Pryv from "pryv";
-import { Card, Button, Field, Alert } from "../components/ui";
-import { isMfaRequired, resolveUserId } from "../lib/service";
+import { Card, Alert } from "../components/ui";
+import { ConsentSignIn } from "../components/consent/ConsentSignIn";
+import { PermissionList } from "../components/consent/PermissionList";
+import { ConsentActions } from "../components/consent/ConsentActions";
+import { consentEntries, grantedPermissions, pickText } from "../lib/consent";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
-  permissionLabel,
-  isPermissionLocked,
-  pickText,
   oauth2Accept,
   oauth2Refuse,
   type OAuthState,
@@ -80,9 +80,9 @@ function initFromQuery(search: string): InitResult {
  * validates the client + PKCE parameters and 302-redirects the browser here
  * with `state` (signed payload, display-only — see `lib/oauth2Flow.ts`) and
  * `pryvApi` (the API endpoint to call back). The user signs in (username or
- * email, MFA-aware), reviews the requested scopes (unticking downgrades),
- * then Accept/Reject POSTs back to the core, which answers with the redirect
- * URL for the requesting app.
+ * email, MFA-aware), reviews the requested permissions (unticking downgrades
+ * when the offer allows user choice), then Accept/Reject POSTs back to the
+ * core, which answers with the redirect URL for the requesting app.
  *
  * Sign-in is always fresh — `userIdHint` only prefills the username; the
  * persisted session is deliberately not reused on this security surface.
@@ -94,96 +94,40 @@ export default function Oauth2Authorize() {
     [search],
   );
 
-  const [username, setUsername] = useState(oauthState?.userIdHint ?? "");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [mfaToken, setMfaToken] = useState<string | null>(null);
-  const [mfaCode, setMfaCode] = useState("");
-
-  // Personal token captured after successful login (+ MFA) — gates consent.
+  // Session captured by the shared sign-in (+ MFA) — gates consent.
+  const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
 
-  const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() =>
-    (oauthState?.offer?.permissions ?? []).map(() => true),
+  const entries = useMemo(
+    () =>
+      oauthState?.offer
+        ? consentEntries(oauthState.offer.permissions, {
+            allowUserChoice: oauthState.offer.allowUserChoice,
+          })
+        : [],
+    [oauthState],
   );
+  const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() => entries.map(() => true));
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
   }
 
-  async function submitLogin(e: FormEvent) {
-    e.preventDefault();
-    if (!oauthState) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const service = makeService();
-      // Emails resolve to the username first; the resolved id feeds login,
-      // the MFA steps and the accept payload below.
-      const userId = await resolveUserId(service, username);
-      setUsername(userId);
-      // Service.login signature: (username, password, appId) — the OAuth
-      // clientId doubles as the appId of the personal session.
-      let connection;
-      try {
-        connection = (await service.login(userId, password, oauthState.clientId)) as unknown as {
-          token: string;
-        };
-      } catch (err) {
-        if (isMfaRequired(err)) {
-          const mt = (err as { mfaToken: string }).mfaToken;
-          await service.mfaChallenge(userId, mt);
-          setMfaToken(mt);
-          return;
-        }
-        throw err;
-      }
-      setPersonalToken(connection.token);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitMfa(e: FormEvent) {
-    e.preventDefault();
-    if (!mfaToken) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const service = makeService();
-      // `mfaVerify` returns a Connection; pull its token.
-      const conn = (await service.mfaVerify(username.trim(), mfaToken, mfaCode)) as unknown as {
-        token?: string;
-      };
-      const token = conn.token ?? (conn as unknown as string);
-      setPersonalToken(typeof token === "string" ? token : null);
-      setMfaToken(null);
-      setMfaCode("");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "MFA verification failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function accept() {
     if (!oauthState?.offer || !personalToken) return;
-    setBusy(true);
+    setBusy("accept");
     setError(null);
     try {
       // Locked entries (all-or-nothing offers, mandatory entries) are
       // always granted; ticked optional entries follow the checkboxes.
       // The consent-layer `mandatory` flag never travels in the grant.
-      const grantedPermissions = oauthState.offer.permissions
-        .filter((p, i) => isPermissionLocked(oauthState.offer!, p) || grantedFlags[i])
-        .map(({ mandatory: _m, ...p }) => p);
-      if (grantedPermissions.length === 0) {
+      const granted = grantedPermissions(entries, grantedFlags);
+      if (granted.length === 0) {
         setError("Keep at least one permission ticked, or use Reject.");
-        setBusy(false);
+        setBusy(null);
         return;
       }
       const redirectTo = await oauth2Accept({
@@ -191,24 +135,24 @@ export default function Oauth2Authorize() {
         signedState,
         username,
         personalToken,
-        grantedPermissions,
+        grantedPermissions: granted,
       });
       window.location.assign(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to accept authorization.");
-      setBusy(false);
+      setBusy(null);
     }
   }
 
   async function refuse() {
-    setBusy(true);
+    setBusy("refuse");
     setError(null);
     try {
       const redirectTo = await oauth2Refuse({ pryvApi, signedState });
       window.location.assign(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to refuse authorization.");
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -223,48 +167,10 @@ export default function Oauth2Authorize() {
     );
   }
 
-  // MFA dialog (inline panel) — shown when login surfaces an mfaToken.
-  if (mfaToken) {
-    return (
-      <Card>
-        <h1 className="mb-1 text-2xl">Verify it's you</h1>
-        <p className="mb-4 text-sm text-muted">
-          Enter the verification code we sent to confirm sign-in.
-        </p>
-        {error && <Alert>{error}</Alert>}
-        <form onSubmit={submitMfa}>
-          <Field
-            id="mfaCode"
-            label="Verification code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={mfaCode}
-            onChange={(e) => setMfaCode(e.target.value)}
-            required
-          />
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy || !mfaCode}>
-              {busy ? "Verifying…" : "Verify"}
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setMfaToken(null);
-                setMfaCode("");
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </Card>
-    );
-  }
-
   // Consent panel — visible once signed in (+ MFA). Renders the offer's
   // granular permission set (full lexicon, incl. feature permissions);
-  // unticking downgrades: the app receives only the ticked subset.
+  // when the offer allows user choice, unticking downgrades: the app
+  // receives only the ticked subset.
   if (personalToken && oauthState.offer) {
     const offer = oauthState.offer;
     const title = pickText(offer.title);
@@ -278,30 +184,14 @@ export default function Oauth2Authorize() {
         {title && <p className="mb-1 text-lg font-medium">{title}</p>}
         {description && <p className="mb-2 text-sm text-muted">{description}</p>}
         <p className="mb-2 text-sm">is requesting permission:</p>
-        <ul className="mb-2 space-y-1 text-sm">
-          {offer.permissions.map((p, i) => {
-            const locked = isPermissionLocked(offer, p);
-            return (
-              <li key={i} className="rounded bg-body px-3 py-2">
-                <label className="flex items-center gap-2">
-                  <input
-                    id={"oauthScope-" + i}
-                    type="checkbox"
-                    checked={locked || grantedFlags[i]}
-                    disabled={locked}
-                    onChange={(e) =>
-                      setGrantedFlags(grantedFlags.map((f, j) => (j === i ? e.target.checked : f)))
-                    }
-                  />
-                  <span>{permissionLabel(p)}</span>
-                  {offer.allowUserChoice && p.mandatory === true && (
-                    <span className="text-xs text-muted">(required by this app)</span>
-                  )}
-                </label>
-              </li>
-            );
-          })}
-        </ul>
+        <PermissionList
+          entries={entries}
+          flags={grantedFlags}
+          idPrefix="oauthScope"
+          onToggle={(i, checked) =>
+            setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+          }
+        />
         {consentText && (
           <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
             {consentText}
@@ -313,60 +203,37 @@ export default function Oauth2Authorize() {
             : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
         </p>
         {error && <Alert>{error}</Alert>}
-        <div className="flex gap-3">
-          <Button id="oauthAccept" type="button" disabled={busy} onClick={accept}>
-            {busy ? "Approving…" : "Accept"}
-          </Button>
-          <button
-            id="oauthRefuse"
-            type="button"
-            disabled={busy}
-            onClick={refuse}
-            className="inline-flex w-full items-center justify-center rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-          >
-            {busy ? "Declining…" : "Reject"}
-          </button>
-        </div>
+        <ConsentActions
+          busy={busy}
+          acceptId="oauthAccept"
+          refuseId="oauthRefuse"
+          onAccept={() => void accept()}
+          onRefuse={() => void refuse()}
+        />
       </Card>
     );
   }
 
-  // Sign-in form (initial state). Cancel refuses the authorization —
+  // Shared sign-in gate (initial state). Cancel refuses the authorization —
   // refuse needs no user session, so it works pre-login.
   return (
-    <Card>
-      <h1 className="mb-1 text-2xl">Sign in</h1>
-      <p id="oauthAppPrompt" className="mb-6 text-sm text-muted">
-        <strong>{oauthState.clientId}</strong> wants to access your Pryv account.
-      </p>
-      {error && <Alert>{error}</Alert>}
-      <form onSubmit={submitLogin}>
-        <Field
-          id="usernameOrEmail"
-          label="Username or email"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-        <Field
-          id="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
-            {busy ? "Signing in…" : "Sign In"}
-          </Button>
-          <Button id="oauthCancelLogin" variant="ghost" type="button" onClick={refuse} disabled={busy}>
-            Cancel
-          </Button>
-        </div>
-      </form>
-    </Card>
+    <ConsentSignIn
+      makeService={makeService}
+      appId={oauthState.clientId}
+      usernameHint={oauthState.userIdHint ?? ""}
+      prompt={
+        <span id="oauthAppPrompt">
+          <strong>{oauthState.clientId}</strong> wants to access your Pryv account.
+        </span>
+      }
+      onSignedIn={({ username: u, personalToken: token }) => {
+        setUsername(u);
+        setPersonalToken(token);
+      }}
+      onCancel={() => void refuse()}
+      cancelId="oauthCancelLogin"
+      cancelDisabled={busy !== null}
+      externalError={error}
+    />
   );
 }

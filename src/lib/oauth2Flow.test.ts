@@ -3,13 +3,9 @@ import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
-  permissionLabel,
-  isPermissionLocked,
-  pickText,
   oauth2Accept,
   oauth2Refuse,
   type OAuthFlowError,
-  type OAuthOffer,
 } from "./oauth2Flow";
 
 // Full-lexicon offer as the server embeds it in the signed state
@@ -196,46 +192,8 @@ describe("assertTrustedPryvApi", () => {
   });
 });
 
-describe("permissionLabel + pickText", () => {
-  it("labels stream permissions with level verb + display name", () => {
-    expect(permissionLabel({ streamId: "health", level: "read", defaultName: "Health" })).toBe(
-      "Read “Health”",
-    );
-    expect(permissionLabel({ streamId: "diary", level: "contribute" })).toBe(
-      "Add and modify “diary”",
-    );
-    expect(permissionLabel({ streamId: "*", level: "manage" })).toBe("Fully manage all your data");
-  });
-
-  it("labels known feature permissions and falls back for unknown ones", () => {
-    expect(permissionLabel({ feature: "selfRevoke", setting: "forbidden" })).toMatch(
-      /cannot revoke its own access/,
-    );
-    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
-  });
-
-  it("pickText prefers the requested language, then en, then first", () => {
-    expect(pickText({ en: "Hello", fr: "Bonjour" }, "fr")).toBe("Bonjour");
-    expect(pickText({ en: "Hello", fr: "Bonjour" })).toBe("Hello");
-    expect(pickText({ de: "Hallo" })).toBe("Hallo");
-    expect(pickText(null)).toBe("");
-  });
-});
-
-describe("isPermissionLocked", () => {
-  const base = { ...SAMPLE_OFFER, title: null, description: null, consent: null } as OAuthOffer;
-
-  it("locks EVERY entry when the offer does not allow user choice (all-or-nothing default)", () => {
-    const offer = { ...base, allowUserChoice: false };
-    for (const p of offer.permissions) expect(isPermissionLocked(offer, p)).toBe(true);
-  });
-
-  it("with user choice, locks only mandatory entries", () => {
-    expect(isPermissionLocked(base, base.permissions[0])).toBe(true); // mandatory
-    expect(isPermissionLocked(base, base.permissions[1])).toBe(false);
-    expect(isPermissionLocked(base, base.permissions[2])).toBe(false);
-  });
-});
+// permissionLabel / pickText / lock semantics are covered in
+// `consent.test.ts` — they moved to the shared consent display model.
 
 describe("oauth2Accept", () => {
   const granted = [
