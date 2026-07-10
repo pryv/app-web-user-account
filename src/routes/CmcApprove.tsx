@@ -3,10 +3,13 @@ import { Link, useLocation } from "react-router-dom";
 import * as cmc from "@pryv/cmc";
 import { Card, Button, Alert } from "../components/ui";
 import { useSession } from "../lib/session";
+// Shared permission-label vocabulary (full lexicon: stream AND feature
+// permissions) — one render implementation across consent surfaces.
+import { permissionLabel, type OfferPermission } from "../lib/oauth2Flow";
 
 interface OfferView {
   requester: { username: string | null; host: string; displayName?: string };
-  requestedPermissions: Array<{ streamId: string; level: string }>;
+  requestedPermissions: OfferPermission[];
   consent?: Record<string, string>;
   mode: string;
   features?: { chat?: boolean; systemMessaging?: boolean };
@@ -199,10 +202,8 @@ export default function CmcApprove() {
           )}
           <ul className="mb-4 space-y-1 text-sm">
             {offer.requestedPermissions.map((p, i) => (
-              <li key={i} className="rounded bg-body px-3 py-2">
-                <span className="font-medium text-primary">{p.level}</span>
-                <span className="text-muted"> on </span>
-                <span className="break-all">{p.streamId}</span>
+              <li key={i} className="rounded bg-body px-3 py-2 break-all">
+                {permissionLabel(p)}
               </li>
             ))}
           </ul>
