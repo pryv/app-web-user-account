@@ -6,6 +6,7 @@ import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, grantedPermissions, pickText } from "../lib/consent";
+import { assertHttpUrl } from "../lib/safeRedirect";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
@@ -53,6 +54,9 @@ function initFromQuery(search: string): InitResult {
     assertTrustedPryvApi(pryvApi, {
       trustedOrigins: TRUSTED_API_ORIGINS,
       selfOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+      // Production builds MUST carry an explicit allowlist — the weak
+      // same-registrable-domain fallback is a dev-only convenience.
+      requireAllowlist: import.meta.env.PROD,
     });
     const oauthState = parseOAuthState(signedState);
     if (oauthState.offer == null) {
@@ -137,6 +141,9 @@ export default function Oauth2Authorize() {
         personalToken,
         grantedPermissions: granted,
       });
+      // Defence in depth: never navigate to a non-http(s) target even if the
+      // core returned one (guards against a `javascript:`/`data:` redirect).
+      assertHttpUrl(redirectTo);
       window.location.assign(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to accept authorization.");
@@ -149,6 +156,7 @@ export default function Oauth2Authorize() {
     setError(null);
     try {
       const redirectTo = await oauth2Refuse({ pryvApi, signedState });
+      assertHttpUrl(redirectTo);
       window.location.assign(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to refuse authorization.");

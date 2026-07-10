@@ -6,6 +6,7 @@ import { useSession } from "../lib/session";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
+import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 
 interface OfferView {
   requester: { username: string | null; host: string; displayName?: string };
@@ -41,16 +42,29 @@ function deliverResult(
   params: AcceptParams,
 ): void {
   if (params.mode === "redirect" && params.returnUrl) {
-    const target = new URL(params.returnUrl);
+    // Only navigate back to an absolute http(s) returnUrl — a `javascript:`
+    // or `data:` value would execute in this trusted origin.
+    const target = httpUrlOrNull(params.returnUrl);
+    if (!target) return;
     target.searchParams.set("cmcAcceptResult", JSON.stringify(res));
     window.location.assign(target.toString());
     return;
   }
   if (window.opener) {
-    window.opener.postMessage(
-      { type: "cmc-accept-result", ...res },
-      "*",
-    );
+    // `res` carries `dataGrantApiEndpoint`, a token-bearing endpoint. Pin the
+    // postMessage to the opener's origin so it is not leaked to an arbitrary
+    // listener; `'*'` would broadcast the token to any origin. When no
+    // trustworthy origin can be derived, drop the token-bearing field and only
+    // signal the (non-sensitive) outcome rather than broadcast the secret.
+    const targetOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
+    if (targetOrigin) {
+      window.opener.postMessage({ type: "cmc-accept-result", ...res }, targetOrigin);
+    } else {
+      window.opener.postMessage(
+        { type: "cmc-accept-result", ok: res.ok, acceptEventId: res.acceptEventId, reason: res.reason },
+        "*",
+      );
+    }
     window.close();
   }
 }

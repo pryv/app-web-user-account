@@ -167,12 +167,18 @@ export function serviceInfoUrlFromPryvApi(pryvApi: string): string {
  *      app under one parent domain (e.g. `core.example.com` + `app.example.com`),
  *      so an off-platform `attacker.com` is rejected without any config.
  *
+ * The registrable-domain fallback is a best-effort convenience and MUST NOT be
+ * relied on in production. When `requireAllowlist` is set (the route passes
+ * `import.meta.env.PROD`), an unset allowlist fails closed rather than falling
+ * back — a production deployment with no configured allowlist is a
+ * misconfiguration, not a green light.
+ *
  * Always requires https (http only for loopback, for local development).
  * Throws on any violation — the caller renders it as an init error.
  */
 export function assertTrustedPryvApi(
   pryvApi: string,
-  opts: { trustedOrigins?: string[]; selfOrigin?: string } = {},
+  opts: { trustedOrigins?: string[]; selfOrigin?: string; requireAllowlist?: boolean } = {},
 ): void {
   let url: URL;
   try {
@@ -193,6 +199,14 @@ export function assertTrustedPryvApi(
       throw new Error("oauth2: `pryvApi` origin is not in the trusted allowlist.");
     }
     return;
+  }
+
+  // No explicit allowlist configured. In production this is a misconfiguration:
+  // fail closed rather than trust the weak registrable-domain fallback.
+  if (opts.requireAllowlist) {
+    throw new Error(
+      "oauth2: no trusted API allowlist is configured — production requires an explicit allowlist.",
+    );
   }
 
   // No explicit allowlist: a loopback core is local development — allow it.

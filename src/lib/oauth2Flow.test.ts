@@ -190,6 +190,40 @@ describe("assertTrustedPryvApi", () => {
   it("still allows a loopback pryvApi with no trust anchor (local dev)", () => {
     expect(() => assertTrustedPryvApi("http://127.0.0.1:3000/")).not.toThrow();
   });
+
+  it("fails closed in production when no allowlist is configured", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://core.example.com/", {
+        selfOrigin: self,
+        requireAllowlist: true,
+      }),
+    ).toThrow(/allowlist/);
+  });
+
+  it("rejects even a loopback pryvApi in production without an allowlist", () => {
+    expect(() =>
+      assertTrustedPryvApi("http://127.0.0.1:3000/", { requireAllowlist: true }),
+    ).toThrow(/allowlist/);
+  });
+
+  it("accepts an allowlisted origin in production", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://core.example.com/", {
+        trustedOrigins: ["https://core.example.com"],
+        selfOrigin: self,
+        requireAllowlist: true,
+      }),
+    ).not.toThrow();
+  });
+
+  it("keeps the registrable-domain fallback for dev builds (no allowlist required)", () => {
+    expect(() =>
+      assertTrustedPryvApi("https://core.example.com/", {
+        selfOrigin: self,
+        requireAllowlist: false,
+      }),
+    ).not.toThrow();
+  });
 });
 
 // permissionLabel / pickText / lock semantics are covered in

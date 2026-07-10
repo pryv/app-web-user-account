@@ -6,6 +6,7 @@ import { useSession } from "../lib/session";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
+import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -31,15 +32,22 @@ function deliverResult(
   params: ScopeUpdateParams,
 ): void {
   if (params.mode === "redirect" && params.returnUrl) {
-    const target = new URL(params.returnUrl);
+    // Only navigate back to an absolute http(s) returnUrl — a `javascript:`
+    // or `data:` value would execute in this trusted origin.
+    const target = httpUrlOrNull(params.returnUrl);
+    if (!target) return;
     target.searchParams.set("cmcScopeUpdateResult", JSON.stringify(res));
     window.location.assign(target.toString());
     return;
   }
   if (window.opener) {
+    // This payload carries no token, but still pin the postMessage to the
+    // opener's origin when one can be derived rather than broadcasting to any
+    // listener; fall back to `'*'` only when no trustworthy origin is known.
+    const targetOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
     window.opener.postMessage(
       { type: "cmc-scope-update-result", ...res },
-      "*",
+      targetOrigin ?? "*",
     );
     window.close();
   }
