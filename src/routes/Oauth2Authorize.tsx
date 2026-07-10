@@ -8,6 +8,7 @@ import {
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
   permissionLabel,
+  isPermissionLocked,
   pickText,
   oauth2Accept,
   oauth2Refuse,
@@ -174,7 +175,12 @@ export default function Oauth2Authorize() {
     setBusy(true);
     setError(null);
     try {
-      const grantedPermissions = oauthState.offer.permissions.filter((_p, i) => grantedFlags[i]);
+      // Locked entries (all-or-nothing offers, mandatory entries) are
+      // always granted; ticked optional entries follow the checkboxes.
+      // The consent-layer `mandatory` flag never travels in the grant.
+      const grantedPermissions = oauthState.offer.permissions
+        .filter((p, i) => isPermissionLocked(oauthState.offer!, p) || grantedFlags[i])
+        .map(({ mandatory: _m, ...p }) => p);
       if (grantedPermissions.length === 0) {
         setError("Keep at least one permission ticked, or use Reject.");
         setBusy(false);
@@ -273,21 +279,28 @@ export default function Oauth2Authorize() {
         {description && <p className="mb-2 text-sm text-muted">{description}</p>}
         <p className="mb-2 text-sm">is requesting permission:</p>
         <ul className="mb-2 space-y-1 text-sm">
-          {offer.permissions.map((p, i) => (
-            <li key={i} className="rounded bg-body px-3 py-2">
-              <label className="flex items-center gap-2">
-                <input
-                  id={"oauthScope-" + i}
-                  type="checkbox"
-                  checked={grantedFlags[i]}
-                  onChange={(e) =>
-                    setGrantedFlags(grantedFlags.map((f, j) => (j === i ? e.target.checked : f)))
-                  }
-                />
-                <span>{permissionLabel(p)}</span>
-              </label>
-            </li>
-          ))}
+          {offer.permissions.map((p, i) => {
+            const locked = isPermissionLocked(offer, p);
+            return (
+              <li key={i} className="rounded bg-body px-3 py-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    id={"oauthScope-" + i}
+                    type="checkbox"
+                    checked={locked || grantedFlags[i]}
+                    disabled={locked}
+                    onChange={(e) =>
+                      setGrantedFlags(grantedFlags.map((f, j) => (j === i ? e.target.checked : f)))
+                    }
+                  />
+                  <span>{permissionLabel(p)}</span>
+                  {offer.allowUserChoice && p.mandatory === true && (
+                    <span className="text-xs text-muted">(required by this app)</span>
+                  )}
+                </label>
+              </li>
+            );
+          })}
         </ul>
         {consentText && (
           <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
@@ -295,8 +308,9 @@ export default function Oauth2Authorize() {
           </p>
         )}
         <p className="mb-4 text-sm text-muted">
-          Untick to deny specific permissions; the app will receive only the permissions you keep
-          ticked.
+          {offer.allowUserChoice
+            ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
+            : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
         </p>
         {error && <Alert>{error}</Alert>}
         <div className="flex gap-3">

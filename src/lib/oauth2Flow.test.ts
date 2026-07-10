@@ -4,23 +4,27 @@ import {
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
   permissionLabel,
+  isPermissionLocked,
   pickText,
   oauth2Accept,
   oauth2Refuse,
   type OAuthFlowError,
+  type OAuthOffer,
 } from "./oauth2Flow";
 
-// Full-lexicon offer as the server embeds it in the signed state.
+// Full-lexicon offer as the server embeds it in the signed state
+// (cherry-picking enabled; one mandatory entry).
 const SAMPLE_OFFER = {
   offerName: "study-A",
   capabilityUrl: "https://CapTok@myapp.example.com/",
   capabilityId: "cap-42",
   offerEventId: "ev-offer-1",
   permissions: [
-    { streamId: "health", level: "read", defaultName: "Health" },
+    { streamId: "health", level: "read", defaultName: "Health", mandatory: true },
     { streamId: "diary", level: "contribute" },
     { feature: "selfRevoke", setting: "forbidden" },
   ],
+  allowUserChoice: true,
   title: { en: "Example study" },
   description: { en: "Share health data." },
   consent: { en: "I agree to share with the study." },
@@ -96,6 +100,12 @@ describe("parseOAuthState", () => {
     expect(parseOAuthState(makeSignedState({ offer: undefined })).offer).toBeNull();
     expect(parseOAuthState(makeSignedState({ offer: { permissions: [] } })).offer).toBeNull();
     expect(parseOAuthState(makeSignedState({ offer: "junk" })).offer).toBeNull();
+  });
+
+  it("allowUserChoice defaults to FALSE (all-or-nothing) when absent", () => {
+    const { allowUserChoice: _drop, ...offerNoChoice } = SAMPLE_OFFER;
+    const s = parseOAuthState(makeSignedState({ offer: offerNoChoice }));
+    expect(s.offer?.allowUserChoice).toBe(false);
   });
 
   it("throws on empty state", () => {
@@ -209,6 +219,21 @@ describe("permissionLabel + pickText", () => {
     expect(pickText({ en: "Hello", fr: "Bonjour" })).toBe("Hello");
     expect(pickText({ de: "Hallo" })).toBe("Hallo");
     expect(pickText(null)).toBe("");
+  });
+});
+
+describe("isPermissionLocked", () => {
+  const base = { ...SAMPLE_OFFER, title: null, description: null, consent: null } as OAuthOffer;
+
+  it("locks EVERY entry when the offer does not allow user choice (all-or-nothing default)", () => {
+    const offer = { ...base, allowUserChoice: false };
+    for (const p of offer.permissions) expect(isPermissionLocked(offer, p)).toBe(true);
+  });
+
+  it("with user choice, locks only mandatory entries", () => {
+    expect(isPermissionLocked(base, base.permissions[0])).toBe(true); // mandatory
+    expect(isPermissionLocked(base, base.permissions[1])).toBe(false);
+    expect(isPermissionLocked(base, base.permissions[2])).toBe(false);
   });
 });
 

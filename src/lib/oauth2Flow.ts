@@ -27,24 +27,40 @@ export type LocalizableText = Record<string, string>;
  * One entry of the granular permission set — the full Pryv
  * `accesses.create` lexicon: a stream permission (`streamId` + `level`,
  * optional display names) or a feature permission (e.g.
- * `{ feature: "selfRevoke", setting: "forbidden" }`).
+ * `{ feature: "selfRevoke", setting: "forbidden" }`). The consent-layer
+ * `mandatory` flag marks entries the user cannot untick.
  */
-export type OfferPermission =
+export type OfferPermission = (
   | { streamId: string; level: string; defaultName?: string; name?: string }
-  | { feature: string; setting: string };
+  | { feature: string; setting: string }
+) & { mandatory?: boolean };
 
 /**
  * The consent offer resolved server-side at authorize time and carried
  * in the signed state: the granular permissions the app asks for plus
  * the consent texts to display. Display-only here — the server
  * re-validates the granted subset against its signed copy.
+ *
+ * `allowUserChoice` defaults to FALSE: the consent is ALL OR NOTHING
+ * (every entry locked; the user accepts the whole set or denies). When
+ * true, entries may be individually unticked — except `mandatory` ones.
  */
 export interface OAuthOffer {
   offerName: string;
   permissions: OfferPermission[];
+  allowUserChoice: boolean;
   title: LocalizableText | null;
   description: LocalizableText | null;
   consent: LocalizableText | null;
+}
+
+/**
+ * Whether one offered entry is locked on the consent screen (cannot be
+ * unticked): everything is locked unless the offer allows user choice,
+ * and `mandatory` entries stay locked regardless.
+ */
+export function isPermissionLocked(offer: OAuthOffer, p: OfferPermission): boolean {
+  return offer.allowUserChoice !== true || p.mandatory === true;
 }
 
 /** Display fields decoded from the signed state payload. */
@@ -129,6 +145,7 @@ function parseOffer(v: unknown): OAuthOffer | null {
   return {
     offerName: typeof o.offerName === "string" ? o.offerName : "",
     permissions,
+    allowUserChoice: o.allowUserChoice === true,
     title: asTextMap(o.title),
     description: asTextMap(o.description),
     consent: asTextMap(o.consent),
