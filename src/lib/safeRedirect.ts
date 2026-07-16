@@ -37,14 +37,18 @@ export function httpUrlOrNull(raw: string | null | undefined): URL | null {
 }
 
 /**
- * Best-effort trustworthy origin to pin a popup `postMessage` to. Prefers the
- * caller-supplied `returnUrl` origin; falls back to the opener's `referrer`
- * origin. Returns `null` when neither yields a valid http(s) origin — callers
- * must then refuse to broadcast token-bearing payloads to `'*'`.
+ * Best-effort origin to pin a popup `postMessage` to. Prefers the REAL opener
+ * (the `referrer`, i.e. the page that actually opened this popup); falls back
+ * to the caller-supplied `returnUrl` only when the referrer is unavailable
+ * (e.g. a strict Referrer-Policy). `returnUrl` is caller-controlled, so it is
+ * a last-resort PIN HINT, never a trust anchor — token-bearing payloads must
+ * be gated separately by an allowlist (`isTrustedResultOrigin`), so a crafted
+ * `returnUrl` can pin the message but never harvest the secret. Returns `null`
+ * when neither yields a valid http(s) origin.
  */
 export function trustedOpenerOrigin(
   returnUrl: string | null | undefined,
   referrer: string | null | undefined,
 ): string | null {
-  return httpUrlOrNull(returnUrl)?.origin ?? httpUrlOrNull(referrer)?.origin ?? null;
+  return httpUrlOrNull(referrer)?.origin ?? httpUrlOrNull(returnUrl)?.origin ?? null;
 }

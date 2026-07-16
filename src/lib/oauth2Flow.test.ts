@@ -3,6 +3,7 @@ import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
+  isTrustedResultOrigin,
   oauth2Accept,
   oauth2Refuse,
   type OAuthFlowError,
@@ -223,6 +224,39 @@ describe("assertTrustedPryvApi", () => {
         requireAllowlist: false,
       }),
     ).not.toThrow();
+  });
+});
+
+describe("isTrustedResultOrigin (token-bearing hand-off gate)", () => {
+  const self = "https://app.example.com";
+
+  it("trusts an allowlisted origin, rejects a non-allowlisted one", () => {
+    const opts = { trustedOrigins: ["https://app.example.com"], selfOrigin: self, requireAllowlist: true };
+    expect(isTrustedResultOrigin("https://app.example.com", opts)).toBe(true);
+    expect(isTrustedResultOrigin("https://attacker.example", opts)).toBe(false);
+  });
+
+  it("fails CLOSED in production when no allowlist is configured", () => {
+    expect(isTrustedResultOrigin("https://app.example.com", { selfOrigin: self, requireAllowlist: true })).toBe(false);
+  });
+
+  it("dev fallback: same registrable domain is trusted, cross-domain is not", () => {
+    expect(isTrustedResultOrigin("https://core.example.com", { selfOrigin: self })).toBe(true);
+    expect(isTrustedResultOrigin("https://attacker.com", { selfOrigin: self })).toBe(false);
+  });
+
+  it("trusts loopback in dev, and rejects null / non-http(s) / garbage", () => {
+    expect(isTrustedResultOrigin("http://127.0.0.1:3000", {})).toBe(true);
+    expect(isTrustedResultOrigin(null, { selfOrigin: self })).toBe(false);
+    expect(isTrustedResultOrigin("javascript:alert(1)", { trustedOrigins: ["javascript:alert(1)"] })).toBe(false);
+    expect(isTrustedResultOrigin("not a url", { selfOrigin: self })).toBe(false);
+  });
+
+  it("the attacker's returnUrl origin is never trusted (the G2 fix)", () => {
+    // Even with a legitimate allowlist, a crafted returnUrl origin is refused,
+    // so the token-bearing dataGrantApiEndpoint is stripped for it.
+    const opts = { trustedOrigins: ["https://app.example.com"], selfOrigin: self, requireAllowlist: true };
+    expect(isTrustedResultOrigin("https://attacker.example", opts)).toBe(false);
   });
 });
 

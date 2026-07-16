@@ -40,16 +40,19 @@ describe("httpUrlOrNull", () => {
 });
 
 describe("trustedOpenerOrigin", () => {
-  it("prefers the returnUrl origin", () => {
-    expect(trustedOpenerOrigin("https://app.example/back", "https://other.example/from")).toBe(
-      "https://app.example",
+  it("prefers the REAL opener (referrer) origin over the caller-supplied returnUrl", () => {
+    // returnUrl is caller-controlled, so it must NOT win the pin: the referrer
+    // (the page that actually opened the popup) is the legitimate target.
+    expect(trustedOpenerOrigin("https://attacker.example/back", "https://opener.example/from")).toBe(
+      "https://opener.example",
     );
   });
 
-  it("falls back to the referrer origin when returnUrl is absent or unsafe", () => {
-    expect(trustedOpenerOrigin(null, "https://other.example/from")).toBe("https://other.example");
-    expect(trustedOpenerOrigin("javascript:alert(1)", "https://other.example/from")).toBe(
-      "https://other.example",
+  it("falls back to the returnUrl origin only when the referrer is absent or unsafe", () => {
+    expect(trustedOpenerOrigin("https://app.example/back", null)).toBe("https://app.example");
+    expect(trustedOpenerOrigin("https://app.example/back", "")).toBe("https://app.example");
+    expect(trustedOpenerOrigin("https://app.example/back", "javascript:alert(1)")).toBe(
+      "https://app.example",
     );
   });
 

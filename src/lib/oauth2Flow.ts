@@ -243,6 +243,49 @@ function registrableDomain(host: string): string {
 }
 
 /**
+ * Boolean sibling of `assertTrustedPryvApi`, for deciding whether a
+ * token-bearing hand-off payload may be delivered to a given target origin
+ * (the CMC accept / scope-update result contains `dataGrantApiEndpoint`, a
+ * `https://<token>@host/...` credential). SAME trust model:
+ *   - an operator allowlist (`trustedOrigins`) is authoritative — exact match;
+ *   - with no allowlist, `requireAllowlist` (prod) fails CLOSED;
+ *   - otherwise loopback (dev) or same-registrable-domain-as-self is trusted.
+ * The target origin is caller-supplied (a `returnUrl` or opener origin), so it
+ * must NEVER be trusted on its own — callers strip the token when this returns
+ * false (the peer app can still read the endpoint from its authenticated CMC
+ * inbox).
+ */
+export function isTrustedResultOrigin(
+  targetOrigin: string | null | undefined,
+  opts: { trustedOrigins?: string[]; selfOrigin?: string; requireAllowlist?: boolean } = {},
+): boolean {
+  if (!targetOrigin) return false;
+  let url: URL;
+  try {
+    url = new URL(targetOrigin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  const host = url.hostname;
+  const allow = (opts.trustedOrigins ?? []).map((o) => o.trim()).filter(Boolean);
+  if (allow.length > 0) return allow.includes(url.origin);
+  // No explicit allowlist: production fails closed.
+  if (opts.requireAllowlist) return false;
+  const isLoopback =
+    host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1";
+  if (isLoopback) return true;
+  if (!opts.selfOrigin) return false;
+  let self: URL;
+  try {
+    self = new URL(opts.selfOrigin);
+  } catch {
+    return false;
+  }
+  return registrableDomain(host) === registrableDomain(self.hostname);
+}
+
+/**
  * POST `{pryvApi}/oauth2/authorize/accept` with the signed state, the user's
  * authenticated session, and the granted permission subset (the entries the
  * user kept ticked — validated ⊆ the signed offer by the server). The server

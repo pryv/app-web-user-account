@@ -7,6 +7,19 @@ import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
+import { isTrustedResultOrigin } from "../lib/oauth2Flow";
+
+/** Operator allowlist of origins trusted to receive the token-bearing
+ * `dataGrantApiEndpoint` — same control as the OAuth `pryvApi` allowlist. */
+const TRUSTED_RESULT_ORIGINS = (import.meta.env.VITE_OAUTH_TRUSTED_API_ORIGINS ?? "")
+  .split(",")
+  .map((s: string) => s.trim())
+  .filter(Boolean);
+
+/** Strip the token-bearing field, leaving only the non-sensitive outcome. */
+function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
+  return { ok: res.ok, acceptEventId: res.acceptEventId, reason: res.reason };
+}
 
 interface OfferView {
   requester: { username: string | null; host: string; displayName?: string };
@@ -41,30 +54,39 @@ function deliverResult(
   res: { ok: boolean; dataGrantApiEndpoint?: string; acceptEventId?: string; reason?: string },
   params: AcceptParams,
 ): void {
+  // `res` carries `dataGrantApiEndpoint`, a token-bearing (`https://<token>@…`)
+  // endpoint. `returnUrl` / the opener are caller-supplied and MUST NOT be
+  // trusted as the token's destination: the token leaves only for an operator-
+  // allowlisted origin (prod fails closed with no allowlist). Otherwise deliver
+  // the outcome only — the peer app can still read the endpoint from its
+  // authenticated CMC inbox. The trust decision is independent of how the
+  // target origin is chosen, so a crafted `returnUrl` can never harvest it.
+  const selfOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
+  const trustOpts = {
+    trustedOrigins: TRUSTED_RESULT_ORIGINS,
+    selfOrigin,
+    requireAllowlist: import.meta.env.PROD,
+  };
+
   if (params.mode === "redirect" && params.returnUrl) {
     // Only navigate back to an absolute http(s) returnUrl — a `javascript:`
     // or `data:` value would execute in this trusted origin.
     const target = httpUrlOrNull(params.returnUrl);
     if (!target) return;
-    target.searchParams.set("cmcAcceptResult", JSON.stringify(res));
+    const payload = isTrustedResultOrigin(target.origin, trustOpts) ? res : outcomeOnly(res);
+    target.searchParams.set("cmcAcceptResult", JSON.stringify(payload));
     window.location.assign(target.toString());
     return;
   }
   if (window.opener) {
-    // `res` carries `dataGrantApiEndpoint`, a token-bearing endpoint. Pin the
-    // postMessage to the opener's origin so it is not leaked to an arbitrary
-    // listener; `'*'` would broadcast the token to any origin. When no
-    // trustworthy origin can be derived, drop the token-bearing field and only
-    // signal the (non-sensitive) outcome rather than broadcast the secret.
-    const targetOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
-    if (targetOrigin) {
-      window.opener.postMessage({ type: "cmc-accept-result", ...res }, targetOrigin);
-    } else {
-      window.opener.postMessage(
-        { type: "cmc-accept-result", ok: res.ok, acceptEventId: res.acceptEventId, reason: res.reason },
-        "*",
-      );
-    }
+    // Pin to the REAL opener (referrer) first; `returnUrl` is only a fallback
+    // pin hint, never the trust anchor for the token.
+    const pinOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
+    const payload =
+      pinOrigin && isTrustedResultOrigin(pinOrigin, trustOpts) ? res : outcomeOnly(res);
+    // Never broadcast the token: if no origin can be derived, only the
+    // (non-sensitive) outcome may go to '*'.
+    window.opener.postMessage({ type: "cmc-accept-result", ...payload }, pinOrigin ?? "*");
     window.close();
   }
 }
