@@ -20,6 +20,8 @@
  * All four use the user's personal token (obtained via `Service.login`).
  */
 
+import { httpUrlOrNull } from "./safeRedirect";
+
 export interface Permission {
   streamId?: string;
   level?: "read" | "contribute" | "manage";
@@ -183,11 +185,23 @@ export function closeOrRedirect(
     return;
   }
   if (state.status === "REDIRECTED" && state.redirectUrl) {
-    window.location.href = state.redirectUrl;
-    return;
+    // Fail closed: only follow a valid http(s) multi-core handoff target. A
+    // non-http(s) scheme (javascript:/data:) would execute in the auth origin.
+    const safe = httpUrlOrNull(state.redirectUrl);
+    if (safe) {
+      window.location.href = safe.href;
+      return;
+    }
+    // Invalid redirectUrl → drop to the normal completion path below.
   }
   const returnURL = state.returnURL;
   if (!returnURL || returnURL === "false") {
+    window.close();
+    return;
+  }
+  // `returnURL` is query-supplied; reject a non-http(s) scheme (open-redirect /
+  // javascript:-scheme XSS) before building + assigning the completion URL.
+  if (!httpUrlOrNull(returnURL)) {
     window.close();
     return;
   }

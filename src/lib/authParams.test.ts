@@ -70,4 +70,25 @@ describe("buildCompletionUrl", () => {
     );
     expect(out).not.toMatch(/@user\.pryv\.me/);
   });
+
+  it("rejects a javascript:-scheme returnURL (XSS in the auth origin)", () => {
+    expect(() =>
+      buildCompletionUrl("javascript:alert(document.domain)", "https://user.pryv.me/", null),
+    ).toThrow();
+  });
+
+  it("rejects a data:-scheme returnURL", () => {
+    expect(() =>
+      buildCompletionUrl("data:text/html,<script>alert(1)</script>", "https://user.pryv.me/", null),
+    ).toThrow();
+  });
+
+  it("rejects a relative / non-absolute returnURL", () => {
+    expect(() => buildCompletionUrl("/relative/cb", "https://user.pryv.me/", null)).toThrow();
+  });
+
+  it("allows an http returnURL (local dev over http is common)", () => {
+    const out = buildCompletionUrl("http://localhost:8080/cb", "https://user.pryv.me/", null);
+    expect(out).toMatch(/^http:\/\/localhost:8080\/cb\?/);
+  });
 });

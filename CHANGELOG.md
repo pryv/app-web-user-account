@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-07-17
+
+### Security
+
+- Legacy auth-completion flow no longer navigates to an unvalidated
+  query-supplied `returnURL` scheme. `buildCompletionUrl` (sign-in / register /
+  MFA completion) and `closeOrRedirect` (access-request flow, incl. the
+  `REDIRECTED` multi-core handoff `redirectUrl`) now reject any non-`http(s)`
+  target, closing an open-redirect and a `javascript:`/`data:`-scheme XSS that
+  would run in the auth origin. Extends the `safeRedirect` guard that already
+  covered the consent / OAuth2 / CMC surfaces to these legacy paths.
 
 ### Added
 

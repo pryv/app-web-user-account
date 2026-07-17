@@ -1,7 +1,7 @@
 {
   "name": "app-web-user-account",
   "description": "Pryv user-account web app: authentication flows and self-service account management (profile, security/MFA, connected apps, data rights). Reference implementation, themeable and meant to be self-hosted by operators.",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "license": "BSD-3-Clause",
   "author": "Pryv <info@pryv.com> (https://pryv.com)",
   "type": "module",

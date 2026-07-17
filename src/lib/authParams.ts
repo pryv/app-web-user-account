@@ -12,6 +12,8 @@
  * in `backTo.ts`.
  */
 
+import { assertHttpUrl } from "./safeRedirect";
+
 const DEFAULT_APP_ID = "pryv-user-account";
 
 export interface AuthParams {
@@ -45,13 +47,19 @@ export function parseAuthParams(search: string): AuthParams {
  *
  * Token-embedded URLs MUST NOT appear here — GET parameters end up in browser
  * history, server access logs, and Referer headers.
+ *
+ * `returnURL` is query-supplied and fully attacker-controllable, so it is
+ * validated as an absolute http(s) URL first: a `javascript:`/`data:` scheme
+ * parses fine through `new URL(...)` and would execute in the auth origin when
+ * the result is assigned to `window.location.href`. Throws (fail-closed — no
+ * navigation) on any non-http(s) scheme or invalid URL.
  */
 export function buildCompletionUrl(
   returnURL: string,
   endpointWithoutToken: string,
   state: string | null,
 ): string {
-  const url = new URL(returnURL);
+  const url = assertHttpUrl(returnURL);
   if (state) url.searchParams.set("state", state);
   url.searchParams.set("pryvApiEndpoint", endpointWithoutToken);
   return url.toString();
