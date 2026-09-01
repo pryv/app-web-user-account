@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ShieldOff, Copy, ScrollText } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-react";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useSession } from "../../lib/session";
 
@@ -13,25 +14,35 @@ interface Access {
 }
 
 /**
- * Security: SMS-based MFA enrolment/disable + active personal sessions.
+ * Security: MFA enrolment/disable + active personal sessions.
  *
+ * MFA supports two methods: an authenticator app (TOTP, the default) and SMS.
  * The server doesn't expose a "is MFA currently enabled?" probe, so the page
- * surfaces both Enable and Disable affordances and lets the user pick — the
- * server will reject a no-op call clearly enough for the UI to relay.
+ * surfaces both Enable (method chooser) and Disable affordances and lets the
+ * user pick — the server rejects a no-op call clearly enough for the UI to
+ * relay.
  *
  * MFA uses raw fetch against the REST routes (POST /{user}/mfa/activate +
- * /confirm + /deactivate); these aren't exposed via lib-js's batch API.
+ * /confirm + /deactivate); these aren't exposed via lib-js's batch API. The
+ * activate route answers 302 with a JSON body and no Location header, so a
+ * default (follow) fetch returns the body readably.
  */
+type EnrollMethod = "totp" | "sms";
+
 export default function Security() {
   const { connection } = useSession();
 
   // MFA enable flow state
+  const [enrollMethod, setEnrollMethod] = useState<EnrollMethod | null>(null);
   const [phone, setPhone] = useState("");
   const [enrollMfaToken, setEnrollMfaToken] = useState<string | null>(null);
   const [enrollCode, setEnrollCode] = useState("");
   const [enrollBusy, setEnrollBusy] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  // TOTP enrolment material (from mfa.activate).
+  const [otpauthUri, setOtpauthUri] = useState<string | null>(null);
+  const [totpSecret, setTotpSecret] = useState<string | null>(null);
 
   // Disable state
   const [disableBusy, setDisableBusy] = useState(false);
@@ -74,34 +85,62 @@ export default function Security() {
     return c;
   }
 
-  async function startEnroll(e: React.FormEvent) {
+  function resetEnroll() {
+    setEnrollMethod(null);
+    setEnrollMfaToken(null);
+    setEnrollCode("");
+    setPhone("");
+    setOtpauthUri(null);
+    setTotpSecret(null);
+    setEnrollError(null);
+  }
+
+  // POST mfa/activate. The route answers 302 with a JSON body and no Location
+  // header, so a default (follow) fetch returns the body; parse it regardless
+  // of the 3xx status.
+  async function activate(
+    payload: Record<string, unknown>,
+  ): Promise<{ mfaToken?: string; otpauthUri?: string; secret?: string; method?: string }> {
+    const c = rest();
+    const res = await fetch(c.endpoint + "mfa/activate", {
+      method: "POST",
+      headers: { Authorization: c.token, "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const text = await res.text().catch(() => "");
+    if (res.status >= 400) {
+      throw new Error("activate failed (" + res.status + "): " + text.slice(0, 200));
+    }
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      throw new Error("Could not read the enrolment response from the server.");
+    }
+  }
+
+  async function startTotp() {
+    setEnrollMethod("totp");
+    setEnrollBusy(true);
+    setEnrollError(null);
+    try {
+      const body = await activate({ method: "totp" });
+      setEnrollMfaToken(body.mfaToken ?? null);
+      setOtpauthUri(body.otpauthUri ?? null);
+      setTotpSecret(body.secret ?? null);
+    } catch (err: unknown) {
+      setEnrollError(err instanceof Error ? err.message : "Could not start setup.");
+    } finally {
+      setEnrollBusy(false);
+    }
+  }
+
+  async function startSms(e: React.FormEvent) {
     e.preventDefault();
     setEnrollBusy(true);
     setEnrollError(null);
     try {
-      const c = rest();
-      const res = await fetch(c.endpoint + "mfa/activate", {
-        method: "POST",
-        headers: { Authorization: c.token, "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
-        // mfa.activate returns 302 on success per the open-pryv.io route binding.
-        redirect: "manual",
-      });
-      if (!res.ok && res.status !== 302 && res.type !== "opaqueredirect") {
-        throw new Error("activate failed (" + res.status + "): " + (await res.text()).slice(0, 200));
-      }
-      // 302 has no readable body cross-origin; the success signal IS the 302.
-      // The mfaToken is only obtainable via the body when the server returns
-      // 200; if the server returns a 302 we ask the user to look in the SMS
-      // text alone and proceed via challenge re-send.
-      const body = await res.text().catch(() => "");
-      let token: string | null = null;
-      try {
-        token = body ? (JSON.parse(body) as { mfaToken?: string }).mfaToken ?? null : null;
-      } catch {
-        token = null;
-      }
-      setEnrollMfaToken(token);
+      const body = await activate({ method: "sms", phone });
+      setEnrollMfaToken(body.mfaToken ?? null);
     } catch (err: unknown) {
       setEnrollError(err instanceof Error ? err.message : "Could not start enrolment.");
     } finally {
@@ -133,6 +172,9 @@ export default function Security() {
       setEnrollMfaToken(null);
       setEnrollCode("");
       setPhone("");
+      setEnrollMethod(null);
+      setOtpauthUri(null);
+      setTotpSecret(null);
     } catch (err: unknown) {
       setEnrollError(err instanceof Error ? err.message : "Could not confirm code.");
     } finally {
@@ -199,10 +241,106 @@ export default function Security() {
         {disableNotice && <Alert tone="success">{disableNotice}</Alert>}
         {disableError && <Alert>{disableError}</Alert>}
         {enrollError && <Alert>{enrollError}</Alert>}
-        {!enrollMfaToken && !recoveryCodes && (
-          <form onSubmit={startEnroll} className="mb-3">
+        {!recoveryCodes && !enrollMethod && (
+          <div className="mb-3">
+            <p className="mb-3 text-sm text-muted">
+              Add a second step at sign-in. Choose a method:
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={startTotp}
+                disabled={enrollBusy}
+                className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+              >
+                <Smartphone size={18} className="mt-0.5 text-primary" aria-hidden />
+                <span>
+                  <span className="block text-sm font-medium">Authenticator app</span>
+                  <span className="block text-xs text-muted">
+                    Recommended. Google Authenticator, 1Password, etc.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEnrollMethod("sms")}
+                disabled={enrollBusy}
+                className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+              >
+                <MessageSquare size={18} className="mt-0.5 text-primary" aria-hidden />
+                <span>
+                  <span className="block text-sm font-medium">Text message (SMS)</span>
+                  <span className="block text-xs text-muted">Receive a code on your phone.</span>
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Authenticator-app (TOTP) enrolment */}
+        {!recoveryCodes && enrollMethod === "totp" && (
+          <div className="mb-3">
+            {enrollBusy && !otpauthUri && (
+              <p className="text-sm text-muted">Preparing your secret…</p>
+            )}
+            {otpauthUri && (
+              <>
+                <p className="mb-2 text-sm text-muted">
+                  Scan this QR code with your authenticator app, then enter the 6-digit
+                  code it shows.
+                </p>
+                <div className="mb-3 inline-block rounded bg-white p-3">
+                  <QRCodeSVG value={otpauthUri} size={160} />
+                </div>
+                {totpSecret && (
+                  <div className="mb-3 text-xs text-muted">
+                    Can't scan? Enter this key manually:
+                    <div className="mt-1 flex items-center gap-2">
+                      <code className="rounded border border-divider px-2 py-1 font-mono text-sm tracking-wider">
+                        {totpSecret}
+                      </code>
+                      <button
+                        type="button"
+                        title="Copy key"
+                        onClick={() => {
+                          if (navigator.clipboard) void navigator.clipboard.writeText(totpSecret);
+                        }}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <Copy size={14} aria-hidden /> Copy
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <form onSubmit={confirmEnroll}>
+                  <Field
+                    id="mfa-code"
+                    label="Code from your app"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    value={enrollCode}
+                    onChange={(e) => setEnrollCode(e.target.value)}
+                    required
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={enrollBusy || !enrollCode} className="w-auto">
+                      {enrollBusy ? "Confirming…" : "Confirm"}
+                    </Button>
+                    <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* SMS enrolment */}
+        {!recoveryCodes && enrollMethod === "sms" && !enrollMfaToken && (
+          <form onSubmit={startSms} className="mb-3">
             <p className="mb-2 text-sm text-muted">
-              Enable SMS-based MFA. We'll send a code to your phone to verify.
+              We'll send a code to your phone to verify.
             </p>
             <Field
               id="mfa-phone"
@@ -213,13 +351,18 @@ export default function Security() {
               onChange={(e) => setPhone(e.target.value)}
               required
             />
-            <Button type="submit" disabled={enrollBusy || !phone} className="w-auto">
-              {enrollBusy ? "Sending code…" : "Send code"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={enrollBusy || !phone} className="w-auto">
+                {enrollBusy ? "Sending code…" : "Send code"}
+              </Button>
+              <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
+                Cancel
+              </Button>
+            </div>
           </form>
         )}
-        {enrollMfaToken && (
-          <form onSubmit={confirmEnroll}>
+        {!recoveryCodes && enrollMethod === "sms" && enrollMfaToken && (
+          <form onSubmit={confirmEnroll} className="mb-3">
             <p className="mb-2 text-sm text-muted">
               We sent a code to <strong>{phone}</strong>. Enter it below to confirm.
             </p>
@@ -232,9 +375,14 @@ export default function Security() {
               onChange={(e) => setEnrollCode(e.target.value)}
               required
             />
-            <Button type="submit" disabled={enrollBusy || !enrollCode} className="w-auto">
-              {enrollBusy ? "Confirming…" : "Confirm"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={enrollBusy || !enrollCode} className="w-auto">
+                {enrollBusy ? "Confirming…" : "Confirm"}
+              </Button>
+              <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
+                Cancel
+              </Button>
+            </div>
           </form>
         )}
         <div className="mt-3 border-t border-divider pt-3">

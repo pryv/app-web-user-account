@@ -81,6 +81,7 @@ export function ConsentSignIn({
   const error = internalError ?? externalError ?? null;
 
   const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [mfaMethod, setMfaMethod] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
 
   async function finish(userId: string, result: unknown) {
@@ -105,7 +106,10 @@ export function ConsentSignIn({
       } catch (err) {
         if (isMfaRequired(err)) {
           const mt = (err as { mfaToken: string }).mfaToken;
-          await service.mfaChallenge(userId, mt);
+          const mm = (err as { method?: string }).method ?? null;
+          setMfaMethod(mm);
+          // TOTP codes come from the user's app; only SMS needs a challenge sent.
+          if (mm !== "totp") await service.mfaChallenge(userId, mt);
           setMfaToken(mt);
           return;
         }
@@ -144,7 +148,9 @@ export function ConsentSignIn({
       <Card>
         <h1 className="mb-1 text-2xl">Verify it's you</h1>
         <p className="mb-4 text-sm text-muted">
-          Enter the verification code we sent to confirm sign-in.
+          {mfaMethod === "totp"
+            ? "Enter the 6-digit code from your authenticator app to confirm sign-in."
+            : "Enter the verification code we sent to confirm sign-in."}
         </p>
         {error && <Alert>{error}</Alert>}
         <form onSubmit={submitMfa}>

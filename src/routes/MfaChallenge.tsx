@@ -8,6 +8,7 @@ import { useSession, type PryvConnection } from "../lib/session";
 interface MfaState {
   userId?: string;
   mfaToken?: string;
+  method?: string;
   search?: string;
 }
 
@@ -26,6 +27,8 @@ export default function MfaChallenge() {
 
   const userId = state.userId ?? params.get("userId") ?? "";
   const mfaToken = state.mfaToken ?? params.get("mfaToken") ?? "";
+  const method = state.method ?? params.get("method") ?? undefined;
+  const isTotp = method === "totp";
 
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -77,7 +80,9 @@ export default function MfaChallenge() {
     <Card>
       <h1 className="mb-1 text-2xl">Verify it's you</h1>
       <p className="mb-6 text-sm text-muted">
-        Enter the verification code to continue.
+        {isTotp
+          ? "Enter the 6-digit code from your authenticator app to continue."
+          : "Enter the verification code to continue."}
       </p>
       {!ready && (
         <Alert>This challenge link is missing or expired. Start over from sign-in.</Alert>
@@ -87,7 +92,7 @@ export default function MfaChallenge() {
       <form onSubmit={onSubmit}>
         <Field
           id="code"
-          label="Verification code"
+          label={isTotp ? "Authenticator code" : "Verification code"}
           inputMode="numeric"
           autoComplete="one-time-code"
           value={code}
@@ -99,11 +104,14 @@ export default function MfaChallenge() {
           {busy ? "Verifying…" : "Verify"}
         </Button>
       </form>
-      <div className="mt-4 text-sm">
-        <Button variant="ghost" type="button" onClick={resend} disabled={!ready}>
-          Resend code
-        </Button>
-      </div>
+      {/* TOTP codes are generated on the user's device — nothing to resend. */}
+      {!isTotp && (
+        <div className="mt-4 text-sm">
+          <Button variant="ghost" type="button" onClick={resend} disabled={!ready}>
+            Resend code
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

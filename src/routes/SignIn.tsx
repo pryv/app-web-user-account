@@ -82,7 +82,7 @@ export default function SignIn() {
     } catch (err: unknown) {
       if (isMfaRequired(err)) {
         navigate("/mfa-challenge", {
-          state: { userId, mfaToken: err.mfaToken, search },
+          state: { userId, mfaToken: err.mfaToken, method: (err as { method?: string }).method, search },
         });
         return;
       }
