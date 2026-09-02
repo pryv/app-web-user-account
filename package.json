@@ -23,7 +23,7 @@
     "@pryv/socket.io": "^3.8.0",
     "events": "^3.3.0",
     "lucide-react": "^1.21.0",
-    "pryv": "^3.8.0",
+    "pryv": "^3.11.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
