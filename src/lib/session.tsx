@@ -9,6 +9,11 @@ export interface PryvConnection {
   username(): Promise<string>;
   accessInfo(forceRefresh?: boolean): Promise<unknown>;
   api(calls: Array<{ method: string; params: unknown }>): Promise<unknown[]>;
+  /** The lib-js Service this connection was built from; `.info()` returns the
+   *  service-info (used to read `features.mfa.methods`). */
+  service: {
+    info(forceFetch?: boolean): Promise<{ features?: { mfa?: { methods?: string[] } } } & Record<string, unknown>>;
+  };
 }
 
 interface Session {

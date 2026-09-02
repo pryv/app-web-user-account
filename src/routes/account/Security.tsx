@@ -43,6 +43,9 @@ export default function Security() {
   // TOTP enrolment material (from mfa.activate).
   const [otpauthUri, setOtpauthUri] = useState<string | null>(null);
   const [totpSecret, setTotpSecret] = useState<string | null>(null);
+  // MFA methods the server has active (service-info `features.mfa.methods`).
+  // null = not yet known; [] = MFA off on this server; else the offered methods.
+  const [mfaMethods, setMfaMethods] = useState<EnrollMethod[] | null>(null);
 
   // Disable state
   const [disableBusy, setDisableBusy] = useState(false);
@@ -60,6 +63,17 @@ export default function Security() {
       const id = (info as { id?: string } | null)?.id;
       if (id) setSelfId(id);
     }).catch(() => {});
+    // Which MFA methods does this server actually offer? Render only those.
+    connection.service.info().then((info) => {
+      const raw = info?.features?.mfa?.methods;
+      if (Array.isArray(raw)) {
+        setMfaMethods(raw.filter((m): m is EnrollMethod => m === "totp" || m === "sms"));
+      } else {
+        // Older core without features.mfa: default to TOTP-only (the shipped
+        // default, works with no config) — never advertise unconfigured SMS.
+        setMfaMethods(["totp"]);
+      }
+    }).catch(() => setMfaMethods(["totp"]));
     loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connection]);
@@ -129,6 +143,9 @@ export default function Security() {
       setTotpSecret(body.secret ?? null);
     } catch (err: unknown) {
       setEnrollError(err instanceof Error ? err.message : "Could not start setup.");
+      // Return to the method chooser so a failed start is recoverable (the QR
+      // section, which holds Cancel, never rendered). The error stays visible.
+      setEnrollMethod(null);
     } finally {
       setEnrollBusy(false);
     }
@@ -241,38 +258,53 @@ export default function Security() {
         {disableNotice && <Alert tone="success">{disableNotice}</Alert>}
         {disableError && <Alert>{disableError}</Alert>}
         {enrollError && <Alert>{enrollError}</Alert>}
-        {!recoveryCodes && !enrollMethod && (
+        {!recoveryCodes && !enrollMethod && mfaMethods === null && (
+          <p className="mb-3 text-sm text-muted">Loading…</p>
+        )}
+        {!recoveryCodes && !enrollMethod && mfaMethods !== null && mfaMethods.length === 0 && (
+          <p className="mb-3 text-sm text-muted">
+            Multi-factor authentication is not enabled on this server.
+          </p>
+        )}
+        {!recoveryCodes && !enrollMethod && mfaMethods !== null && mfaMethods.length > 0 && (
           <div className="mb-3">
             <p className="mb-3 text-sm text-muted">
-              Add a second step at sign-in. Choose a method:
+              {mfaMethods.length > 1
+                ? "Add a second step at sign-in. Choose a method:"
+                : "Add a second step at sign-in:"}
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={startTotp}
-                disabled={enrollBusy}
-                className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-              >
-                <Smartphone size={18} className="mt-0.5 text-primary" aria-hidden />
-                <span>
-                  <span className="block text-sm font-medium">Authenticator app</span>
-                  <span className="block text-xs text-muted">
-                    Recommended. Google Authenticator, 1Password, etc.
+              {/* Only methods the operator has actually configured are offered. */}
+              {mfaMethods.includes("totp") && (
+                <button
+                  type="button"
+                  onClick={startTotp}
+                  disabled={enrollBusy}
+                  className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                >
+                  <Smartphone size={18} className="mt-0.5 text-primary" aria-hidden />
+                  <span>
+                    <span className="block text-sm font-medium">Authenticator app</span>
+                    <span className="block text-xs text-muted">
+                      Recommended. Google Authenticator, 1Password, etc.
+                    </span>
                   </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setEnrollMethod("sms")}
-                disabled={enrollBusy}
-                className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
-              >
-                <MessageSquare size={18} className="mt-0.5 text-primary" aria-hidden />
-                <span>
-                  <span className="block text-sm font-medium">Text message (SMS)</span>
-                  <span className="block text-xs text-muted">Receive a code on your phone.</span>
-                </span>
-              </button>
+                </button>
+              )}
+              {mfaMethods.includes("sms") && (
+                <button
+                  type="button"
+                  onClick={() => setEnrollMethod("sms")}
+                  disabled={enrollBusy}
+                  className="flex items-start gap-2 rounded border border-divider p-3 text-left hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+                >
+                  <MessageSquare size={18} className="mt-0.5 text-primary" aria-hidden />
+                  <span>
+                    <span className="block text-sm font-medium">Text message (SMS)</span>
+                    <span className="block text-xs text-muted">Receive a code on your phone.</span>
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         )}
