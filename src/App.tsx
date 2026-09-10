@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Layout from "./components/Layout";
 import PagePlaceholder from "./components/PagePlaceholder";
 import SignIn from "./routes/SignIn";
+import SsoLanding from "./routes/SsoLanding";
 import Register from "./routes/Register";
 import ResetPassword from "./routes/ResetPassword";
 import ChangePassword from "./routes/ChangePassword";
@@ -38,6 +39,7 @@ export default function App() {
       <Routes>
         {/* Auth flows */}
         <Route path="/signin" element={<SignIn />} />
+        <Route path="/sso-signin" element={<SsoLanding />} />
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/change-password" element={<ChangePassword />} />

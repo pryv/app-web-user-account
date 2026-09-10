@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Third-party sign-in (SSO) — beta.** When the core exposes providers
+  (`GET /auth/sso/providers`), the sign-in page shows "Sign in with <provider>"
+  buttons. A new `/sso-signin` landing route receives the core's callback on the
+  URL fragment, clears it before any network call, and redeems the one-time
+  shared-secret hand-off for the session (the session token never appears in a
+  URL); an MFA-active account is routed through the existing `/mfa-challenge`
+  continuation, and refusals show a coarse message. Requires `pryvServiceInfoUrl`
+  on the landing URL; inert unless the core has SSO configured.
+
 ## 0.1.0 — 2026-07-17
 
 ### Security

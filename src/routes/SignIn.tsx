@@ -4,6 +4,12 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
 import { useSession, type PryvConnection } from "../lib/session";
+import {
+  fetchSsoProviders,
+  coreOriginFromApiEndpoint,
+  ssoStartUrl,
+  type SsoProvider,
+} from "../lib/ssoLanding";
 
 /**
  * Sign-in / authorize. Calls `Service.login`; on `MfaRequiredError` it routes to
@@ -17,6 +23,32 @@ export default function SignIn() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ssoProviders, setSsoProviders] = useState<SsoProvider[]>([]);
+  const [ssoOrigin, setSsoOrigin] = useState<string | null>(null);
+
+  // Third-party sign-in buttons, when the operator configured providers. Best
+  // effort: any failure (no service-info, feature off, network) leaves the page
+  // password-only. `apiEndpointFor` only builds a URL, so the placeholder user
+  // need not exist; SSO is dnsLess-only, so the core origin is shared.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const service = getService(search);
+        const origin = coreOriginFromApiEndpoint(await service.apiEndpointFor("_"));
+        const providers = await fetchSsoProviders(origin);
+        if (!cancelled) {
+          setSsoOrigin(origin);
+          setSsoProviders(providers);
+        }
+      } catch {
+        if (!cancelled) setSsoProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [search]);
 
   // A session persisted from an earlier sign-in (localStorage) lets the user
   // continue without re-entering credentials. "Not me" clears it so a
@@ -147,6 +179,29 @@ export default function SignIn() {
           {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
+      {ssoOrigin && ssoProviders.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center gap-3 text-xs uppercase tracking-wide text-muted">
+            <span className="h-px flex-1 bg-divider" />
+            or
+            <span className="h-px flex-1 bg-divider" />
+          </div>
+          <div className="flex flex-col gap-2">
+            {ssoProviders.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  window.location.href = ssoStartUrl(ssoOrigin, p.id);
+                }}
+                className="w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                Sign in with {p.label ?? p.id}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mt-4 flex justify-between text-sm">
         <Link to={`/reset-password${search}`} className="text-primary hover:underline">
           Forgot password?
