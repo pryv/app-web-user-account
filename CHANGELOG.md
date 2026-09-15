@@ -11,6 +11,9 @@
   verified email at sign-up (`features.emailVerification.atRegistration` on the
   service-info), the registration form adds a send-code / verify-code step
   before the account is created; platforms without that flag are unchanged.
+  The `/verify-email` page drops the verification token from the address bar as
+  soon as it has read it, so the token does not linger in browser history or in
+  the Referer of anything opened from that page.
 
 - **Third-party sign-in (SSO) — beta.** When the core exposes providers
   (`GET /auth/sso/providers`), the sign-in page shows "Sign in with <provider>"
