@@ -10,9 +10,17 @@ export interface PryvConnection {
   accessInfo(forceRefresh?: boolean): Promise<unknown>;
   api(calls: Array<{ method: string; params: unknown }>): Promise<unknown[]>;
   /** The lib-js Service this connection was built from; `.info()` returns the
-   *  service-info (used to read `features.mfa.methods`). */
+   *  service-info (used to read `features.mfa.methods` and the
+   *  `features.emailVerification` flags). */
   service: {
-    info(forceFetch?: boolean): Promise<{ features?: { mfa?: { methods?: string[] } } } & Record<string, unknown>>;
+    info(forceFetch?: boolean): Promise<
+      {
+        features?: {
+          mfa?: { methods?: string[] };
+          emailVerification?: { atRegistration?: boolean; onAccount?: boolean };
+        };
+      } & Record<string, unknown>
+    >;
   };
 }
 

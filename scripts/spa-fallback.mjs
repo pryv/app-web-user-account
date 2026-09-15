@@ -15,8 +15,10 @@ if (!existsSync(index)) {
 
 const routes = [
   "signin",
+  "sso-signin",
   "register",
   "reset-password",
+  "verify-email",
   "change-password",
   "mfa-challenge",
   "cmc-accept",

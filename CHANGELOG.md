@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Email verification.** The profile page lists every address on the account
+  with its verification status (verified, not verified, unconfirmed) and can
+  request a verification link or add an address. A new `/verify-email` page
+  consumes the mailed link or a pasted code. When the platform requires a
+  verified email at sign-up (`features.emailVerification.atRegistration` on the
+  service-info), the registration form adds a send-code / verify-code step
+  before the account is created; platforms without that flag are unchanged.
+  The `/verify-email` page drops the verification token from the address bar as
+  soon as it has read it, so the token does not linger in browser history or in
+  the Referer of anything opened from that page.
+
 - **Third-party sign-in (SSO) — beta.** When the core exposes providers
   (`GET /auth/sso/providers`), the sign-in page shows "Sign in with <provider>"
   buttons. A new `/sso-signin` landing route receives the core's callback on the

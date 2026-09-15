@@ -62,6 +62,9 @@ Every route accepts these query parameters:
 - `/account/profile`, `/account/security`, `/account/apps`, `/account/data`,
   `/change-password`, `/reset-password` — self-service pages; combine with
   `backUrl`/`backLabel` so users find their way back to you.
+- `/verify-email` — the landing page for a verification email. Don't link it
+  directly: point the core's `auth:emailVerificationPageURL` at it and the
+  mailed link arrives with `verifyToken` and `username` already set.
 - `/auth` — the access-request consent flow. Don't link it directly: create an
   access request (lib-js `Pryv.Browser.setupAuth(...)` or
   `POST {register}/access`, optionally passing `authUrl` pointing at this
@@ -129,6 +132,7 @@ like, configure your platform to point there.
 | CMC accept hand-off | `/access/cmc-accept` | `/cmc-accept` (and `/cmc/approve` alias) |
 | CMC scope-update hand-off | `/access/cmc-scope-update` | `/cmc-scope-update` |
 | Self-service account management | (not in app-web-auth3) | `/account/{profile,security,apps,data}` |
+| Email verification landing | (not in app-web-auth3) | `/verify-email?verifyToken=…&username=…` — set the core's `auth:emailVerificationPageURL` to this URL |
 
 ### Migration steps (operator-side)
 
