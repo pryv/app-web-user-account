@@ -282,7 +282,6 @@ export default function Register() {
                 </>
               ) : (
                 <>
-                  <Alert tone="success">Email verified.</Alert>
                   <Button
                     type="button"
                     variant="ghost"
