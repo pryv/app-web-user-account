@@ -5,6 +5,7 @@ import SignIn from "./routes/SignIn";
 import SsoLanding from "./routes/SsoLanding";
 import Register from "./routes/Register";
 import ResetPassword from "./routes/ResetPassword";
+import VerifyEmail from "./routes/VerifyEmail";
 import ChangePassword from "./routes/ChangePassword";
 import MfaChallenge from "./routes/MfaChallenge";
 import CmcApprove from "./routes/CmcApprove";
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="/sso-signin" element={<SsoLanding />} />
         <Route path="/register" element={<Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/change-password" element={<ChangePassword />} />
 
         {/* Hybrid MFA challenge — also launchable standalone by a CLI */}

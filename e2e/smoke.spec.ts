@@ -27,6 +27,12 @@ test.describe("smoke — public routes render", () => {
     await expect(page.getByRole("heading", { name: "Reset password" })).toBeVisible();
   });
 
+  test("/verify-email shows the verification form", async ({ page }) => {
+    await page.goto("/verify-email");
+    await expect(page.getByRole("heading", { name: "Verify your email address" })).toBeVisible();
+    await expect(page.getByLabel("Verification code")).toBeVisible();
+  });
+
   test("/mfa-challenge without userId/mfaToken shows an explanatory alert", async ({ page }) => {
     await page.goto("/mfa-challenge");
     await expect(page.getByRole("alert")).toContainText("missing or expired");
