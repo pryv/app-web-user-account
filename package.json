@@ -20,6 +20,7 @@
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/roboto-condensed": "^5.2.8",
     "@pryv/cmc": "^3.7.1",
+    "@pryv/delegation": "^3.11.0",
     "@pryv/socket.io": "^3.8.0",
     "events": "^3.3.0",
     "lucide-react": "^1.21.0",

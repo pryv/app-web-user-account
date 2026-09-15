@@ -6,6 +6,7 @@ const TABS = [
   { to: "/account/profile", label: "Profile" },
   { to: "/account/security", label: "Security" },
   { to: "/account/apps", label: "Connected apps" },
+  { to: "/account/delegation", label: "Delegation" },
   { to: "/account/data", label: "Your data" },
 ];
 

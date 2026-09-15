@@ -16,6 +16,7 @@ import Profile from "./routes/account/Profile";
 import Security from "./routes/account/Security";
 import ConnectedApps from "./routes/account/ConnectedApps";
 import DataRights from "./routes/account/DataRights";
+import DelegationPage from "./routes/account/Delegation";
 import AuditAccess from "./routes/account/AuditAccess";
 
 /** Internal redirect that forwards the current `?…` query through. */
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="security" element={<Security />} />
           <Route path="apps" element={<ConnectedApps />} />
           <Route path="data" element={<DataRights />} />
+          <Route path="delegation" element={<DelegationPage />} />
           <Route path="audit-access/:accessId" element={<AuditAccess />} />
         </Route>
 
