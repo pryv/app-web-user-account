@@ -47,15 +47,21 @@ export default function VerifyEmail() {
   }
 
   if (done) {
+    // Carry the platform context on, but not the spent token: it has no further
+    // use and would otherwise follow the reader into their history and Referer.
+    const onward = new URLSearchParams(search);
+    onward.delete("verifyToken");
+    onward.delete("username");
+    const onwardSearch = onward.toString() ? `?${onward.toString()}` : "";
     return (
       <Card>
         <h1 className="mb-2 text-2xl">Email verified</h1>
         <Alert tone="success">{done} is now confirmed on your account.</Alert>
         <div className="mt-4 flex flex-col gap-2 text-sm">
-          <Link to={`/account/profile${search}`} className="text-primary hover:underline">
+          <Link to={`/account/profile${onwardSearch}`} className="text-primary hover:underline">
             Go to your account
           </Link>
-          <Link to={`/signin${search}`} className="text-primary hover:underline">
+          <Link to={`/signin${onwardSearch}`} className="text-primary hover:underline">
             Sign in
           </Link>
         </div>
