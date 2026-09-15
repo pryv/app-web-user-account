@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
@@ -22,6 +22,19 @@ export default function VerifyEmail() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+
+  // The token has been read into state; drop it from the address bar so the
+  // history entry and any outbound Referer do not carry it. Same-path replace,
+  // so the back button is unaffected.
+  useEffect(() => {
+    if (!params.has("verifyToken")) return;
+    const kept = new URLSearchParams(window.location.search);
+    kept.delete("verifyToken");
+    const q = kept.toString();
+    window.history.replaceState(null, "", window.location.pathname + (q ? `?${q}` : ""));
+    // Once, on mount: the token is already in state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

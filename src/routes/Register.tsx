@@ -163,7 +163,9 @@ export default function Register() {
         setDone(true);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Registration failed.");
+      // Route through the shared mapper so a verification-related refusal reads
+      // as guidance rather than as the server's raw sentence.
+      setError(err instanceof Error ? emailVerificationErrorMessage(err) : "Registration failed.");
     } finally {
       setBusy(false);
     }
@@ -347,7 +349,9 @@ export default function Register() {
             </select>
           </div>
         )}
-        <Button type="submit" disabled={busy || (gateOn === true && emailProof == null)}>
+        {/* gateOn === null means the service-info has not answered yet: submitting
+            then would take the no-gate path and be refused by the core. */}
+        <Button type="submit" disabled={busy || gateOn === null || (gateOn && emailProof == null)}>
           {busy ? "Creating…" : "Create account"}
         </Button>
       </form>
