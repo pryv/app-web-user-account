@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
+import { handoffReturnPath } from "../lib/handoffReturn";
 import { useSession, type PryvConnection } from "../lib/session";
 
 interface MfaState {
@@ -56,7 +57,7 @@ export default function MfaChallenge() {
           csrfState,
         );
       } else {
-        navigate("/account");
+        navigate(handoffReturnPath(search) ?? "/account");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Verification failed.");

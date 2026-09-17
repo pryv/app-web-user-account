@@ -8,6 +8,7 @@ import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { isTrustedResultOrigin } from "../lib/oauth2Flow";
+import { signInLinkFor } from "../lib/handoffReturn";
 
 /** Operator allowlist of origins trusted to receive the token-bearing
  * `dataGrantApiEndpoint` — same control as the OAuth `pryvApi` allowlist. */
@@ -144,7 +145,7 @@ export default function CmcApprove() {
           Sign in to review and approve this request{offer?.requester?.displayName ? ` from ${offer.requester.displayName}` : ""}.
         </p>
         <Link
-          to={`/signin${search}`}
+          to={signInLinkFor("/cmc-accept", search)}
           className="inline-flex w-full items-center justify-center rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:brightness-95"
         >
           Sign in to continue

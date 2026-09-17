@@ -13,6 +13,10 @@
   request id that is not on the signed-in account. A request that was already
   answered is shown as such with nothing left to click, and a slow platform
   answer is reported as "still processing" instead of a failure.
+- **Signing in from `/cmc-accept` or `/cmc-scope-update` returns to that page.** It
+  used to land on the account profile, so the user had to open the link again.
+  The page to return to is matched exactly against those two routes (never a
+  URL), and an auth-flow `returnURL` keeps precedence. Also after an MFA step.
 - **Accepting an invitation no longer fails when the scope stream does not exist
   yet.** Fixed on the platform side (a core carrying the fix provisions the
   scope when the user accepts); no change to `/cmc-accept`. Fixes #2.

@@ -8,6 +8,7 @@ import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { answeredRequestMessage, scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
+import { signInLinkFor } from "../lib/handoffReturn";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -144,7 +145,7 @@ export default function CmcScopeUpdate() {
           Sign in to review and approve this scope-update request.
         </p>
         <Link
-          to={`/signin${search}`}
+          to={signInLinkFor("/cmc-scope-update", search)}
           className="inline-flex w-full items-center justify-center rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:brightness-95"
         >
           Sign in to continue

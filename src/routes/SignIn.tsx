@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
+import { handoffReturnPath } from "../lib/handoffReturn";
 import { useSession, type PryvConnection } from "../lib/session";
 import {
   fetchSsoProviders,
@@ -77,6 +78,11 @@ export default function SignIn() {
   function completeSignedIn(conn: PryvConnection, serviceInfoUrl: string | null, returnURL: string | null, state: string | null) {
     if (returnURL) {
       window.location.href = buildCompletionUrl(returnURL, conn.endpoint, state);
+      return;
+    }
+    const handoff = handoffReturnPath(search);
+    if (handoff) {
+      navigate(handoff);
       return;
     }
     const target = serviceInfoUrl
