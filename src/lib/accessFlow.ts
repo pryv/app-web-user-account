@@ -60,6 +60,19 @@ export interface AccessState {
   username?: string;
   redirectUrl?: string;
   lang?: string;
+  /**
+   * The consent form, present only when the app created its request with a
+   * `consent` sidecar AND the server understood it. Absent means the older
+   * contract: the whole permission set, all or nothing.
+   *
+   * `permissions` here are the SAME entries as `requestedPermissions`, with
+   * the consent-layer annotations added, so the screen can open each row in
+   * the right state and the accept can send a subset.
+   */
+  consent?: {
+    allowUserChoice?: boolean;
+    permissions: Permission[];
+  };
 }
 
 /** Fetch the access-state JSON from the registration server's poll URL. */
@@ -69,21 +82,38 @@ export async function loadAccessState(pollUrl: string): Promise<AccessState> {
   return (await res.json()) as AccessState;
 }
 
+/** What the register answered to an ACCEPTED / REFUSED post. The body
+ * matters when the server checked the grant and refused it: it carries the
+ * reason, and which of `invalid-consent-grant` (the grant is wrong) or
+ * `consent-check-unavailable` (the server could not check) it was. */
+export interface AccessStateUpdateResult {
+  status: number;
+  errorId?: string;
+  reason?: string;
+}
+
 /**
- * Notify register of the final access state (ACCEPTED / REFUSED). Returns the
- * HTTP status. Errors are surfaced but `closeOrRedirect` runs in `finally`
- * either way per the legacy contract.
+ * Notify register of the final access state (ACCEPTED / REFUSED). Errors are
+ * surfaced but `closeOrRedirect` runs in `finally` either way per the legacy
+ * contract.
  */
 export async function updateAccessState(
   pollUrl: string,
   state: Partial<AccessState>,
-): Promise<number> {
+): Promise<AccessStateUpdateResult> {
   const res = await fetch(pollUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(state),
   });
-  return res.status;
+  if (res.ok) return { status: res.status };
+  try {
+    const body = (await res.json()) as { error?: { id?: string; data?: { reason?: string } } };
+    return { status: res.status, errorId: body?.error?.id, reason: body?.error?.data?.reason };
+  } catch {
+    // A non-JSON error body tells us nothing more than the status did.
+    return { status: res.status };
+  }
 }
 
 /**

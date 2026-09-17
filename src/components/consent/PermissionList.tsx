@@ -31,7 +31,7 @@ export function PermissionList({
               <input
                 id={idPrefix + "-" + i}
                 type="checkbox"
-                checked={e.locked || (flags?.[i] ?? true)}
+                checked={e.locked || (flags?.[i] ?? e.initiallyTicked)}
                 disabled={e.locked}
                 onChange={(ev) => onToggle(i, ev.target.checked)}
               />
