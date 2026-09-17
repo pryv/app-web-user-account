@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`/cmc-scope-update` reports success only once the change is applied.** The
+  page said "The new permission set has been granted" as soon as the answer was
+  written, even when the platform changed nothing. It now waits for the
+  platform's outcome (requires `@pryv/cmc` 3.14 and a core that applies approved
+  scope requests), notes when the collector could not be told yet, hands the
+  platform's error id (not English text) back to the calling app, and explains a
+  request id that is not on the signed-in account.
+- **Accepting an invitation no longer fails when the scope stream does not exist
+  yet.** Fixed on the platform side (a core carrying the fix provisions the
+  scope when the user accepts); no change to `/cmc-accept`. Fixes #2.
+
 ### Added
 
 - **Email verification.** The profile page lists every address on the account

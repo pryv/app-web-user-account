@@ -7,6 +7,7 @@ import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
+import { scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -28,7 +29,13 @@ function parseParams(search: string): ScopeUpdateParams {
 }
 
 function deliverResult(
-  res: { ok: boolean; updateEventId?: string; action?: "accept" | "refuse"; reason?: string },
+  res: {
+    ok: boolean;
+    updateEventId?: string;
+    action?: "accept" | "refuse";
+    reason?: string;
+    peerNotified?: boolean;
+  },
   params: ScopeUpdateParams,
 ): void {
   if (params.mode === "redirect" && params.returnUrl) {
@@ -75,6 +82,7 @@ export default function CmcScopeUpdate() {
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
+  const [doneNote, setDoneNote] = useState<string | null>(null);
 
   // Load the scope-request event to show WHAT the collector proposes —
   // the user should never approve an unseen permission set.
@@ -87,10 +95,10 @@ export default function CmcScopeUpdate() {
           { method: "events.getOne", params: { id: params.scopeRequestEventId } },
         ])) as Array<{
           event?: { content?: { newPermissions?: OfferPermission[]; message?: unknown } };
-          error?: { message: string };
+          error?: { id?: string; message: string };
         }>;
         if (cancelled) return;
-        if (res?.error) throw new Error(res.error.message);
+        if (res?.error) throw Object.assign(new Error(res.error.message), { id: res.error.id });
         const content = res?.event?.content;
         if (!content || !Array.isArray(content.newPermissions)) {
           throw new Error("The scope-update request carries no permission set.");
@@ -108,9 +116,7 @@ export default function CmcScopeUpdate() {
         });
       } catch (err: unknown) {
         if (cancelled) return;
-        setLoadError(
-          err instanceof Error ? err.message : "Could not load the scope-update request.",
-        );
+        setLoadError(scopeUpdateFailure(err, "Could not load the scope-update request.").message);
       }
     })();
     return () => {
@@ -149,18 +155,21 @@ export default function CmcScopeUpdate() {
     setWorking("accept");
     setError(null);
     try {
+      // Resolves only once the platform applied the new permission set;
+      // throws when nothing changed.
       const res = (await cmc.acceptScopeUpdate(connection, params.scopeRequestEventId, {
         scopeStreamId: params.scopeStreamId ?? undefined,
-      })) as { updateAcceptEventId: string };
+      })) as { updateAcceptEventId: string; peerNotified?: boolean };
+      setDoneNote(scopeUpdateSuccessNote(res));
       setDone("accepted");
       deliverResult(
-        { ok: true, updateEventId: res.updateAcceptEventId, action: "accept" },
+        { ok: true, updateEventId: res.updateAcceptEventId, action: "accept", peerNotified: res.peerNotified },
         params,
       );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not approve.";
-      setError(msg);
-      deliverResult({ ok: false, reason: msg }, params);
+      const failure = scopeUpdateFailure(err, "Could not approve.");
+      setError(failure.message);
+      deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
     }
@@ -180,9 +189,9 @@ export default function CmcScopeUpdate() {
         params,
       );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not decline.";
-      setError(msg);
-      deliverResult({ ok: false, reason: msg }, params);
+      const failure = scopeUpdateFailure(err, "Could not decline.");
+      setError(failure.message);
+      deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
     }
@@ -199,6 +208,7 @@ export default function CmcScopeUpdate() {
             ? "The new permission set has been granted."
             : "The scope-update request was declined."}
         </Alert>
+        {doneNote && <p className="mb-2 text-sm text-muted">{doneNote}</p>}
         <p className="text-sm text-muted">You can close this window.</p>
       </Card>
     );
