@@ -244,9 +244,16 @@ export default function Auth() {
     };
     const result = await checkAppAccess(endpoint, token, checkData);
     if (result.matchingAccess) {
-      // Already authorized — short-circuit through close_or_redirect with the
+      // Already authorized: short-circuit through close_or_redirect with the
       // existing access token.
-      await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
+      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
+      if (refusal != null) {
+        // The register refused this existing access, or could not verify it.
+        // Say so rather than leaving the user on a page that looks stuck.
+        // The access is NOT deleted here: it predates this request, so it is
+        // not ours to remove.
+        setError(consentRefusalMessage(refusal));
+      }
       return;
     }
     setCheck(result);
@@ -484,6 +491,10 @@ export default function Auth() {
     <ConsentSignIn
       makeService={makeService}
       appId={APP_ID}
+      // A refusal raised on the already-authorized short-circuit lands here,
+      // after check-app has answered but before any consent panel exists.
+      // Without this the message would be set and never rendered.
+      externalError={error}
       prompt={
         <>
           Sign in to grant access to{" "}

@@ -31,21 +31,28 @@ vi.mock("../lib/accessFlow", () => flow);
 vi.mock("../components/consent/ConsentSignIn", () => ({
   ConsentSignIn: ({
     onSignedIn,
+    externalError,
   }: {
     onSignedIn: (s: { username: string; personalToken: string; endpoint: string }) => void;
+    externalError?: string | null;
   }) => (
-    <button
-      type="button"
-      onClick={() =>
-        void onSignedIn({
-          username: "alice",
-          personalToken: "personal-token",
-          endpoint: "https://alice.core.test/",
-        })
-      }
-    >
-      sign-in-stub
-    </button>
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          void onSignedIn({
+            username: "alice",
+            personalToken: "personal-token",
+            endpoint: "https://alice.core.test/",
+          })
+        }
+      >
+        sign-in-stub
+      </button>
+      {/* The real component renders this; the stub must too, or a message
+          raised before the consent panel exists would look swallowed. */}
+      {externalError ? <p>{externalError}</p> : null}
+    </div>
   ),
 }));
 
@@ -168,6 +175,34 @@ describe("[AUCP] /auth consent panel", () => {
     expect(await screen.findByText(/could not be verified/i)).toBeTruthy();
     // And the wording is NOT the one used for a genuinely bad grant.
     expect(screen.queryByText(/does not match what this app requested/i)).toBeNull();
+  });
+
+  it("[AUC5] a refusal on the already-authorized short-circuit is shown, not swallowed", async () => {
+    // check-app can answer with an access that already matches, and the page
+    // hands it straight to the register. If the register refuses THAT, the
+    // page used to discard the answer and sit on the sign-in card forever.
+    flow.loadAccessState.mockResolvedValue(stateWithConsent());
+    flow.checkAppAccess.mockResolvedValue({
+      matchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: OFFER },
+    });
+    flow.updateAccessState.mockResolvedValue({
+      status: 400,
+      errorId: "invalid-consent-grant",
+      reason: "mandatory-refused",
+    });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+
+    expect(await screen.findByText(/permissions this app requires were not granted/i)).toBeTruthy();
+    // The pre-existing access is not ours to delete: it predates this request.
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
   });
 
   it("[AUC4] without a consent form the list stays all-or-nothing", async () => {
