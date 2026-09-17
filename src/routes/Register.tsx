@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
+import { handoffReturnPath } from "../lib/handoffReturn";
 import { useSession, type PryvConnection } from "../lib/session";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {
@@ -154,7 +155,8 @@ export default function Register() {
           const target = serviceInfoUrl
             ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
             : "/account/profile";
-          navigate(target);
+          // Back to the hand-off page the user came from, if any.
+          navigate(handoffReturnPath(search) ?? target);
         }
         return;
       } catch {

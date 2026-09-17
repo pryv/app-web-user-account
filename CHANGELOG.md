@@ -16,7 +16,8 @@
 - **Signing in from `/cmc-accept` or `/cmc-scope-update` returns to that page.** It
   used to land on the account profile, so the user had to open the link again.
   The page to return to is matched exactly against those two routes (never a
-  URL), and an auth-flow `returnURL` keeps precedence. Also after an MFA step.
+  URL), and an auth-flow `returnURL` keeps precedence. Also after an MFA step,
+  and after creating an account from the sign-in page's "Create account" link.
 - **Accepting an invitation no longer fails when the scope stream does not exist
   yet.** Fixed on the platform side (a core carrying the fix provisions the
   scope when the user accepts); no change to `/cmc-accept`. Fixes #2.
