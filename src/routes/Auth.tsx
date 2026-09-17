@@ -282,7 +282,14 @@ export default function Auth() {
       // The server could not verify the grant, which says nothing about the
       // access. Give it one more chance before treating this as a failure.
       await new Promise((resolve) => setTimeout(resolve, 1200));
-      result = await updateAccessState(query.pollUrl, accepted);
+      try {
+        result = await updateAccessState(query.pollUrl, accepted);
+      } catch {
+        // A retry that cannot even reach the register is still a refusal to
+        // hand over: report it like one, so the caller cleans up the access
+        // it minted rather than letting the throw skip that.
+        result = { status: 503, errorId: "consent-check-unavailable", reason: "retry-failed" };
+      }
     }
     if (result.status >= 400) return result;
     closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli);
