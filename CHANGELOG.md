@@ -10,7 +10,9 @@
   platform's outcome (requires `@pryv/cmc` 3.14 and a core that applies approved
   scope requests), notes when the collector could not be told yet, hands the
   platform's error id (not English text) back to the calling app, and explains a
-  request id that is not on the signed-in account.
+  request id that is not on the signed-in account. A request that was already
+  answered is shown as such with nothing left to click, and a slow platform
+  answer is reported as "still processing" instead of a failure.
 - **Accepting an invitation no longer fails when the scope stream does not exist
   yet.** Fixed on the platform side (a core carrying the fix provisions the
   scope when the user accepts); no change to `/cmc-accept`. Fixes #2.

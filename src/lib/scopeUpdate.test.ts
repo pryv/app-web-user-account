@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { REQUEST_NOT_FOUND_MESSAGE, scopeUpdateFailure, scopeUpdateSuccessNote } from "./scopeUpdate";
+import {
+  ALREADY_ANSWERED_MESSAGE,
+  OUTCOME_UNKNOWN_MESSAGE,
+  REQUEST_NOT_FOUND_MESSAGE,
+  answeredRequestMessage,
+  scopeUpdateFailure,
+  scopeUpdateSuccessNote,
+} from "./scopeUpdate";
+
+describe("answeredRequestMessage", () => {
+  it("reports a request already answered, and nothing for an open one", () => {
+    expect(answeredRequestMessage("accepted")).toMatch(/approved/);
+    expect(answeredRequestMessage("refused")).toMatch(/declined/);
+    expect(answeredRequestMessage(undefined)).toBeNull();
+    expect(answeredRequestMessage("delivered")).toBeNull();
+  });
+});
 
 function cmcError(message: string, id: string): Error {
   const e = new Error(message) as Error & { id: string };
@@ -20,6 +36,17 @@ describe("scopeUpdateFailure", () => {
       const f = scopeUpdateFailure(cmcError("whatever", id));
       expect(f).toEqual({ reason: id, message: REQUEST_NOT_FOUND_MESSAGE });
     }
+  });
+
+  it("does not call a wait that ended early a failure", () => {
+    for (const id of ["cmc-scope-update-outcome-unknown", "cmc-capability-timeout"]) {
+      expect(scopeUpdateFailure(cmcError("timed out", id))).toEqual({ reason: id, message: OUTCOME_UNKNOWN_MESSAGE });
+    }
+  });
+
+  it("explains a request that was already answered", () => {
+    const f = scopeUpdateFailure(cmcError("x", "cmc-scope-request-already-answered"));
+    expect(f).toEqual({ reason: "cmc-scope-request-already-answered", message: ALREADY_ANSWERED_MESSAGE });
   });
 
   it("falls back to the message when there is no id", () => {

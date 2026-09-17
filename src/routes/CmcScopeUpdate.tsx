@@ -7,7 +7,7 @@ import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
-import { scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
+import { answeredRequestMessage, scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -77,6 +77,8 @@ export default function CmcScopeUpdate() {
   const [proposal, setProposal] = useState<{
     newPermissions: OfferPermission[];
     message: string | null;
+    /** Set when the request was already answered: nothing left to decide. */
+    answered: string | null;
   } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
@@ -94,7 +96,7 @@ export default function CmcScopeUpdate() {
         const [res] = (await connection.api([
           { method: "events.getOne", params: { id: params.scopeRequestEventId } },
         ])) as Array<{
-          event?: { content?: { newPermissions?: OfferPermission[]; message?: unknown } };
+          event?: { content?: { newPermissions?: OfferPermission[]; message?: unknown; status?: unknown } };
           error?: { id?: string; message: string };
         }>;
         if (cancelled) return;
@@ -113,6 +115,7 @@ export default function CmcScopeUpdate() {
         setProposal({
           newPermissions: content.newPermissions,
           message: message || null,
+          answered: answeredRequestMessage(content.status),
         });
       } catch (err: unknown) {
         if (cancelled) return;
@@ -182,10 +185,11 @@ export default function CmcScopeUpdate() {
     try {
       const res = (await cmc.refuseScopeUpdate(connection, params.scopeRequestEventId, {
         scopeStreamId: params.scopeStreamId ?? undefined,
-      })) as { updateRefuseEventId: string };
+      })) as { updateRefuseEventId: string; peerNotified?: boolean };
+      setDoneNote(scopeUpdateSuccessNote(res));
       setDone("refused");
       deliverResult(
-        { ok: true, updateEventId: res.updateRefuseEventId, action: "refuse" },
+        { ok: true, updateEventId: res.updateRefuseEventId, action: "refuse", peerNotified: res.peerNotified },
         params,
       );
     } catch (err: unknown) {
@@ -221,6 +225,7 @@ export default function CmcScopeUpdate() {
         The collector is requesting a change to the permissions you previously granted.
       </p>
       {loadError && <Alert>{loadError}</Alert>}
+      {proposal?.answered && <Alert>{proposal.answered}</Alert>}
       {error && <Alert>{error}</Alert>}
       {proposal && (
         <>
@@ -237,7 +242,7 @@ export default function CmcScopeUpdate() {
       </div>
       <ConsentActions
         busy={working}
-        disabled={!proposal}
+        disabled={!proposal || proposal.answered != null}
         acceptLabel="Approve"
         refuseLabel="Decline"
         onAccept={() => void accept()}
