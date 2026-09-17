@@ -1,11 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Pryv from "pryv";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
-import { consentEntries, type OfferPermission } from "../lib/consent";
+import {
+  consentEntries,
+  grantedPermissions,
+  initialFlags,
+  permissionKey,
+  type OfferPermission,
+} from "../lib/consent";
 import { useSession, storedServiceInfoUrl, type PryvConnection } from "../lib/session";
 import {
   loadAccessState,
@@ -16,6 +22,8 @@ import {
   closeOrRedirect,
   deriveServiceInfoUrlFromPollUrl,
   type AccessState,
+  type AccessStateUpdateResult,
+  type Permission,
   type AppCheck,
 } from "../lib/accessFlow";
 
@@ -56,9 +64,14 @@ function parseAuthQuery(search: string): AuthQuery {
  *
  * Sign-in, permission render and Accept/Reject come from the shared
  * consent kit (`components/consent/`); this container keeps only the
- * legacy wire protocol (poll state, check-app, access creation). The
- * legacy access-request grammar has no `mandatory`/`allowUserChoice`
- * annotations — the permission list renders all-or-nothing.
+ * legacy wire protocol (poll state, check-app, access creation).
+ *
+ * An access request may carry a consent form (the `consent` field of the
+ * poll state, present when the app annotated its request and this server
+ * understood it). With one, the list behaves exactly as the OAuth2 consent
+ * screen does: required entries locked, opt-in entries opening unticked,
+ * and only the ticked subset minted. Without one, the older grammar
+ * applies and the whole list renders all-or-nothing.
  *
  * Mirrors app-web-auth3's `Authorization.vue` + `bits/Permissions.vue` +
  * `ops/{login,check_access,accept_access,refuse_access,close_or_redirect,
@@ -83,6 +96,35 @@ export default function Auth() {
 
   const [check, setCheck] = useState<AppCheck | null>(null);
   const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
+
+  // The consent form, present only when the app sent a `consent` sidecar
+  // AND this server understood it. Without one the legacy contract applies:
+  // one locked list, accept or deny.
+  const consentForm = accessState?.consent;
+  const allowsChoice = consentForm?.allowUserChoice === true;
+
+  // The rows to render. The annotations come from the consent form; the
+  // display names come from check-app, which resolved them against the
+  // account's real stream names. They are matched on what an entry GRANTS,
+  // never on its name, which is the server's identity rule.
+  const entries = useMemo(() => {
+    const checked = (check?.checkedPermissions ?? []) as OfferPermission[];
+    if (consentForm == null) return consentEntries(checked);
+    const byKey = new Map(checked.map((p) => [permissionKey(p), p]));
+    const annotated = (consentForm.permissions as OfferPermission[]).map((p) => {
+      const resolved = byKey.get(permissionKey(p));
+      return resolved == null ? p : { ...resolved, mandatory: p.mandatory, optIn: p.optIn };
+    });
+    return consentEntries(annotated, { allowUserChoice: allowsChoice });
+  }, [check, consentForm, allowsChoice]);
+
+  // Re-seeded whenever the rows change, because they arrive asynchronously
+  // (check-app runs after sign-in), so a one-shot initializer would capture
+  // an empty list and leave every optional entry unticked.
+  const [grantedFlags, setGrantedFlags] = useState<boolean[]>([]);
+  useEffect(() => {
+    setGrantedFlags(initialFlags(entries));
+  }, [entries]);
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
@@ -202,16 +244,32 @@ export default function Auth() {
     };
     const result = await checkAppAccess(endpoint, token, checkData);
     if (result.matchingAccess) {
-      // Already authorized — short-circuit through close_or_redirect with the
+      // Already authorized: short-circuit through close_or_redirect with the
       // existing access token.
-      await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
+      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
+      if (refusal != null) {
+        // The register refused this existing access, or could not verify it.
+        // Say so rather than leaving the user on a page that looks stuck.
+        // The access is NOT deleted here: it predates this request, so it is
+        // not ours to remove.
+        setError(consentRefusalMessage(refusal));
+      }
       return;
     }
     setCheck(result);
   }
 
-  async function finalizeAccepted(token: string, endpoint: string, asUser?: string) {
-    if (!accessState || !query.pollUrl) return;
+  /**
+   * Post the ACCEPTED state and hand over. Returns the register's answer
+   * when it refused, so the caller can undo what it minted; on success it
+   * closes the flow and returns null.
+   */
+  async function finalizeAccepted(
+    token: string,
+    endpoint: string,
+    asUser?: string,
+  ): Promise<AccessStateUpdateResult | null> {
+    if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
     const accepted: Partial<AccessState> = {
       status: "ACCEPTED",
@@ -219,8 +277,40 @@ export default function Auth() {
       username: asUser ?? username,
       token,
     };
-    await updateAccessState(query.pollUrl, accepted);
+    let result = await updateAccessState(query.pollUrl, accepted);
+    if (result.errorId === "consent-check-unavailable") {
+      // The server could not verify the grant, which says nothing about the
+      // access. Give it one more chance before treating this as a failure.
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      try {
+        result = await updateAccessState(query.pollUrl, accepted);
+      } catch {
+        // A retry that cannot even reach the register is still a refusal to
+        // hand over: report it like one, so the caller cleans up the access
+        // it minted rather than letting the throw skip that.
+        result = { status: 503, errorId: "consent-check-unavailable", reason: "retry-failed" };
+      }
+    }
+    if (result.status >= 400) return result;
     closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli);
+    return null;
+  }
+
+  /** What to tell the user when the register refused the grant. */
+  function consentRefusalMessage(result: AccessStateUpdateResult): string {
+    if (result.errorId === "consent-check-unavailable") {
+      return "This access could not be verified right now. Nothing was granted, please try again in a moment.";
+    }
+    switch (result.reason) {
+      case "mandatory-refused":
+        return "Some permissions this app requires were not granted. Tick the required entries, or refuse the request.";
+      case "choice-not-allowed":
+        return "This request must be accepted in full or refused.";
+      case "empty-grant":
+        return "Nothing was granted. Tick at least one permission, or refuse the request.";
+      default:
+        return "The access that was created does not match what this app requested. Please try again.";
+    }
   }
 
   async function accept() {
@@ -228,11 +318,25 @@ export default function Auth() {
     setFinishing("accept");
     setError(null);
     try {
+      // With a consent form the user's ticks decide what is minted; locked
+      // rows are always in. Without one, the whole checked set is minted,
+      // exactly as before.
+      const permissions = (
+        consentForm != null
+          ? grantedPermissions(entries, grantedFlags)
+          : check.checkedPermissions || []
+      ) as Permission[];
+      if (consentForm != null && permissions.length === 0) {
+        // Granting nothing is a refusal; the server would say so anyway.
+        setError("Tick at least one permission, or refuse the request.");
+        setFinishing(null);
+        return;
+      }
       if (check.mismatchingAccess) {
         await deleteAppAccess(apiEndpoint, personalToken, check.mismatchingAccess.id);
       }
       const created = await createAppAccess(apiEndpoint, personalToken, {
-        permissions: check.checkedPermissions || [],
+        permissions,
         name: accessState.requestingAppId || APP_ID,
         type: "app",
         ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
@@ -240,7 +344,18 @@ export default function Auth() {
         ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
         ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
       });
-      await finalizeAccepted(created.token, apiEndpoint);
+      const refusal = await finalizeAccepted(created.token, apiEndpoint);
+      if (refusal != null) {
+        // The access was minted before the register was told, so a refusal
+        // leaves one the app will never receive. Remove it rather than
+        // leave an orphan in the account's connected apps.
+        try {
+          await deleteAppAccess(apiEndpoint, personalToken, created.id);
+        } catch {
+          /* the account can still revoke it from Connected apps */
+        }
+        setError(consentRefusalMessage(refusal));
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not accept.");
     } finally {
@@ -288,17 +403,34 @@ export default function Auth() {
   }
 
   // Permissions panel — visible after sign-in (+ MFA) when check-app returns
-  // checkedPermissions and no matchingAccess short-circuited the flow. The
-  // legacy grammar has no user-choice annotations: all entries render locked.
+  // checkedPermissions and no matchingAccess short-circuited the flow.
+  //
+  // Two shapes meet here. Without a consent form the legacy grammar applies
+  // and every entry renders locked (accept or deny the lot). With one, the
+  // rows carry the app's annotations and behave exactly as on the OAuth2
+  // screen: mandatory rows locked, opt-in rows open unticked.
   if (check && check.checkedPermissions) {
-    const entries = consentEntries(check.checkedPermissions as OfferPermission[]);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           <strong>{accessState.requestingAppId}</strong>
         </h1>
         <p className="mb-2 text-sm">is requesting permission:</p>
-        <PermissionList entries={entries} />
+        <PermissionList
+          entries={entries}
+          flags={allowsChoice ? grantedFlags : undefined}
+          onToggle={
+            allowsChoice
+              ? (i, checked) => setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+              : undefined
+          }
+        />
+        {allowsChoice && (
+          <p className="mb-2 text-sm text-muted">
+            Untick anything you would rather not share. Entries marked as required cannot be
+            unticked.
+          </p>
+        )}
         {accessState.expireAfter != null && (
           <p className="mb-2 text-sm">
             <strong>Expires after:</strong> {accessState.expireAfter}s
@@ -366,6 +498,10 @@ export default function Auth() {
     <ConsentSignIn
       makeService={makeService}
       appId={APP_ID}
+      // A refusal raised on the already-authorized short-circuit lands here,
+      // after check-app has answered but before any consent panel exists.
+      // Without this the message would be set and never rendered.
+      externalError={error}
       prompt={
         <>
           Sign in to grant access to{" "}

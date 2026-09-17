@@ -24,6 +24,25 @@
 
 ### Added
 
+- **Granular consent on the app authorization page.** When an app annotates
+  the permissions it asks for, `/auth` now behaves like the OAuth2 consent
+  screen instead of presenting one all-or-nothing list. Entries the app marked
+  as required stay locked with a "(required by this app)" hint; optional
+  entries can be unticked; entries the app marked as opt-in open **unticked**,
+  so the user has to choose them deliberately. Only the ticked subset is
+  granted, and the annotations never travel on the created access.
+
+  Requests without those annotations are unchanged: the whole list renders
+  locked, exactly as before.
+
+  If the server refuses the grant, the page says why in the user's terms
+  (required permissions missing, all-or-nothing, nothing granted) and removes
+  the access it had just created, rather than leaving one the app will never
+  receive. A server that could not verify the grant at all is treated
+  differently: the page retries once, and only then gives up with a "could not
+  be verified, try again" message, because an unverifiable grant says nothing
+  about whether the access was good.
+
 - **Email verification.** The profile page lists every address on the account
   with its verification status (verified, not verified, unconfirmed) and can
   request a verification link or add an address. A new `/verify-email` page

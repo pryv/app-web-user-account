@@ -1,0 +1,224 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+/**
+ * The legacy `/auth` consent screen, driven end to end through its wire
+ * seams. What is pinned here is the behaviour the lib-level tests cannot
+ * see: that a consent form reaches the rendered rows in the right tick
+ * state, that only the ticked subset is minted, and that a refused grant
+ * takes the just-minted access back out.
+ *
+ * `accessFlow` (every HTTP touchpoint) and the sign-in component are
+ * mocked; everything else is the real component.
+ */
+
+const flow = vi.hoisted(() => ({
+  loadAccessState: vi.fn(),
+  updateAccessState: vi.fn(),
+  checkAppAccess: vi.fn(),
+  createAppAccess: vi.fn(),
+  deleteAppAccess: vi.fn(),
+  closeOrRedirect: vi.fn(),
+  deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
+}));
+
+vi.mock("../lib/accessFlow", () => flow);
+
+// Sign-in is a whole flow of its own (password, MFA); stand in for it with
+// a button that hands back a session, which is all this screen needs.
+vi.mock("../components/consent/ConsentSignIn", () => ({
+  ConsentSignIn: ({
+    onSignedIn,
+    externalError,
+  }: {
+    onSignedIn: (s: { username: string; personalToken: string; endpoint: string }) => void;
+    externalError?: string | null;
+  }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() =>
+          void onSignedIn({
+            username: "alice",
+            personalToken: "personal-token",
+            endpoint: "https://alice.core.test/",
+          })
+        }
+      >
+        sign-in-stub
+      </button>
+      {/* The real component renders this; the stub must too, or a message
+          raised before the consent panel exists would look swallowed. */}
+      {externalError ? <p>{externalError}</p> : null}
+    </div>
+  ),
+}));
+
+vi.mock("pryv", () => ({ default: { Service: class {} } }));
+
+import Auth from "./Auth";
+import { SessionProvider } from "../lib/session";
+
+const OFFER = [
+  { streamId: "diary", level: "read", defaultName: "Journal" },
+  { streamId: "weight", level: "read", defaultName: "Weight" },
+];
+
+/** A poll state carrying a consent form: diary required, weight opt-in. */
+function stateWithConsent() {
+  return {
+    status: "NEED_SIGNIN",
+    requestingAppId: "test-app",
+    requestedPermissions: OFFER,
+    serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+    consent: {
+      allowUserChoice: true,
+      permissions: [
+        { streamId: "diary", level: "read", defaultName: "Journal", mandatory: true },
+        { streamId: "weight", level: "read", defaultName: "Weight", optIn: true },
+      ],
+    },
+  };
+}
+
+async function renderAndSignIn(state: Record<string, unknown>) {
+  flow.loadAccessState.mockResolvedValue(state);
+  flow.checkAppAccess.mockResolvedValue({ checkedPermissions: OFFER });
+  render(
+    <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+      <SessionProvider>
+        <Auth />
+      </SessionProvider>
+    </MemoryRouter>,
+  );
+  const signIn = await screen.findByText("sign-in-stub");
+  signIn.click();
+  await screen.findByText(/is requesting permission/);
+}
+
+function checkboxes(): HTMLInputElement[] {
+  return Array.from(document.querySelectorAll('input[type="checkbox"]'));
+}
+
+describe("[AUCP] /auth consent panel", () => {
+  beforeEach(() => {
+    for (const fn of Object.values(flow)) if (typeof fn.mockReset === "function") fn.mockReset();
+    flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
+    flow.createAppAccess.mockResolvedValue({ id: "acc-new", token: "app-token" });
+    flow.updateAccessState.mockResolvedValue({ status: 200 });
+  });
+  afterEach(() => {
+    // vitest `globals` is off here, so RTL does not auto-clean between
+    // tests and the previous render would still be in the document.
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("[AUC1] opens an opt-in entry unticked and a required one locked, and mints only what is ticked", async () => {
+    await renderAndSignIn(stateWithConsent());
+
+    const boxes = checkboxes();
+    expect(boxes).toHaveLength(2);
+    // diary is required: ticked and not the user's to change.
+    expect(boxes[0].checked).toBe(true);
+    expect(boxes[0].disabled).toBe(true);
+    // weight is opt-in: offered UNticked, and the user may tick it.
+    expect(boxes[1].checked).toBe(false);
+    expect(boxes[1].disabled).toBe(false);
+    expect(screen.getByText(/required by this app/)).toBeTruthy();
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    const minted = flow.createAppAccess.mock.calls[0][2];
+    // Only the required entry: the opt-in one was never ticked. And no
+    // consent annotation travels on the mint.
+    expect(minted.permissions).toEqual([
+      { streamId: "diary", level: "read", defaultName: "Journal" },
+    ]);
+  });
+
+  it("[AUC2] a refused grant removes the access it had just created, and says why", async () => {
+    await renderAndSignIn(stateWithConsent());
+    flow.updateAccessState.mockResolvedValue({
+      status: 400,
+      errorId: "invalid-consent-grant",
+      reason: "mandatory-refused",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.deleteAppAccess).toHaveBeenCalled());
+    // The access minted a moment earlier is the one taken back out.
+    expect(flow.deleteAppAccess.mock.calls[0][2]).toBe("acc-new");
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+    expect(await screen.findByText(/permissions this app requires were not granted/i)).toBeTruthy();
+  });
+
+  it("[AUC3] an unverifiable grant is retried once before the access is given up", async () => {
+    await renderAndSignIn(stateWithConsent());
+    flow.updateAccessState.mockResolvedValue({
+      status: 503,
+      errorId: "consent-check-unavailable",
+      reason: "core-unreachable",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    // Twice: a check that could not run says nothing about the access.
+    // The retry waits before firing, so allow more than the 1s default.
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalledTimes(2), {
+      timeout: 4000,
+    });
+    expect(await screen.findByText(/could not be verified/i)).toBeTruthy();
+    // And the wording is NOT the one used for a genuinely bad grant.
+    expect(screen.queryByText(/does not match what this app requested/i)).toBeNull();
+  });
+
+  it("[AUC5] a refusal on the already-authorized short-circuit is shown, not swallowed", async () => {
+    // check-app can answer with an access that already matches, and the page
+    // hands it straight to the register. If the register refuses THAT, the
+    // page used to discard the answer and sit on the sign-in card forever.
+    flow.loadAccessState.mockResolvedValue(stateWithConsent());
+    flow.checkAppAccess.mockResolvedValue({
+      matchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: OFFER },
+    });
+    flow.updateAccessState.mockResolvedValue({
+      status: 400,
+      errorId: "invalid-consent-grant",
+      reason: "mandatory-refused",
+    });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+
+    expect(await screen.findByText(/permissions this app requires were not granted/i)).toBeTruthy();
+    // The pre-existing access is not ours to delete: it predates this request.
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  it("[AUC4] without a consent form the list stays all-or-nothing", async () => {
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+    });
+
+    // No tick boxes at all: the older grammar renders a read-only list.
+    expect(checkboxes()).toHaveLength(0);
+
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    // The whole checked set is minted, exactly as before consent forms.
+    expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual(OFFER);
+  });
+});

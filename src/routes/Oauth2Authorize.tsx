@@ -5,7 +5,7 @@ import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
-import { consentEntries, grantedPermissions, pickText } from "../lib/consent";
+import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
 import { assertHttpUrl } from "../lib/safeRedirect";
 import {
   parseOAuthState,
@@ -114,7 +114,9 @@ export default function Oauth2Authorize() {
         : [],
     [oauthState],
   );
-  const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() => entries.map(() => true));
+  // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
+  // the user has to choose deliberately.
+  const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() => initialFlags(entries));
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
