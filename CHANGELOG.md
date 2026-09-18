@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- **"Continue as" in the auth popup no longer signs you out on a network or server
+  error.** Any failure while continuing with the stored session (a dropped
+  connection, a 5xx) dropped the session, signing the account pages out too. The
+  session is now dropped only when the platform rejects its token (HTTP 401/403,
+  `invalid-access-token`, `forbidden`); otherwise the popup says "Could not reach
+  the server, please try again." and "Continue as" stays usable.
+- **A direct link to an access's details (`/account/audit-access/<id>`) loads the
+  page** on the local static server (it answered "Not Found": a route with an id
+  cannot be listed in the static fallback, which now also writes `404.html`, as the
+  GitHub Pages build already did). The "Details" links on Connected apps, the "Back
+  to connected apps" and delegation links on the details page, and the page shown
+  after revoking keep the current query (`pryvServiceInfoUrl`), so the platform
+  choice survives the navigation.
 - **Connected apps no longer offers to revoke the accesses that run an account
   delegation.** On an account in a delegation, `/account/apps` listed the control
   access and the delegate's session (and any invitation or notification access)

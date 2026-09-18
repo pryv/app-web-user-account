@@ -39,4 +39,9 @@ for (const route of routes) {
   mkdirSync(dir, { recursive: true });
   cpSync(index, join(dir, "index.html"));
 }
-console.log(`SPA fallback: ${routes.length} route copies of index.html in dist/`);
+// Routes with a dynamic segment (/account/audit-access/:accessId) cannot be
+// listed above: they are served by 404.html, the same fallback GitHub Pages
+// uses (build:pages) and that backloop.dev serves for any unknown path. The
+// body is the app, which routes on the URL; the HTTP status stays 404.
+cpSync(index, join(dist, "404.html"));
+console.log(`SPA fallback: ${routes.length} route copies of index.html + 404.html in dist/`);
