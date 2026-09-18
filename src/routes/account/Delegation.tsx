@@ -5,11 +5,7 @@ import Pryv from "pryv";
 import { Delegation } from "@pryv/delegation";
 import type { DelegateRecord, ControlledRecord } from "@pryv/delegation";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
-import {
-  useSession,
-  storedServiceInfoUrl,
-  type PryvConnection,
-} from "../../lib/session";
+import { useSession, type PryvConnection } from "../../lib/session";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {
   runFlow,
@@ -39,7 +35,7 @@ import {
  * "Accounts I manage" list): a delegate cannot detach itself.
  */
 export default function DelegationPage() {
-  const { connection, setConnection } = useSession();
+  const { connection, actingAs, actAs } = useSession();
   const { search } = useLocation();
   const navigate = useNavigate();
 
@@ -93,13 +89,14 @@ export default function DelegationPage() {
         onNotice={setNotice}
         onOpen={async (username) => {
           // Hand-off: mint a delegate PAT for the controlled account and make it
-          // this tab's active session ("act as that account"). This replaces the
-          // current account's session in place; the delegated session cannot
-          // detach delegates (a genuine login is required — surfaced under
-          // "My delegates"). To return to your own account, sign in again.
+          // this tab's active session ("act as that account"). The current
+          // session is kept, and the banner offers to go back to it. The
+          // delegated session cannot detach delegates (a genuine login is
+          // required, surfaced under "My delegates").
           const res = await runFlow(() => client.openControlled(username));
           if (!res.ok) return res.message;
-          setConnection(res.value as unknown as PryvConnection, storedServiceInfoUrl());
+          const parentUsername = actingAs?.parentUsername ?? (await connection.username());
+          actAs(res.value as unknown as PryvConnection, { username, parentUsername });
           navigate("/account/profile" + search);
           return null;
         }}

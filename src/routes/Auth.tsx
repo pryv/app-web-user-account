@@ -13,6 +13,20 @@ import {
   type OfferPermission,
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, type PryvConnection } from "../lib/session";
+import { Delegation } from "@pryv/delegation";
+import { runFlow, delegationErrorMessage } from "../lib/delegation";
+import {
+  offersTargets,
+  grantTargets,
+  preselectedTarget,
+  delegationHint,
+  isDelegatedChild,
+  openDelegatedWorkspace,
+  markRequestDone,
+  wasRequestDone,
+  type GrantTarget,
+  type DelegationHint,
+} from "../lib/grantFor";
 import {
   loadAccessState,
   updateAccessState,
@@ -97,6 +111,24 @@ export default function Auth() {
   const [check, setCheck] = useState<AppCheck | null>(null);
   const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
 
+  // "Who is this for?": offered after sign-in when the platform runs account
+  // delegation, the app allows it, and the user controls other accounts.
+  // `owner` keeps the signed-in account's own credentials while it is open.
+  const [targets, setTargets] = useState<GrantTarget[] | null>(null);
+  const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
+  const [owner, setOwner] = useState<{
+    username: string;
+    endpoint: string;
+    token: string;
+    client: { getToken(u: string): Promise<{ token: string; apiEndpoint: string }> };
+  } | null>(null);
+  // Set when granting on a controlled account. `personalToken` then holds a
+  // delegate token for that account: in memory only, never stored and never
+  // made the session.
+  const [grantFor, setGrantFor] = useState<DelegationHint | null>(null);
+  // The request was decided in this tab and the server has since forgotten it.
+  const [requestDone, setRequestDone] = useState(false);
+
   // The consent form, present only when the app sent a `consent` sidecar
   // AND this server understood it. Without one the legacy contract applies:
   // one locked list, accept or deny.
@@ -170,7 +202,7 @@ export default function Auth() {
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
-      await runCheckApp(conn.endpoint, conn.token, asUser);
+      await afterSignIn(conn.endpoint, conn.token, asUser, storedConnection);
     } catch {
       // Stored token no longer valid (revoked/expired) — drop it and let the
       // user sign in normally.
@@ -216,6 +248,12 @@ export default function Auth() {
         }
       } catch (err: unknown) {
         if (cancelled) return;
+        // Reloaded after this tab decided the request and the server has
+        // since forgotten it: that is completion, not an error.
+        if ((err as { status?: number })?.status === 400 && wasRequestDone(query.pollUrl!)) {
+          setRequestDone(true);
+          return;
+        }
         setInitError(err instanceof Error ? err.message : "Failed to load access state.");
       }
     })();
@@ -230,7 +268,66 @@ export default function Auth() {
     return new Pryv.Service(svcInfoUrl ?? "");
   }
 
-  async function runCheckApp(endpoint: string, token: string, asUser?: string) {
+  /**
+   * After sign-in: offer "who is this for?" when it applies, else go straight
+   * to the consent step for the signed-in account.
+   */
+  async function afterSignIn(
+    endpoint: string,
+    token: string,
+    asUser: string,
+    connection: PryvConnection | null,
+  ) {
+    if (connection && accessState) {
+      let info: unknown = null;
+      try {
+        info = await connection.service.info();
+      } catch {
+        info = null;
+      }
+      if (offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs)) {
+        const client = Delegation.fromConnection(connection, { pryv: Pryv });
+        const listed = await runFlow(() => client.listControlled());
+        const choices = listed.ok ? grantTargets(asUser, listed.value) : [];
+        if (choices.length > 1) {
+          setOwner({ username: asUser, endpoint, token, client });
+          setTargets(choices);
+          setSelectedTarget(preselectedTarget(choices, accessState.actAs).username);
+          return;
+        }
+      }
+    }
+    await runCheckApp(endpoint, token, asUser);
+  }
+
+  /** Continue with the account picked in the selector. */
+  async function continueWithTarget() {
+    if (!owner || !targets) return;
+    const target = targets.find((t) => t.username === selectedTarget) ?? targets[0];
+    setBusy(true);
+    setError(null);
+    try {
+      if (target.self) {
+        setTargets(null);
+        await runCheckApp(owner.endpoint, owner.token, owner.username);
+        return;
+      }
+      const workspace = await openDelegatedWorkspace(owner.client, target.username);
+      const hint = delegationHint(target.username, { username: owner.username });
+      setUsername(workspace.username);
+      setPersonalToken(workspace.token);
+      setApiEndpoint(workspace.apiEndpoint);
+      setGrantFor(hint);
+      setTargets(null);
+      await runCheckApp(workspace.apiEndpoint, workspace.token, workspace.username, hint);
+    } catch (err: unknown) {
+      setError(delegationErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runCheckApp(endpoint: string, token: string, asUser?: string, hint?: DelegationHint) {
     if (!accessState) return;
     // != null (not !== undefined): the poll state carries explicit `null`s
     // for absent fields, and the check-app schema rejects e.g. clientData:null.
@@ -245,8 +342,10 @@ export default function Auth() {
     const result = await checkAppAccess(endpoint, token, checkData);
     if (result.matchingAccess) {
       // Already authorized: short-circuit through close_or_redirect with the
-      // existing access token.
-      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser);
+      // existing access token. On a controlled account, the access is only
+      // described as delegated when it was granted through the delegation.
+      const reuseHint = hint != null && isDelegatedChild(result.matchingAccess) ? hint : undefined;
+      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint);
       if (refusal != null) {
         // The register refused this existing access, or could not verify it.
         // Say so rather than leaving the user on a page that looks stuck.
@@ -268,6 +367,7 @@ export default function Auth() {
     token: string,
     endpoint: string,
     asUser?: string,
+    hint?: DelegationHint,
   ): Promise<AccessStateUpdateResult | null> {
     if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
@@ -276,6 +376,7 @@ export default function Auth() {
       apiEndpoint: apiEp,
       username: asUser ?? username,
       token,
+      ...(hint != null ? { delegation: hint } : {}),
     };
     let result = await updateAccessState(query.pollUrl, accepted);
     if (result.errorId === "consent-check-unavailable") {
@@ -292,6 +393,9 @@ export default function Auth() {
       }
     }
     if (result.status >= 400) return result;
+    markRequestDone(query.pollUrl);
+    // The delegate token has done its job: drop it before handing over.
+    if (grantFor != null || hint != null) setPersonalToken(null);
     closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli);
     return null;
   }
@@ -344,7 +448,9 @@ export default function Auth() {
         ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
         ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
       });
-      const refusal = await finalizeAccepted(created.token, apiEndpoint);
+      // A fresh access minted with the delegate token carries the lineage
+      // marker, so the hint is true for it.
+      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? undefined);
       if (refusal != null) {
         // The access was minted before the register was told, so a refusal
         // leaves one the app will never receive. Remove it rather than
@@ -375,6 +481,7 @@ export default function Auth() {
       };
       try {
         await updateAccessState(query.pollUrl, refused);
+        markRequestDone(query.pollUrl);
       } catch {
         /* close anyway per legacy contract */
       }
@@ -393,11 +500,55 @@ export default function Auth() {
     );
   }
 
+  if (requestDone) {
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">Authorize access</h1>
+        <p className="text-sm">This request is complete. You can close this window.</p>
+      </Card>
+    );
+  }
+
   if (!accessState) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">Authorize access</h1>
         <p className="text-sm text-muted">Loading access request…</p>
+      </Card>
+    );
+  }
+
+  // "Who is this for?": the signed-in account, or an account it controls.
+  if (targets != null && owner != null) {
+    const appName = accessState.requestingAppId || "the requesting app";
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">
+          Grant <strong>{appName}</strong> access to:
+        </h1>
+        <fieldset className="mb-4 space-y-2">
+          <legend className="sr-only">Account to grant access to</legend>
+          {targets.map((t) => (
+            <label key={t.username} className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="grant-target"
+                value={t.username}
+                checked={selectedTarget === t.username}
+                onChange={() => setSelectedTarget(t.username)}
+              />
+              <strong>{t.username}</strong>
+              <span className="text-muted">{t.self ? "(me)" : `(via ${owner.username})`}</span>
+            </label>
+          ))}
+        </fieldset>
+        {error && <Alert>{error}</Alert>}
+        <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
+          {busy ? "Checking…" : `Continue for ${selectedTarget ?? owner.username}`}
+        </Button>
+        <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
+          Cancel
+        </Button>
       </Card>
     );
   }
@@ -523,7 +674,7 @@ export default function Auth() {
         if (s.endpoint) {
           setConnection(s.connection as PryvConnection, flowSvcInfoUrl);
         }
-        await runCheckApp(endpoint, s.personalToken, s.username);
+        await afterSignIn(endpoint, s.personalToken, s.username, (s.connection as PryvConnection) ?? null);
       }}
       onCancel={() => void refuse()}
       cancelDisabled={finishing !== null}

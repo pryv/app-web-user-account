@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Added
+
+- **Grant an app access for an account you control.** On a platform that runs
+  account delegation, after signing in the `/auth` page asks who the access is for:
+  the signed-in account or one of the accounts it controls (active delegations
+  only). For a controlled account the page obtains a delegate token for that
+  account, keeps it in memory only (never stored, never made the session), creates
+  the app access there and tells the app it was granted through the delegation. An
+  app can preselect an account or turn the question off with its auth request's
+  `actAs` (`"deny"`). Requires a core that stamps accesses granted through a
+  delegation.
+- **"Back to <your account>" after opening a controlled account.** Opening an
+  account from Delegation keeps your own session; a banner shows who you are acting
+  as and returns you to your account. Signing out ends both.
+
+### Fixed
+
+- **Reloading the auth popup after it finished** says the request is complete
+  instead of reporting an unknown request, once the server has forgotten it.
+
 ### Fixed
 
 - **`/cmc-scope-update` reports success only once the change is applied.** The

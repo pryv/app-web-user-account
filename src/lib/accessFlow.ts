@@ -34,6 +34,7 @@ export interface AppAccess {
   token: string;
   type: "app";
   permissions: Permission[];
+  clientData?: Record<string, unknown> | null;
 }
 
 export interface AppCheck {
@@ -73,12 +74,33 @@ export interface AccessState {
     allowUserChoice?: boolean;
     permissions: Permission[];
   };
+  /**
+   * Who the app wants the access for: "allow" (the user may pick an account
+   * they control), "deny" (the signed-in account only) or a username to
+   * preselect. Absent: as "allow".
+   */
+  actAs?: string;
+  /** Display hint posted with ACCEPTED when granted on a controlled account. */
+  delegation?: {
+    isDelegatedAccess: true;
+    controlledUsername: string;
+    delegate: { username: string; hostSlug?: string };
+  };
+}
+
+/** A failed poll-URL read; `status` is the HTTP status. */
+export class AccessStateLoadError extends Error {
+  status: number;
+  constructor(status: number) {
+    super("Invalid data from Access server (" + status + ")");
+    this.status = status;
+  }
 }
 
 /** Fetch the access-state JSON from the registration server's poll URL. */
 export async function loadAccessState(pollUrl: string): Promise<AccessState> {
   const res = await fetch(pollUrl, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error("Invalid data from Access server (" + res.status + ")");
+  if (!res.ok) throw new AccessStateLoadError(res.status);
   return (await res.json()) as AccessState;
 }
 
