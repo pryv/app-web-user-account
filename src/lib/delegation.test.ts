@@ -1,10 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
+import Pryv from "pryv";
 import { DelegationError, errorIds } from "@pryv/delegation";
 import type { DelegateRecord, ControlledRecord } from "@pryv/delegation";
 import {
   delegationErrorMessage,
   delegationErrorId,
   isGenuineLoginRequired,
+  isGrantRequiresOwner,
+  GRANT_REQUIRES_OWNER_ID,
+  GRANT_REQUIRES_OWNER_MESSAGE,
   runFlow,
   statusLabel,
   formatSince,
@@ -68,6 +72,35 @@ describe("delegationErrorId / isGenuineLoginRequired", () => {
   it("detects the genuine-login gate", () => {
     expect(isGenuineLoginRequired(err(errorIds.GENUINE_LOGIN_REQUIRED))).toBe(true);
     expect(isGenuineLoginRequired(err(errorIds.NOT_FOUND))).toBe(false);
+  });
+  it("reads the API error id a pryv PryvError carries in innerObject", () => {
+    expect(delegationErrorId(pryvError(errorIds.GRANT_REQUIRES_OWNER))).toBe(errorIds.GRANT_REQUIRES_OWNER);
+  });
+});
+
+/**
+ * Shape `pryv`'s `Connection.apiOne` throws for a platform refusal: the API error
+ * sits in `innerObject`, the delegation id under its `data.id`.
+ */
+function pryvError(id: string): Error {
+  return new Pryv.PryvError("Error for api method: \"events.create\" >> Result: {...}", {
+    id: "invalid-operation",
+    message: "Writing \"x\" with a token obtained through account delegation is not allowed",
+    data: { id, eventType: "x" },
+  });
+}
+
+describe("[GROW] grant refused to a delegate token", () => {
+  it("explains that only the owner can answer, whatever the error shape", () => {
+    for (const e of [err(errorIds.GRANT_REQUIRES_OWNER), pryvError(errorIds.GRANT_REQUIRES_OWNER)]) {
+      expect(isGrantRequiresOwner(e)).toBe(true);
+      expect(delegationErrorMessage(e)).toBe(GRANT_REQUIRES_OWNER_MESSAGE);
+    }
+    expect(GRANT_REQUIRES_OWNER_ID).toBe("delegation-grant-requires-owner");
+  });
+  it("does not match other refusals", () => {
+    expect(isGrantRequiresOwner(pryvError("forbidden"))).toBe(false);
+    expect(isGrantRequiresOwner(new Error("x"))).toBe(false);
   });
 });
 

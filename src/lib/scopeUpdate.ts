@@ -3,6 +3,8 @@
  * wording and the id handed back to the calling app are unit-testable.
  */
 
+import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
+
 /** The platform could not find the request on the signed-in account. */
 export const REQUEST_NOT_FOUND_MESSAGE =
   "This request could not be found on your account. The link may be stale, or it was built with the wrong request id.";
@@ -39,6 +41,9 @@ export interface ScopeUpdateFailure {
  * the request) to the id returned to the opener and the text shown.
  */
 export function scopeUpdateFailure(err: unknown, fallback = "Could not complete the request."): ScopeUpdateFailure {
+  if (isGrantRequiresOwner(err)) {
+    return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
+  }
   const id = errorId(err);
   const message = err instanceof Error && err.message ? err.message : fallback;
   if (id != null && NOT_FOUND_IDS.has(id)) {

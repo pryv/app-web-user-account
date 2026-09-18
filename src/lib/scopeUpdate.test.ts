@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import Pryv from "pryv";
 import {
   ALREADY_ANSWERED_MESSAGE,
   OUTCOME_UNKNOWN_MESSAGE,
@@ -7,6 +8,7 @@ import {
   scopeUpdateFailure,
   scopeUpdateSuccessNote,
 } from "./scopeUpdate";
+import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE } from "./delegation";
 
 describe("answeredRequestMessage", () => {
   it("reports a request already answered, and nothing for an open one", () => {
@@ -47,6 +49,15 @@ describe("scopeUpdateFailure", () => {
   it("explains a request that was already answered", () => {
     const f = scopeUpdateFailure(cmcError("x", "cmc-scope-request-already-answered"));
     expect(f).toEqual({ reason: "cmc-scope-request-already-answered", message: ALREADY_ANSWERED_MESSAGE });
+  });
+
+  it("[GRSU] explains a grant refused to a token obtained through a delegation", () => {
+    const e = new Pryv.PryvError("Error for api method: \"events.create\"", {
+      id: "invalid-operation",
+      message: "not allowed",
+      data: { id: GRANT_REQUIRES_OWNER_ID },
+    });
+    expect(scopeUpdateFailure(e)).toEqual({ reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE });
   });
 
   it("falls back to the message when there is no id", () => {
