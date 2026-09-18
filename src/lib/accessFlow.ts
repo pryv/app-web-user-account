@@ -86,6 +86,18 @@ export interface AccessState {
     controlledUsername: string;
     delegate: { username: string; hostSlug?: string };
   };
+  /**
+   * Delivery mode the request asked for, echoed on the NEED_SIGNIN poll. When
+   * "shared-secret" this page may hand the credential off through a one-time
+   * secret (shape H) instead of posting the token inline (shape L), so the
+   * token never reaches the core that answered the request.
+   */
+  credentialHandoff?: "shared-secret";
+  /**
+   * One-time hand-off descriptor posted with ACCEPTED (shape H), in place of
+   * the token. Never posted together with a token.
+   */
+  handoff?: { type: "shared-secret"; key: string };
 }
 
 /** A failed poll-URL read; `status` is the HTTP status. */
@@ -281,6 +293,79 @@ function renderCliTerminalMessage(): void {
     '<div style="font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 2em; text-align: center; font-size: 1.25em; color: #333;">' +
     "You're successfully signed in. You can close this window." +
     "</div>";
+}
+
+/** Default life of a hand-off secret, seconds. The account's core caps it at
+ * its `sharedSecrets.maxTtl` (30 days by default), well above this. */
+export const HANDOFF_TTL_SECONDS = 600;
+
+/**
+ * Build the ACCEPTED payload, in exactly one of two shapes and NEVER both:
+ *
+ *   - shape L (inline): `{ token, apiEndpoint (token-bearing) }`, today's contract.
+ *   - shape H (hand-off): `{ apiEndpoint (token-less), handoff: { type, key } }`,
+ *     no token — the credential rests in the one-time secret named by `key`.
+ *
+ * `handoffKey` present selects shape H. The two branches are exclusive by
+ * construction, so a token can never ride alongside a hand-off.
+ */
+export function buildAcceptedState(opts: {
+  username: string;
+  /** Token-less account endpoint (what shape H publishes). */
+  endpoint: string;
+  /** App access token (shape L) / carried inside the secret (shape H). */
+  token: string;
+  /** Token-bearing endpoint (what shape L publishes). */
+  apiEndpointWithToken: string;
+  /** Present → shape H; absent/null → shape L. */
+  handoffKey?: string | null;
+  delegation?: AccessState["delegation"] | null;
+}): Partial<AccessState> {
+  const accepted: Partial<AccessState> = { status: "ACCEPTED", username: opts.username };
+  if (opts.handoffKey != null) {
+    accepted.apiEndpoint = opts.endpoint;
+    accepted.handoff = { type: "shared-secret", key: opts.handoffKey };
+  } else {
+    accepted.apiEndpoint = opts.apiEndpointWithToken;
+    accepted.token = opts.token;
+  }
+  if (opts.delegation != null) accepted.delegation = opts.delegation;
+  return accepted;
+}
+
+/**
+ * Create a one-time hand-off secret on the signed-in account (with the
+ * personal token), carrying the app credential the requesting app will
+ * retrieve once. Returns the secret key. Throws on any failure so the caller
+ * can fall back to inline delivery.
+ */
+export async function createHandoffSecret(
+  endpoint: string,
+  personalToken: string,
+  params: {
+    requestingAppId: string;
+    secret: { username: string; token: string; apiEndpoint: string };
+    ttl?: number;
+  },
+): Promise<string> {
+  const res = await fetch(endpoint.replace(/\/$/, "") + "/shared-secrets", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: personalToken,
+    },
+    body: JSON.stringify({
+      title: "access-handoff:" + params.requestingAppId,
+      ttl: params.ttl ?? HANDOFF_TTL_SECONDS,
+      onConsumed: { message: "The credential for this access request was already retrieved." },
+      secret: params.secret,
+    }),
+  });
+  if (!res.ok) throw new Error("create shared secret failed (" + res.status + ")");
+  const body = (await res.json()) as { sharedSecret?: { key?: string } };
+  if (!body.sharedSecret?.key) throw new Error("create shared secret: server returned no key");
+  return body.sharedSecret.key;
 }
 
 /**

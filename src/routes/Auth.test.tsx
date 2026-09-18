@@ -21,10 +21,14 @@ const flow = vi.hoisted(() => ({
   createAppAccess: vi.fn(),
   deleteAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
+  createHandoffSecret: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
 }));
 
-vi.mock("../lib/accessFlow", () => flow);
+vi.mock("../lib/accessFlow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/accessFlow")>()),
+  ...flow,
+}));
 
 // Sign-in is a whole flow of its own (password, MFA); stand in for it with
 // a button that hands back a session, which is all this screen needs.
@@ -138,6 +142,87 @@ describe("[AUCP] /auth consent panel", () => {
     expect(minted.permissions).toEqual([
       { streamId: "diary", level: "read", defaultName: "Journal" },
     ]);
+  });
+
+  it("[AUC6] a shared-secret request hands the credential off: the page creates the secret and posts the key, never the token", async () => {
+    flow.createHandoffSecret.mockResolvedValue("evt.the-key");
+    // A plain (no-consent) request that asked for shared-secret delivery.
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      credentialHandoff: "shared-secret",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.createHandoffSecret).toHaveBeenCalled());
+    const [endpointArg, creatorTokenArg, params] = flow.createHandoffSecret.mock.calls[0];
+    // Created on the signed-in account endpoint, with the personal token (from
+    // the caller's scope, not stale React state), carrying the app token.
+    expect(endpointArg).toBe("https://alice.core.test/");
+    expect(creatorTokenArg).toBe("personal-token");
+    expect(params.secret.token).toBe("app-token");
+
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const posted = flow.updateAccessState.mock.calls[0][1];
+    // Shape H: the one-time key, and NO token on the wire to the entry core.
+    expect(posted.handoff).toEqual({ type: "shared-secret", key: "evt.the-key" });
+    expect(posted.token).toBeUndefined();
+  });
+
+  it("[AUC7] a shared-secret request falls back to inline when the secret cannot be created", async () => {
+    flow.createHandoffSecret.mockRejectedValue(new Error("create shared secret failed (403)"));
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      credentialHandoff: "shared-secret",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const posted = flow.updateAccessState.mock.calls[0][1];
+    // Fallback: inline token, no hand-off.
+    expect(posted.token).toBe("app-token");
+    expect(posted.handoff).toBeUndefined();
+  });
+
+  it("[AUC8] the already-authorized reuse path also hands the credential off (not a stale-null token)", async () => {
+    // Regression: finalizeAccepted must use the personal token from the
+    // caller's scope. The sign-in entry points set React state and call
+    // through in the same tick, so reading `personalToken` from state here
+    // would be null and silently drop the hand-off on this common path.
+    flow.createHandoffSecret.mockResolvedValue("evt.reuse-key");
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      credentialHandoff: "shared-secret",
+    });
+    flow.checkAppAccess.mockResolvedValue({
+      matchingAccess: { id: "acc-existing", token: "existing-app-token", type: "app", permissions: OFFER },
+    });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+
+    await waitFor(() => expect(flow.createHandoffSecret).toHaveBeenCalled());
+    // The personal token reached the create — null here is the bug this guards.
+    expect(flow.createHandoffSecret.mock.calls[0][1]).toBe("personal-token");
+    expect(flow.createHandoffSecret.mock.calls[0][2].secret.token).toBe("existing-app-token");
+    const posted = flow.updateAccessState.mock.calls[0][1];
+    expect(posted.handoff).toEqual({ type: "shared-secret", key: "evt.reuse-key" });
+    expect(posted.token).toBeUndefined();
   });
 
   it("[AUC2] a refused grant removes the access it had just created, and says why", async () => {
