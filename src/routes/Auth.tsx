@@ -15,6 +15,7 @@ import {
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { Delegation } from "@pryv/delegation";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
+import { isSessionRejected } from "../lib/sessionErrors";
 import {
   offersTargets,
   grantTargets,
@@ -218,13 +219,19 @@ export default function Auth() {
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
       await afterSignIn(conn.endpoint, conn.token, asUser, storedConnection);
-    } catch {
-      // Stored token no longer valid (revoked/expired) — drop it and let the
-      // user sign in normally.
-      setConnection(null);
+    } catch (err: unknown) {
       setPersonalToken(null);
       setApiEndpoint(null);
-      setError("Your previous session is no longer valid — please sign in.");
+      if (isSessionRejected(err)) {
+        // Stored token no longer valid (revoked/expired): drop it and let the
+        // user sign in normally.
+        setConnection(null);
+        setError("Your previous session is no longer valid — please sign in.");
+      } else {
+        // Network error or server failure: says nothing about the token.
+        // Keep the session (and the account pages' state) so the user can retry.
+        setError("Could not reach the server, please try again.");
+      }
     } finally {
       setBusy(false);
     }

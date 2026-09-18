@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, XCircle } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -64,6 +64,8 @@ export default function AuditAccess() {
   const { accessId } = useParams<{ accessId: string }>();
   const { connection, setConnection } = useSession();
   const navigate = useNavigate();
+  // Carried on every in-app link so the platform choice (pryvServiceInfoUrl) survives.
+  const { search } = useLocation();
   const [confirm, confirmDialog] = useConfirm();
 
   const [details, setDetails] = useState<AccessDetails | null>(null);
@@ -151,12 +153,12 @@ export default function AuditAccess() {
       if (res?.error) throw new Error(res.error.message);
       if (isSelf) {
         // Navigate FIRST — see AccountLayout signOut for the same race fix.
-        const target = signinPath();
+        const target = signinPath(search);
         navigate(target, { replace: true });
         setConnection(null);
         return;
       }
-      navigate("/account/apps");
+      navigate("/account/apps" + search);
     } catch (err: unknown) {
       setRevokeError(err instanceof Error ? err.message : "Could not revoke access.");
       setRevoking(false);
@@ -286,7 +288,7 @@ export default function AuditAccess() {
     <section className="space-y-4">
       {confirmDialog}
       <Link
-        to="/account/apps"
+        to={"/account/apps" + search}
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
         <ArrowLeft size={14} aria-hidden /> Back to connected apps
@@ -319,7 +321,7 @@ export default function AuditAccess() {
           <Alert tone="info">
             This access is managed by account delegation and cannot be revoked here. It is removed
             when the delegation ends:{" "}
-            <Link to="/account/delegation" className="underline">
+            <Link to={"/account/delegation" + search} className="underline">
               manage account delegation
             </Link>
             .

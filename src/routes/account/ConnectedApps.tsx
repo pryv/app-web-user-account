@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { RefreshCw, ScrollText } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
 import { useSession } from "../../lib/session";
@@ -26,6 +26,8 @@ interface Access {
  */
 export default function ConnectedApps() {
   const { connection } = useSession();
+  // Carried on every in-app link so the platform choice (pryvServiceInfoUrl) survives.
+  const { search } = useLocation();
   const [accesses, setAccesses] = useState<Access[] | null>(null);
   const [selfAccessId, setSelfAccessId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export default function ConnectedApps() {
       {apps?.length === 0 && <p className="text-sm text-muted">No connected apps.</p>}
       <div className="space-y-3">
         {apps?.map((a) => (
-          <AccessRow key={a.id} access={a} isSelf={a.id === selfAccessId} />
+          <AccessRow key={a.id} access={a} isSelf={a.id === selfAccessId} search={search} />
         ))}
       </div>
       {managed != null && managed.length > 0 && (
@@ -110,7 +112,7 @@ export default function ConnectedApps() {
           <p className="mb-3 text-sm text-muted">
             These accesses keep an account delegation working and cannot be revoked here. They are
             removed when the delegation ends:{" "}
-            <Link to="/account/delegation" className="text-primary hover:underline">
+            <Link to={"/account/delegation" + search} className="text-primary hover:underline">
               manage account delegation
             </Link>
             .
@@ -122,6 +124,7 @@ export default function ConnectedApps() {
                 access={access}
                 isSelf={access.id === selfAccessId}
                 kindLabel={managedKindLabel(kind)}
+                search={search}
               />
             ))}
           </div>
@@ -142,7 +145,7 @@ export default function ConnectedApps() {
 }
 
 /** One access: name, type, and the link to its details and audit trail. */
-function AccessRow({ access: a, isSelf, kindLabel }: { access: Access; isSelf: boolean; kindLabel?: string }) {
+function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; isSelf: boolean; kindLabel?: string; search: string }) {
   return (
     <Card>
       <div className="flex items-center justify-between gap-4">
@@ -160,7 +163,7 @@ function AccessRow({ access: a, isSelf, kindLabel }: { access: Access; isSelf: b
           </div>
         </div>
         <Link
-          to={`/account/audit-access/${encodeURIComponent(a.id)}`}
+          to={`/account/audit-access/${encodeURIComponent(a.id)}${search}`}
           className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ScrollText size={14} aria-hidden />

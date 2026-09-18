@@ -107,3 +107,33 @@ describe("[CAPD] connected apps: delegation plumbing", () => {
     }
   });
 });
+
+describe("[CAQS] connected apps: links keep the platform query", () => {
+  const Q = "?pryvServiceInfoUrl=" + encodeURIComponent("https://core.test/service/info");
+
+  it("[CAQS1] the Details and delegation links carry the current query", async () => {
+    render(
+      <MemoryRouter initialEntries={["/account/apps" + Q]}>
+        <ConnectedApps />
+      </MemoryRouter>,
+    );
+    await screen.findByText("diary-app");
+    const detailsHrefs = screen.getAllByRole("link", { name: /details/i }).map((l) => l.getAttribute("href"));
+    expect(detailsHrefs).toContain("/account/audit-access/app-1" + Q);
+    expect(detailsHrefs.every((h) => h?.endsWith(Q))).toBe(true);
+    expect(screen.getByRole("link", { name: /manage account delegation/i }).getAttribute("href")).toBe("/account/delegation" + Q);
+  });
+
+  it("[CAQS2] the access details page links back with the current query", async () => {
+    render(
+      <MemoryRouter initialEntries={["/account/audit-access/ctl-1" + Q]}>
+        <Routes>
+          <Route path="/account/audit-access/:accessId" element={<AuditAccess />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText(/managed by account delegation/i);
+    expect(screen.getByRole("link", { name: /back to connected apps/i }).getAttribute("href")).toBe("/account/apps" + Q);
+    expect(screen.getByRole("link", { name: /manage account delegation/i }).getAttribute("href")).toBe("/account/delegation" + Q);
+  });
+});

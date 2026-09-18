@@ -175,8 +175,27 @@ export async function checkAppAccess(
     },
     body: JSON.stringify(checkData),
   });
-  if (!res.ok) throw new Error("check-app failed (" + res.status + ")");
+  if (!res.ok) {
+    let id: string | undefined;
+    try {
+      id = ((await res.json()) as { error?: { id?: string } })?.error?.id;
+    } catch {
+      // A non-JSON error body tells us nothing more than the status did.
+    }
+    throw new CheckAppError(res.status, id);
+  }
   return (await res.json()) as AppCheck;
+}
+
+/** A failed check-app call; `status` is the HTTP status, `id` the API error id when given. */
+export class CheckAppError extends Error {
+  status: number;
+  id?: string;
+  constructor(status: number, id?: string) {
+    super("check-app failed (" + status + ")");
+    this.status = status;
+    this.id = id;
+  }
 }
 
 export async function createAppAccess(

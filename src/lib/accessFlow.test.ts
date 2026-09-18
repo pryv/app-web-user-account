@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  checkAppAccess,
   closeOrRedirect,
   loadAccessState,
   updateAccessState,
@@ -142,6 +143,21 @@ describe("consent form + accept-result shaping", () => {
     }));
     vi.stubGlobal("fetch", fn);
     expect(await updateAccessState(POLL, { status: "ACCEPTED" })).toEqual({ status: 502 });
+  });
+
+  it("[AFC4] a failed check-app carries the HTTP status and the API error id", async () => {
+    const req = { requestingAppId: "app", requestedPermissions: [] };
+    stubFetch(401, { error: { id: "invalid-access-token", message: "x" } });
+    await expect(checkAppAccess("https://alice.core.test/", "tok", req)).rejects.toMatchObject({ status: 401, id: "invalid-access-token" });
+    const fn = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => {
+        throw new Error("not json");
+      },
+    }));
+    vi.stubGlobal("fetch", fn);
+    await expect(checkAppAccess("https://alice.core.test/", "tok", req)).rejects.toMatchObject({ status: 503, id: undefined });
   });
 });
 
