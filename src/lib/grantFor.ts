@@ -47,13 +47,31 @@ export function grantTargets(selfUsername: string, controlled: ControlledRecord[
   return targets;
 }
 
-/** The choice to preselect: the account the app named, when offered; else the signed-in one. */
-export function preselectedTarget(targets: GrantTarget[], actAs: ActAs): GrantTarget {
+/**
+ * The choice to preselect: the account the app named, when offered; else
+ * `preferred` (the account the account pages were acting for), when offered;
+ * else the signed-in one.
+ */
+export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferred?: string | null): GrantTarget {
   if (actAs != null && actAs !== "allow" && actAs !== "deny") {
     const named = targets.find((t) => t.username === actAs);
     if (named) return named;
   }
+  if (preferred != null) {
+    const acting = targets.find((t) => t.username === preferred && !t.self);
+    if (acting) return acting;
+  }
   return targets[0];
+}
+
+/**
+ * The account the app named in `actAs` when it is not among the choices (the
+ * user does not control it, or not actively), so the screen can say why it
+ * was not preselected; `null` otherwise.
+ */
+export function unavailableActAs(targets: GrantTarget[], actAs: ActAs): string | null {
+  if (actAs == null || actAs === "allow" || actAs === "deny" || actAs === "") return null;
+  return targets.some((t) => t.username === actAs) ? null : actAs;
 }
 
 /** The display hint posted with ACCEPTED when the access was granted on a controlled account. */
@@ -81,6 +99,21 @@ export function delegationHint(controlledUsername: string, delegate: { username:
 export function isDelegatedChild(access: { clientData?: Record<string, unknown> | null } | null | undefined): boolean {
   const marker = access?.clientData?.delegation as { kind?: unknown } | undefined;
   return marker?.kind === "delegated-child";
+}
+
+/**
+ * The hint for an access that carries the delegation lineage marker, read
+ * from the marker itself: the grant may have gone through a session that was
+ * already acting for the controlled account, without the selector.
+ */
+export function hintForAccess(
+  access: { clientData?: Record<string, unknown> | null } | null | undefined,
+  controlledUsername: string,
+): DelegationHint | undefined {
+  if (!isDelegatedChild(access)) return undefined;
+  const marker = access?.clientData?.delegation as { delegate?: { username?: unknown } };
+  if (typeof marker.delegate?.username !== "string") return undefined;
+  return delegationHint(controlledUsername, { username: marker.delegate.username });
 }
 
 /** Working credentials on the controlled account: its API endpoint and a delegate token. */

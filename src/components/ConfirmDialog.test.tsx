@@ -45,7 +45,11 @@ describe("[CFD] confirmation dialog", () => {
     for (const dismiss of [
       () => screen.getByText("Cancel").click(),
       () => fireEvent.keyDown(document, { key: "Escape" }),
-      () => fireEvent.click(screen.getByRole("alertdialog").parentElement!),
+      () => {
+        const overlay = screen.getByRole("alertdialog").parentElement!;
+        fireEvent.mouseDown(overlay);
+        fireEvent.click(overlay);
+      },
     ]) {
       await ask();
       act(dismiss);
@@ -78,6 +82,16 @@ describe("[CFD] confirmation dialog", () => {
     act(() => screen.getByText("Cancel").focus());
     act(() => rerender());
     expect(document.activeElement?.textContent).toBe("Cancel");
+  });
+
+  it("[CFD6] a text-selection drag from inside the box to outside does not close it", async () => {
+    const dialog = await ask();
+    // The browser fires the click on the common ancestor: the overlay.
+    fireEvent.mouseDown(screen.getByText("Revoke this access?"));
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByRole("alertdialog")).not.toBeNull();
+    act(() => screen.getByText("Cancel").click());
+    expect(await answer).toBe(false);
   });
 
   it("[CFD5] a new question answers an unanswered one with false", async () => {

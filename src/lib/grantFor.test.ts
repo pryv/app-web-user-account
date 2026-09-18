@@ -5,6 +5,7 @@ import {
   offersTargets,
   grantTargets,
   preselectedTarget,
+  unavailableActAs,
   delegationHint,
   isDelegatedChild,
   openDelegatedWorkspace,
@@ -44,6 +45,15 @@ describe("[GFT] who is this access for", () => {
     expect(preselectedTarget(targets, "someone-else").username).toBe("parent");
     expect(preselectedTarget(targets, "allow").username).toBe("parent");
     expect(preselectedTarget(targets, undefined).username).toBe("parent");
+  });
+
+  it("[GFT8] names the account the app asked for when it is not among the choices", () => {
+    const targets = grantTargets("parent", [rec("kid-a", "active"), rec("kid-b", "invite")]);
+    expect(unavailableActAs(targets, "kid-b")).toBe("kid-b"); // not active: not offered
+    expect(unavailableActAs(targets, "stranger")).toBe("stranger");
+    for (const actAs of [undefined, "allow", "deny", "", "kid-a", "parent"]) {
+      expect(unavailableActAs(targets, actAs)).toBeNull();
+    }
   });
 
   it("[GFT4] builds the hint the server accepts: controlledUsername is the account granted on", () => {

@@ -12,15 +12,17 @@ import {
   permissionKey,
   type OfferPermission,
 } from "../lib/consent";
-import { useSession, storedServiceInfoUrl, type PryvConnection } from "../lib/session";
+import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { Delegation } from "@pryv/delegation";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import {
   offersTargets,
   grantTargets,
   preselectedTarget,
+  unavailableActAs,
   delegationHint,
   isDelegatedChild,
+  hintForAccess,
   openDelegatedWorkspace,
   markRequestDone,
   wasRequestDone,
@@ -94,7 +96,18 @@ function parseAuthQuery(search: string): AuthQuery {
 export default function Auth() {
   const { search } = useLocation();
   const query = parseAuthQuery(search);
-  const { connection: storedConnection, setConnection } = useSession();
+  const { connection: sessionConnection, setConnection, actingAs } = useSession();
+  // While the account pages act for a controlled account, grant from the
+  // session of the account acting: the selector then offers the controlled
+  // account (preselected), and the app's actAs is honoured. The acting
+  // session is never offered as if it were the user's own: without the
+  // session to return to, the user signs in.
+  const parentConnection = useMemo(
+    () => (actingAs != null ? storedParentConnection() : null),
+    [actingAs],
+  );
+  const storedConnection = actingAs != null ? parentConnection : sessionConnection;
+  const actingPreselect = parentConnection != null ? actingAs?.username ?? null : null;
 
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [serviceInfo, setServiceInfo] = useState<{ register?: string; support?: string; api?: string } | null>(null);
@@ -292,7 +305,7 @@ export default function Auth() {
         if (choices.length > 1) {
           setOwner({ username: asUser, endpoint, token, client });
           setTargets(choices);
-          setSelectedTarget(preselectedTarget(choices, accessState.actAs).username);
+          setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);
           return;
         }
       }
@@ -344,7 +357,9 @@ export default function Auth() {
       // Already authorized: short-circuit through close_or_redirect with the
       // existing access token. On a controlled account, the access is only
       // described as delegated when it was granted through the delegation.
-      const reuseHint = hint != null && isDelegatedChild(result.matchingAccess) ? hint : undefined;
+      const reuseHint = hint != null
+        ? (isDelegatedChild(result.matchingAccess) ? hint : undefined)
+        : hintForAccess(result.matchingAccess, asUser ?? username);
       const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint);
       // Working on a controlled account: drop its delegate token once handed over.
       if (refusal == null && hint != null) setPersonalToken(null);
@@ -452,7 +467,7 @@ export default function Auth() {
       });
       // A fresh access minted with the delegate token carries the lineage
       // marker, so the hint is true for it.
-      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? undefined);
+      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? hintForAccess(created, username));
       if (refusal != null) {
         // The access was minted before the register was told, so a refusal
         // leaves one the app will never receive. Remove it rather than
@@ -523,11 +538,17 @@ export default function Auth() {
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
     const appName = accessState.requestingAppId || "the requesting app";
+    const unavailable = unavailableActAs(targets, accessState.actAs);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           Grant <strong>{appName}</strong> access to:
         </h1>
+        {unavailable != null && (
+          <Alert tone="info">
+            <strong>{unavailable}</strong> is not an account you can act for; choose below.
+          </Alert>
+        )}
         <fieldset className="mb-4 space-y-2">
           <legend className="sr-only">Account to grant access to</legend>
           {targets.map((t) => (

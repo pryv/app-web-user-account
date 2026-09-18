@@ -233,3 +233,36 @@ export function coresFromServiceInfo(info: unknown): CoreOption[] {
   }
   return out;
 }
+
+// ------------------------------------------------- delegation-managed accesses
+
+/**
+ * `clientData.delegation.kind` values the server stamps on the accesses it
+ * creates to run a delegation relationship (the control access, the
+ * delegate's session, the invitation capability, the notification channel).
+ * They cannot be revoked one by one (the server refuses): they go away when
+ * the delegation is detached. `delegated-child` is deliberately absent: an
+ * app access granted through a delegation is an ordinary, revocable app.
+ */
+const MANAGED_KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
+  control: "delegation control",
+  "delegate-pat": "delegate session",
+  "invite-capability": "delegation invitation",
+  notify: "delegation notifications",
+});
+
+/**
+ * The managed kind of an access, or `null` for an ordinary access (including
+ * a `delegated-child` app access).
+ */
+export function delegationManagedKind(
+  access: { clientData?: Record<string, unknown> | null } | null | undefined,
+): string | null {
+  const kind = (access?.clientData?.delegation as { kind?: unknown } | null | undefined)?.kind;
+  return typeof kind === "string" && Object.hasOwn(MANAGED_KIND_LABELS, kind) ? kind : null;
+}
+
+/** Short label for a managed kind (see {@link delegationManagedKind}). */
+export function managedKindLabel(kind: string): string {
+  return MANAGED_KIND_LABELS[kind] ?? kind;
+}

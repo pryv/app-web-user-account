@@ -13,6 +13,8 @@ import {
   coresFromServiceInfo,
   DELEGATE_WARNING_LINES,
   DELEGATE_WARNING_LEAD,
+  delegationManagedKind,
+  managedKindLabel,
 } from "./delegation";
 
 const err = (id: string, message = "server said no") => new DelegationError(message, id);
@@ -229,5 +231,20 @@ describe("delegation flows (mocked client)", () => {
     const busy = await runFlow(() => dismissControlled("kid"));
     expect(busy.ok).toBe(false);
     if (!busy.ok) expect(busy.message).toMatch(/still active/i);
+  });
+});
+
+describe("[DMK] delegation-managed accesses", () => {
+  it("[DMK1] recognises the four kinds the server manages, and nothing else", () => {
+    const withKind = (kind: unknown) => ({ clientData: { delegation: { kind, relId: "r1" } } });
+    for (const kind of ["control", "delegate-pat", "invite-capability", "notify"]) {
+      expect(delegationManagedKind(withKind(kind))).toBe(kind);
+      expect(managedKindLabel(kind)).not.toBe(kind);
+    }
+    // an app granted through a delegation is an ordinary app
+    expect(delegationManagedKind(withKind("delegated-child"))).toBeNull();
+    for (const access of [withKind("toString"), withKind(1), { clientData: { delegation: null } }, { clientData: null }, {}, null]) {
+      expect(delegationManagedKind(access)).toBeNull();
+    }
   });
 });

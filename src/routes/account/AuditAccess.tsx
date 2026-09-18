@@ -19,6 +19,7 @@ import {
   type DataEvent,
 } from "../../lib/audit";
 import { MarkdownLite } from "../../lib/markdownLite";
+import { delegationManagedKind } from "../../lib/delegation";
 
 interface AccessDetails {
   id: string;
@@ -301,7 +302,7 @@ export default function AuditAccess() {
               </span>
             )}
           </span>
-          {details && (
+          {details && delegationManagedKind(details) == null && (
             <button
               type="button"
               onClick={() => void revoke()}
@@ -314,6 +315,16 @@ export default function AuditAccess() {
           )}
         </div>
         {revokeError && <Alert>{revokeError}</Alert>}
+        {details && delegationManagedKind(details) != null && (
+          <Alert tone="info">
+            This access is managed by account delegation and cannot be revoked here. It is removed
+            when the delegation ends:{" "}
+            <Link to="/account/delegation" className="underline">
+              manage account delegation
+            </Link>
+            .
+          </Alert>
+        )}
         {detailsError && <Alert>{detailsError}</Alert>}
         {detailsMissing && (
           <Alert tone="info">
