@@ -100,12 +100,13 @@ export default function Auth() {
   // While the account pages act for a controlled account, grant from the
   // session of the account acting: the selector then offers the controlled
   // account (preselected), and the app's actAs is honoured. The acting
-  // session itself is only used when that session is not available.
+  // session is never offered as if it were the user's own: without the
+  // session to return to, the user signs in.
   const parentConnection = useMemo(
     () => (actingAs != null ? storedParentConnection() : null),
     [actingAs],
   );
-  const storedConnection = parentConnection ?? sessionConnection;
+  const storedConnection = actingAs != null ? parentConnection : sessionConnection;
   const actingPreselect = parentConnection != null ? actingAs?.username ?? null : null;
 
   const [accessState, setAccessState] = useState<AccessState | null>(null);
