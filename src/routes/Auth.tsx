@@ -362,7 +362,10 @@ export default function Auth() {
       const reuseHint = hint != null
         ? (isDelegatedChild(result.matchingAccess) ? hint : undefined)
         : hintForAccess(result.matchingAccess, asUser ?? username);
-      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint);
+      // `token` here is the signed-in personal token (runCheckApp's own param),
+      // used to create the hand-off secret; finalizeAccepted skips shape H when
+      // a delegation hint is posted, so a delegated reuse stays inline.
+      const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint, token);
       // Working on a controlled account: drop its delegate token once handed over.
       if (refusal == null && hint != null) setPersonalToken(null);
       if (refusal != null) {
@@ -387,6 +390,7 @@ export default function Auth() {
     endpoint: string,
     asUser?: string,
     hint?: DelegationHint,
+    creatorToken?: string | null,
   ): Promise<AccessStateUpdateResult | null> {
     if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
@@ -399,18 +403,26 @@ export default function Auth() {
     // the personal token and posts only the key, so the token never reaches
     // the core that answered the request. Any create failure falls back to
     // inline delivery (shape L), which the server converts or delivers as-is.
+    //
+    // `creatorToken` is the personal token to create the secret with, passed
+    // by the caller from its own scope — NOT read from React state, which the
+    // sign-in entry points set in the same tick (a stale null there would
+    // silently disable the hand-off on the already-authorized reuse path).
     let handoffKey: string | null = null;
     const wantsHandoff = accessState.credentialHandoff === "shared-secret";
     const canShapeH =
-      wantsHandoff && accessState.consent == null && hint == null && grantFor == null && personalToken != null;
+      wantsHandoff && accessState.consent == null && hint == null && creatorToken != null;
     if (canShapeH) {
       try {
-        handoffKey = await createHandoffSecret(endpoint, personalToken as string, {
+        handoffKey = await createHandoffSecret(endpoint, creatorToken as string, {
           requestingAppId: accessState.requestingAppId ?? "app",
           secret: { username: acceptedUsername, token, apiEndpoint: apiEp },
         });
-      } catch {
-        handoffKey = null; // fall back to inline delivery
+      } catch (e) {
+        // Fall back to inline delivery, but leave a trace: a create that keeps
+        // failing (e.g. shared secrets disabled) is worth seeing in the console.
+        console.warn("credential hand-off secret creation failed; delivering inline", e);
+        handoffKey = null;
       }
     }
 
@@ -494,7 +506,9 @@ export default function Auth() {
       });
       // A fresh access minted with the delegate token carries the lineage
       // marker, so the hint is true for it.
-      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? hintForAccess(created, username));
+      // `personalToken` (guarded above) creates the hand-off secret on the
+      // signed-in account; skipped for a delegated grant by the hint gate.
+      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? hintForAccess(created, username), personalToken);
       if (refusal != null) {
         // The access was minted before the register was told, so a refusal
         // leaves one the app will never receive. Remove it rather than
