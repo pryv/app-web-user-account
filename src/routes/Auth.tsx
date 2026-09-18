@@ -22,6 +22,7 @@ import {
   unavailableActAs,
   delegationHint,
   isDelegatedChild,
+  hintForAccess,
   openDelegatedWorkspace,
   markRequestDone,
   wasRequestDone,
@@ -95,7 +96,7 @@ function parseAuthQuery(search: string): AuthQuery {
 export default function Auth() {
   const { search } = useLocation();
   const query = parseAuthQuery(search);
-  const { connection: storedConnection, setConnection } = useSession();
+  const { connection: storedConnection, setConnection, actingAs } = useSession();
 
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [serviceInfo, setServiceInfo] = useState<{ register?: string; support?: string; api?: string } | null>(null);
@@ -345,7 +346,9 @@ export default function Auth() {
       // Already authorized: short-circuit through close_or_redirect with the
       // existing access token. On a controlled account, the access is only
       // described as delegated when it was granted through the delegation.
-      const reuseHint = hint != null && isDelegatedChild(result.matchingAccess) ? hint : undefined;
+      const reuseHint = hint != null
+        ? (isDelegatedChild(result.matchingAccess) ? hint : undefined)
+        : hintForAccess(result.matchingAccess, asUser ?? username);
       const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint);
       // Working on a controlled account: drop its delegate token once handed over.
       if (refusal == null && hint != null) setPersonalToken(null);
@@ -453,7 +456,7 @@ export default function Auth() {
       });
       // A fresh access minted with the delegate token carries the lineage
       // marker, so the hint is true for it.
-      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? undefined);
+      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? hintForAccess(created, username));
       if (refusal != null) {
         // The access was minted before the register was told, so a refusal
         // leaves one the app will never receive. Remove it rather than
@@ -622,6 +625,7 @@ export default function Auth() {
           You are signed in{knownUsername ? (
             <>
               {" "}as <strong>{knownUsername}</strong>
+              {actingAs?.username === knownUsername ? <> (via {actingAs.parentUsername})</> : null}
             </>
           ) : null}
           . Continue to review the access requested by{" "}

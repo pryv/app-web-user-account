@@ -93,6 +93,21 @@ export function isDelegatedChild(access: { clientData?: Record<string, unknown> 
   return marker?.kind === "delegated-child";
 }
 
+/**
+ * The hint for an access that carries the delegation lineage marker, read
+ * from the marker itself: the grant may have gone through a session that was
+ * already acting for the controlled account, without the selector.
+ */
+export function hintForAccess(
+  access: { clientData?: Record<string, unknown> | null } | null | undefined,
+  controlledUsername: string,
+): DelegationHint | undefined {
+  if (!isDelegatedChild(access)) return undefined;
+  const marker = access?.clientData?.delegation as { delegate?: { username?: unknown } };
+  if (typeof marker.delegate?.username !== "string") return undefined;
+  return delegationHint(controlledUsername, { username: marker.delegate.username });
+}
+
 /** Working credentials on the controlled account: its API endpoint and a delegate token. */
 export interface DelegatedWorkspace {
   username: string;
