@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-react";
 import { Card, Button, Field, Alert } from "../../components/ui";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession } from "../../lib/session";
 
 interface Access {
@@ -31,6 +32,7 @@ type EnrollMethod = "totp" | "sms";
 
 export default function Security() {
   const { connection } = useSession();
+  const [confirm, confirmDialog] = useConfirm();
 
   // MFA enable flow state
   const [enrollMethod, setEnrollMethod] = useState<EnrollMethod | null>(null);
@@ -201,7 +203,7 @@ export default function Security() {
 
   async function deactivate() {
     if (!connection) return;
-    if (!window.confirm("Disable multi-factor authentication on this account?")) return;
+    if (!(await confirm("Disable multi-factor authentication on this account?", { confirmLabel: "Disable", danger: true }))) return;
     setDisableBusy(true);
     setDisableError(null);
     setDisableNotice(null);
@@ -227,6 +229,7 @@ export default function Security() {
 
   return (
     <section className="space-y-4">
+      {confirmDialog}
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
           Multi-factor authentication

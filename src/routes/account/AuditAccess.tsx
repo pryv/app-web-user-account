@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, XCircle } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession, signinPath } from "../../lib/session";
 import {
   buildAuditGetParams,
@@ -62,6 +63,7 @@ export default function AuditAccess() {
   const { accessId } = useParams<{ accessId: string }>();
   const { connection, setConnection } = useSession();
   const navigate = useNavigate();
+  const [confirm, confirmDialog] = useConfirm();
 
   const [details, setDetails] = useState<AccessDetails | null>(null);
   const [detailsMissing, setDetailsMissing] = useState(false);
@@ -132,10 +134,11 @@ export default function AuditAccess() {
   async function revoke() {
     if (!connection || !accessId) return;
     const isSelf = accessId === selfAccessId;
-    const ok = window.confirm(
+    const ok = await confirm(
       isSelf
         ? "This is the access you used to sign in. Revoking it will sign you out immediately. Continue?"
         : "Revoke this access? Apps using it will lose access immediately.",
+      { confirmLabel: "Revoke", danger: true },
     );
     if (!ok) return;
     setRevoking(true);
@@ -280,6 +283,7 @@ export default function AuditAccess() {
 
   return (
     <section className="space-y-4">
+      {confirmDialog}
       <Link
         to="/account/apps"
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"

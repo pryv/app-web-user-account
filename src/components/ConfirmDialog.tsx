@@ -1,0 +1,112 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Button } from "./ui";
+
+/**
+ * In-app confirmation dialog, used instead of `window.confirm()` (which blocks
+ * the page and cannot follow the app's look or language).
+ *
+ *   const [confirm, dialog] = useConfirm();
+ *   if (!(await confirm("Revoke this access?", { confirmLabel: "Revoke" }))) return;
+ *   ...
+ *   return <>{dialog}...</>;
+ *
+ * Escape, Cancel and a click outside answer false.
+ */
+export function useConfirm(): [
+  (message: ReactNode, opts?: { confirmLabel?: string; danger?: boolean }) => Promise<boolean>,
+  ReactNode,
+] {
+  const [pending, setPending] = useState<{
+    message: ReactNode;
+    confirmLabel: string;
+    danger: boolean;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+
+  const confirm = useCallback(
+    (message: ReactNode, opts?: { confirmLabel?: string; danger?: boolean }) =>
+      new Promise<boolean>((resolve) => {
+        setPending({ message, confirmLabel: opts?.confirmLabel ?? "Confirm", danger: opts?.danger ?? false, resolve });
+      }),
+    [],
+  );
+
+  const answer = (ok: boolean) => {
+    pending?.resolve(ok);
+    setPending(null);
+  };
+
+  const dialog = pending ? (
+    <ConfirmDialog
+      message={pending.message}
+      confirmLabel={pending.confirmLabel}
+      danger={pending.danger}
+      onAnswer={answer}
+    />
+  ) : null;
+  return [confirm, dialog];
+}
+
+function ConfirmDialog({
+  message,
+  confirmLabel,
+  danger,
+  onAnswer,
+}: {
+  message: ReactNode;
+  confirmLabel: string;
+  danger: boolean;
+  onAnswer: (ok: boolean) => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    confirmRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onAnswer(false);
+      } else if (e.key === "Tab") {
+        // Two buttons: keep focus between them.
+        e.preventDefault();
+        const next = document.activeElement === confirmRef.current ? cancelRef.current : confirmRef.current;
+        next?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      previous?.focus?.();
+    };
+  }, [onAnswer]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onAnswer(false);
+      }}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-message"
+        className="w-full max-w-sm rounded-lg border border-divider bg-card p-5 shadow-xl"
+      >
+        <p id="confirm-dialog-message" className="mb-4 text-sm">
+          {message}
+        </p>
+        <div className="flex gap-2">
+          <Button ref={cancelRef} variant="ghost" type="button" onClick={() => onAnswer(false)}>
+            Cancel
+          </Button>
+          <Button ref={confirmRef} variant={danger ? "danger" : "primary"} type="button" onClick={() => onAnswer(true)}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

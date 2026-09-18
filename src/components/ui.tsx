@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, InputHTMLAttributes, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
 /** Brand-themed surface card. */
@@ -15,7 +15,7 @@ export function Button({
   variant = "primary",
   className = "",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "ghost" | "danger" }) {
+}: ComponentProps<"button"> & { variant?: "primary" | "ghost" | "danger" }) {
   const base =
     "inline-flex w-full items-center justify-center rounded px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
   const styles =

@@ -22,6 +22,9 @@
 
 - **Reloading the auth popup after it finished** says the request is complete
   instead of reporting an unknown request, once the server has forgotten it.
+- **Confirmations use an in-app dialog instead of the browser's `confirm()`**
+  (revoking an access, disabling multi-factor authentication): it follows the app's
+  look, closes on Escape or a click outside, and no longer blocks the page.
 - **A direct link to `/account/delegation` loads the page** on static hosts (it
   answered "Not Found": the route was missing from the static fallback list).
 - **`/cmc-scope-update` reports success only once the change is applied.** The
