@@ -346,6 +346,8 @@ export default function Auth() {
       // described as delegated when it was granted through the delegation.
       const reuseHint = hint != null && isDelegatedChild(result.matchingAccess) ? hint : undefined;
       const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint);
+      // Working on a controlled account: drop its delegate token once handed over.
+      if (refusal == null && hint != null) setPersonalToken(null);
       if (refusal != null) {
         // The register refused this existing access, or could not verify it.
         // Say so rather than leaving the user on a page that looks stuck.

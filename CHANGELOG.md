@@ -11,8 +11,9 @@
   account, keeps it in memory only (never stored, never made the session), creates
   the app access there and tells the app it was granted through the delegation. An
   app can preselect an account or turn the question off with its auth request's
-  `actAs` (`"deny"`). Requires a core that stamps accesses granted through a
-  delegation.
+  `actAs` (`"deny"`). Requires a core whose service info advertises
+  `features.delegation` and that stamps the accesses granted through a delegation;
+  on an older core the question is simply not asked.
 - **"Back to <your account>" after opening a controlled account.** Opening an
   account from Delegation keeps your own session; a banner shows who you are acting
   as and returns you to your account. Signing out ends both.
@@ -21,9 +22,6 @@
 
 - **Reloading the auth popup after it finished** says the request is complete
   instead of reporting an unknown request, once the server has forgotten it.
-
-### Fixed
-
 - **`/cmc-scope-update` reports success only once the change is applied.** The
   page said "The new permission set has been granted" as soon as the answer was
   written, even when the platform changed nothing. It now waits for the
