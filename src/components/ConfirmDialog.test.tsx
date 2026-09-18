@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup, act, fireEvent } from "@testing-library/react";
 import { useConfirm } from "./ConfirmDialog";
@@ -54,12 +55,37 @@ describe("[CFD] confirmation dialog", () => {
     }
   });
 
-  it("[CFD3] no route calls window.confirm any more", async () => {
-    const sources = import.meta.glob("../routes/**/*.tsx", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+  it("[CFD3] no app code calls the browser's confirm / alert / prompt", async () => {
+    const sources = import.meta.glob("../**/*.{ts,tsx}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
     const offenders = Object.entries(sources)
-      .filter(([path]) => !path.includes(".test."))
-      .filter(([, src]) => /window\.(confirm|alert|prompt)\(/.test(src))
+      .filter(([path]) => !path.includes(".test.") && !path.endsWith("/ConfirmDialog.tsx")) // its doc names window.confirm
+      // `confirm` alone is this hook's function; the browser's is window.confirm
+      .filter(([, src]) => /\bwindow\.(confirm|alert|prompt)\(|(^|[^\w.])(alert|prompt)\(/m.test(src))
       .map(([path]) => path);
     expect(offenders).toEqual([]);
+  });
+
+  it("[CFD4] a re-render of the host keeps focus where the user put it", async () => {
+    let rerender: () => void = () => {};
+    function Host() {
+      const [, setTick] = useState(0);
+      rerender = () => setTick((t) => t + 1);
+      return <Probe />;
+    }
+    render(<Host />);
+    act(() => screen.getByText("ask").click());
+    await screen.findByRole("alertdialog");
+    act(() => screen.getByText("Cancel").focus());
+    act(() => rerender());
+    expect(document.activeElement?.textContent).toBe("Cancel");
+  });
+
+  it("[CFD5] a new question answers an unanswered one with false", async () => {
+    await ask();
+    const first = answer!;
+    act(() => screen.getByText("ask").click());
+    expect(await first).toBe(false);
+    act(() => screen.getByText("Revoke").click());
+    expect(await answer).toBe(true);
   });
 });

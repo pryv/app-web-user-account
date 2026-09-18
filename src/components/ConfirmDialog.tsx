@@ -10,31 +10,33 @@ import { Button } from "./ui";
  *   ...
  *   return <>{dialog}...</>;
  *
- * Escape, Cancel and a click outside answer false.
+ * Escape, Cancel and a click outside answer false. A new question replaces
+ * an unanswered one, which then answers false.
  */
 export function useConfirm(): [
   (message: ReactNode, opts?: { confirmLabel?: string; danger?: boolean }) => Promise<boolean>,
   ReactNode,
 ] {
-  const [pending, setPending] = useState<{
-    message: ReactNode;
-    confirmLabel: string;
-    danger: boolean;
-    resolve: (ok: boolean) => void;
-  } | null>(null);
+  const [pending, setPending] = useState<{ message: ReactNode; confirmLabel: string; danger: boolean } | null>(null);
+  const resolver = useRef<((ok: boolean) => void) | null>(null);
 
   const confirm = useCallback(
     (message: ReactNode, opts?: { confirmLabel?: string; danger?: boolean }) =>
       new Promise<boolean>((resolve) => {
-        setPending({ message, confirmLabel: opts?.confirmLabel ?? "Confirm", danger: opts?.danger ?? false, resolve });
+        resolver.current?.(false);
+        resolver.current = resolve;
+        setPending({ message, confirmLabel: opts?.confirmLabel ?? "Confirm", danger: opts?.danger ?? false });
       }),
     [],
   );
 
-  const answer = (ok: boolean) => {
-    pending?.resolve(ok);
+  // Stable, so the dialog's focus effect runs once per question, not per render.
+  const answer = useCallback((ok: boolean) => {
+    const resolve = resolver.current;
+    resolver.current = null;
     setPending(null);
-  };
+    resolve?.(ok);
+  }, []);
 
   const dialog = pending ? (
     <ConfirmDialog

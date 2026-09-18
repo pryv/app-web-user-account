@@ -153,8 +153,8 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     expect(flow.updateAccessState.mock.calls[0][1].delegation).toBeUndefined();
   });
 
-  // Guard: passes on the code before the selector existed too.
-  it("[AGF3] no selector when the app denies it, the platform does not run delegation, or nothing is controlled", async () => {
+  // Passes on the code before the selector existed too.
+  it("[AGF3] (guard) no selector when the app denies it, the platform does not run delegation, or nothing is controlled", async () => {
     for (const setup of [
       () => signIn(needSignin({ actAs: "deny" })),
       () => { deleg.serviceInfo = { features: {} }; return signIn(needSignin()); },
