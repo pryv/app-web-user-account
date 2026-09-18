@@ -56,6 +56,16 @@ export function preselectedTarget(targets: GrantTarget[], actAs: ActAs): GrantTa
   return targets[0];
 }
 
+/**
+ * The account the app named in `actAs` when it is not among the choices (the
+ * user does not control it, or not actively), so the screen can say why it
+ * was not preselected; `null` otherwise.
+ */
+export function unavailableActAs(targets: GrantTarget[], actAs: ActAs): string | null {
+  if (actAs == null || actAs === "allow" || actAs === "deny" || actAs === "") return null;
+  return targets.some((t) => t.username === actAs) ? null : actAs;
+}
+
 /** The display hint posted with ACCEPTED when the access was granted on a controlled account. */
 export interface DelegationHint {
   isDelegatedAccess: true;

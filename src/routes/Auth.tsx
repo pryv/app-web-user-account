@@ -19,6 +19,7 @@ import {
   offersTargets,
   grantTargets,
   preselectedTarget,
+  unavailableActAs,
   delegationHint,
   isDelegatedChild,
   openDelegatedWorkspace,
@@ -523,11 +524,17 @@ export default function Auth() {
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
     const appName = accessState.requestingAppId || "the requesting app";
+    const unavailable = unavailableActAs(targets, accessState.actAs);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           Grant <strong>{appName}</strong> access to:
         </h1>
+        {unavailable != null && (
+          <Alert tone="info">
+            <strong>{unavailable}</strong> is not an account you can act for; choose below.
+          </Alert>
+        )}
         <fieldset className="mb-4 space-y-2">
           <legend className="sr-only">Account to grant access to</legend>
           {targets.map((t) => (

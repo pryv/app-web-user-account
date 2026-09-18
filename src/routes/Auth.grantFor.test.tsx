@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { DelegationError, errorIds } from "@pryv/delegation";
 
 /**
  * The `/auth` screen granting an app access on an account the signed-in user
@@ -215,5 +216,59 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     screen.getByRole("button", { name: /accept/i }).click();
     await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
     expect(sessionStorage.getItem("pryv.auth.done:" + POLL)).toBe("1");
+  });
+
+  it("[AGF7] says so when the app named an account the user cannot act for", async () => {
+    await signIn(needSignin({ actAs: "stranger" }));
+    await screen.findByText(/access to:/);
+    expect(screen.getByText(/is not an account you can act for; choose below/).textContent).toContain("stranger");
+    expect((screen.getByDisplayValue("parent") as HTMLInputElement).checked).toBe(true);
+    cleanup();
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    expect(screen.queryByText(/is not an account you can act for/)).toBeNull();
+  });
+
+  async function reachConsentForKid() {
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await screen.findByText(/is requesting permission/);
+    screen.getByRole("button", { name: /accept/i }).click();
+  }
+
+  it("[AGF8] (guard) a fresh access the register refuses is removed from the controlled account with the delegate token", async () => {
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-parameters-format", reason: "mandatory-refused" });
+    await reachConsentForKid();
+    await screen.findByText(/Some permissions this app requires were not granted/);
+    expect(flow.deleteAppAccess).toHaveBeenCalledWith("https://kid-a.core.test/", PAT, "acc-kid");
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+    expect(storageHolds(PAT)).toBe(false);
+  });
+
+  it("[AGF9] (guard) a failed create on the controlled account reports the error and hands nothing over", async () => {
+    flow.createAppAccess.mockRejectedValue(new Error("Access creation failed (403): forbidden"));
+    await reachConsentForKid();
+    await screen.findByText(/Access creation failed \(403\)/);
+    expect(flow.createAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://kid-a.core.test/", PAT]);
+    expect(flow.updateAccessState).not.toHaveBeenCalled();
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  it("[AGF10] (guard) a delegate token that cannot be obtained keeps the selector open with the reason", async () => {
+    deleg.getToken.mockRejectedValue(new DelegationError("not active", errorIds.NOT_ACTIVE));
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await screen.findByText("This delegation is no longer active.");
+    expect(screen.getByText(/access to:/)).toBeTruthy();
+    expect(flow.checkAppAccess).not.toHaveBeenCalled();
+    expect(flow.updateAccessState).not.toHaveBeenCalled();
+    // the user can still pick their own account
+    (screen.getByDisplayValue("parent") as HTMLInputElement).click();
+    screen.getByRole("button", { name: /continue for parent/i }).click();
+    await screen.findByText(/is requesting permission/);
+    expect(flow.checkAppAccess.mock.calls[0][1]).toBe("parent-token");
   });
 });

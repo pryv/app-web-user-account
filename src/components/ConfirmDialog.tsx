@@ -10,7 +10,8 @@ import { Button } from "./ui";
  *   ...
  *   return <>{dialog}...</>;
  *
- * Escape, Cancel and a click outside answer false. A new question replaces
+ * Escape, Cancel and a click outside answer false (a text-selection drag that
+ * starts inside the box and ends outside is not a click outside). A new question replaces
  * an unanswered one, which then answers false.
  */
 export function useConfirm(): [
@@ -62,6 +63,8 @@ function ConfirmDialog({
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  // Whether the current press started on the overlay itself.
+  const pressedOutside = useRef(false);
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -87,8 +90,13 @@ function ConfirmDialog({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onMouseDown={(e) => {
+        pressedOutside.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onAnswer(false);
+        const outside = pressedOutside.current && e.target === e.currentTarget;
+        pressedOutside.current = false;
+        if (outside) onAnswer(false);
       }}
     >
       <div

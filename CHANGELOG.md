@@ -4,6 +4,19 @@
 
 ### Fixed
 
+- **Connected apps no longer offers to revoke the accesses that run an account
+  delegation.** On an account in a delegation, `/account/apps` listed the control
+  access and the delegate's session (and any invitation or notification access)
+  among the apps, and revoking them failed (the platform refuses it). They are now
+  listed apart under "Managed by account delegation" with a link to
+  `/account/delegation`, where the delegation is ended, and their details page shows
+  no Revoke. Apps granted through a delegation stay listed as ordinary, revocable
+  apps.
+- **The confirmation dialog no longer closes on a text-selection drag** that starts
+  inside it and ends outside; only a click that starts and ends outside closes it.
+- **`/auth` says why the account an app asked for is not preselected** when the
+  signed-in user cannot act for it ("… is not an account you can act for; choose
+  below"), instead of silently falling back to the signed-in account.
 - **Reloading the auth popup after it finished** says the request is complete
   instead of reporting an unknown request, once the server has forgotten it.
 - **Confirmations use an in-app dialog instead of the browser's `confirm()`**
