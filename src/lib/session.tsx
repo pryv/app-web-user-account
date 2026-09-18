@@ -103,6 +103,20 @@ function readStored(): PryvConnection | null {
   }
 }
 
+/**
+ * While the session acts for a controlled account: the session of the account
+ * acting (kept to return to), or null. Pages that grant access for someone
+ * (the auth popup) start from it rather than from the acting session.
+ */
+export function storedParentConnection(): PryvConnection | null {
+  if (readActingAs() == null) return null;
+  try {
+    return connectionFor(localStorage.getItem(STORE_KEY_PARENT_API));
+  } catch {
+    return null;
+  }
+}
+
 function readActingAs(): ActingAs | null {
   try {
     const raw = localStorage.getItem(STORE_KEY_ACTING);

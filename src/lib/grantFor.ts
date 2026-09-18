@@ -47,11 +47,19 @@ export function grantTargets(selfUsername: string, controlled: ControlledRecord[
   return targets;
 }
 
-/** The choice to preselect: the account the app named, when offered; else the signed-in one. */
-export function preselectedTarget(targets: GrantTarget[], actAs: ActAs): GrantTarget {
+/**
+ * The choice to preselect: the account the app named, when offered; else
+ * `preferred` (the account the account pages were acting for), when offered;
+ * else the signed-in one.
+ */
+export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferred?: string | null): GrantTarget {
   if (actAs != null && actAs !== "allow" && actAs !== "deny") {
     const named = targets.find((t) => t.username === actAs);
     if (named) return named;
+  }
+  if (preferred != null) {
+    const acting = targets.find((t) => t.username === preferred && !t.self);
+    if (acting) return acting;
   }
   return targets[0];
 }

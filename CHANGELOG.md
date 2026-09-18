@@ -12,13 +12,14 @@
   `/account/delegation`, where the delegation is ended, and their details page shows
   no Revoke. Apps granted through a delegation stay listed as ordinary, revocable
   apps.
-- **An app granted access from a session acting for a controlled account is told
-  so.** When the account pages were acting for a controlled account, the `/auth`
-  popup offered "Continue as <that account>" and granted the access with the
-  delegate's session, but posted no `delegation` hint, so the app showed the account
-  as the user's own. The hint is now taken from the lineage marker the platform puts
-  on the access, for a new access and for a reused one, and the welcome step says
-  "as <account> (via <delegate>)".
+- **The auth popup no longer grants as a controlled account the account pages are
+  acting for.** It used to offer "Continue as <that account>", granting with the
+  delegate's session, ignoring an app's `actAs: 'deny'` or named account, and
+  posting no `delegation` hint (the app showed the account as the user's own). It
+  now continues as the account acting and offers the "who is this for?" choice with
+  the controlled account preselected (an account the app names comes first). An
+  access carrying the platform's lineage marker is always described to the app as
+  delegated, including a reused one.
 - **The confirmation dialog no longer closes on a text-selection drag** that starts
   inside it and ends outside; only a click that starts and ends outside closes it.
 - **`/auth` says why the account an app asked for is not preselected** when the
