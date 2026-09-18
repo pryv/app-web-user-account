@@ -9,7 +9,7 @@ import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { isTrustedResultOrigin } from "../lib/oauth2Flow";
 import { signInLinkFor } from "../lib/handoffReturn";
-import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "../lib/delegation";
+import { inviteFailure, OFFER_UNREADABLE_MESSAGE } from "../lib/cmcAccept";
 
 /** Operator allowlist of origins trusted to receive the token-bearing
  * `dataGrantApiEndpoint` — same control as the OAuth `pryvApi` allowlist. */
@@ -17,18 +17,6 @@ const TRUSTED_RESULT_ORIGINS = (import.meta.env.VITE_OAUTH_TRUSTED_API_ORIGINS ?
   .split(",")
   .map((s: string) => s.trim())
   .filter(Boolean);
-
-/**
- * Message shown and reason handed back for a failed accept / refuse. Only the
- * accept can meet the owner refusal (the platform does not gate a refusal).
- */
-function inviteFailure(err: unknown, fallback: string): { reason: string; message: string } {
-  if (isGrantRequiresOwner(err)) {
-    return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
-  }
-  const message = err instanceof Error ? err.message : fallback;
-  return { reason: message, message };
-}
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
 function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
@@ -124,7 +112,7 @@ export default function CmcApprove() {
 
   const [offer, setOffer] = useState<OfferView | null>(null);
   const [loadingOffer, setLoadingOffer] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; tone: "danger" | "info" } | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
 
@@ -135,9 +123,10 @@ export default function CmcApprove() {
     cmc
       .readOffer(params.capabilityUrl)
       .then((o: unknown) => setOffer(o as OfferView))
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "Could not read the offer."),
-      )
+      .catch((err: unknown) => {
+        console.warn("cmc-accept: could not read the offer", err);
+        setError({ message: OFFER_UNREADABLE_MESSAGE, tone: "danger" });
+      })
       .finally(() => setLoadingOffer(false));
   }, [params.capabilityUrl]);
 
@@ -196,7 +185,7 @@ export default function CmcApprove() {
       );
     } catch (err: unknown) {
       const failure = inviteFailure(err, "Could not approve.");
-      setError(failure.message);
+      setError({ message: failure.message, tone: failure.tone });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
@@ -215,7 +204,7 @@ export default function CmcApprove() {
       deliverResult({ ok: false, reason: "declined-by-user" }, params);
     } catch (err: unknown) {
       const failure = inviteFailure(err, "Could not decline.");
-      setError(failure.message);
+      setError({ message: failure.message, tone: failure.tone });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
@@ -242,7 +231,7 @@ export default function CmcApprove() {
     <Card>
       <h1 className="mb-2 text-2xl">Approve request</h1>
       {loadingOffer && <p className="mb-4 text-sm text-muted">Loading offer…</p>}
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert tone={error.tone}>{error.message}</Alert>}
       {offer && (
         <>
           <p className="mb-4 text-sm">

@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.2.2 — 2026-09-18
+
+### Fixed
+
+- **`/cmc-accept` explains why an approval failed.** A link that cannot be read
+  (invalid or expired) now says so when the page opens, instead of showing the raw
+  API response. On approving, a link already used, a request the app withdrew, or
+  a request you already approved shows a plain message instead of the raw
+  `CMC accept failed: cmc-capability-…` error; when the platform is still
+  processing the approval at the end of the wait, the page says so and asks not
+  to approve again. Outcomes that are not errors for you show as information.
+- **`/cmc-accept` and `/cmc-scope-update` no longer show the client library's
+  wrapper message for an API refusal.** That message embedded the call's
+  parameters (on `/cmc-accept`, the token-bearing approval link) and was also
+  handed back to the calling app as the failure reason. The pages now show the
+  platform's own error message and hand back its error id.
+
+### Changed
+
+- The failure `reason` that `/cmc-accept` hands back to the calling app is now the
+  platform's error id (for example `cmc-capability-consumed`) whenever there is
+  one; it was the English error message. This matches what the `@pryv/cmc`
+  documentation describes for `requestAccept` (the caller receives it as the
+  `CmcError` id) and what `/cmc-scope-update` already did.
+
 ## 0.2.1 — 2026-09-18
 
 ### Changed
