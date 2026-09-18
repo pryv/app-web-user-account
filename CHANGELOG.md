@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- **Credential hand-off: the `/auth` page can deliver an app's token through a
+  one-time shared secret instead of the authorization poll.** When a request asks
+  for it (`credentialHandoff`), and it is not a consent-form or delegated grant, the
+  page creates the one-time secret itself with the personal token and posts only the
+  key, so the app's token never reaches the core that answered the request. Any
+  failure to create the secret falls back to the inline delivery, which the server
+  converts or delivers as before.
+
 ### Fixed
 
 - **Connected apps no longer offers to revoke the accesses that run an account

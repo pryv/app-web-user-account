@@ -21,10 +21,14 @@ const flow = vi.hoisted(() => ({
   createAppAccess: vi.fn(),
   deleteAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
+  createHandoffSecret: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
 }));
 
-vi.mock("../lib/accessFlow", () => flow);
+vi.mock("../lib/accessFlow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/accessFlow")>()),
+  ...flow,
+}));
 
 // Sign-in is a whole flow of its own (password, MFA); stand in for it with
 // a button that hands back a session, which is all this screen needs.
@@ -138,6 +142,50 @@ describe("[AUCP] /auth consent panel", () => {
     expect(minted.permissions).toEqual([
       { streamId: "diary", level: "read", defaultName: "Journal" },
     ]);
+  });
+
+  it("[AUC6] a shared-secret request hands the credential off: the page creates the secret and posts the key, never the token", async () => {
+    flow.createHandoffSecret.mockResolvedValue("evt.the-key");
+    // A plain (no-consent) request that asked for shared-secret delivery.
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      credentialHandoff: "shared-secret",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.createHandoffSecret).toHaveBeenCalled());
+    // The secret carries the freshly minted app token.
+    const params = flow.createHandoffSecret.mock.calls[0][2];
+    expect(params.secret.token).toBe("app-token");
+
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const posted = flow.updateAccessState.mock.calls[0][1];
+    // Shape H: the one-time key, and NO token on the wire to the entry core.
+    expect(posted.handoff).toEqual({ type: "shared-secret", key: "evt.the-key" });
+    expect(posted.token).toBeUndefined();
+  });
+
+  it("[AUC7] a shared-secret request falls back to inline when the secret cannot be created", async () => {
+    flow.createHandoffSecret.mockRejectedValue(new Error("create shared secret failed (403)"));
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      credentialHandoff: "shared-secret",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const posted = flow.updateAccessState.mock.calls[0][1];
+    // Fallback: inline token, no hand-off.
+    expect(posted.token).toBe("app-token");
+    expect(posted.handoff).toBeUndefined();
   });
 
   it("[AUC2] a refused grant removes the access it had just created, and says why", async () => {

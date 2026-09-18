@@ -37,6 +37,8 @@ import {
   deleteAppAccess,
   closeOrRedirect,
   deriveServiceInfoUrlFromPollUrl,
+  buildAcceptedState,
+  createHandoffSecret,
   type AccessState,
   type AccessStateUpdateResult,
   type Permission,
@@ -388,13 +390,38 @@ export default function Auth() {
   ): Promise<AccessStateUpdateResult | null> {
     if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
-    const accepted: Partial<AccessState> = {
-      status: "ACCEPTED",
-      apiEndpoint: apiEp,
-      username: asUser ?? username,
+    const acceptedUsername = asUser ?? username;
+
+    // Shape H: when the request asked for shared-secret delivery, is not a
+    // consent-form request (the server needs the token to verify the grant),
+    // and is not a delegated grant (a delegation-derived token may not create
+    // the hand-off secret), this page creates the one-time secret itself with
+    // the personal token and posts only the key, so the token never reaches
+    // the core that answered the request. Any create failure falls back to
+    // inline delivery (shape L), which the server converts or delivers as-is.
+    let handoffKey: string | null = null;
+    const wantsHandoff = accessState.credentialHandoff === "shared-secret";
+    const canShapeH =
+      wantsHandoff && accessState.consent == null && hint == null && grantFor == null && personalToken != null;
+    if (canShapeH) {
+      try {
+        handoffKey = await createHandoffSecret(endpoint, personalToken as string, {
+          requestingAppId: accessState.requestingAppId ?? "app",
+          secret: { username: acceptedUsername, token, apiEndpoint: apiEp },
+        });
+      } catch {
+        handoffKey = null; // fall back to inline delivery
+      }
+    }
+
+    const accepted = buildAcceptedState({
+      username: acceptedUsername,
+      endpoint,
       token,
-      ...(hint != null ? { delegation: hint } : {}),
-    };
+      apiEndpointWithToken: apiEp,
+      handoffKey,
+      delegation: hint ?? null,
+    });
     let result = await updateAccessState(query.pollUrl, accepted);
     if (result.errorId === "consent-check-unavailable") {
       // The server could not verify the grant, which says nothing about the

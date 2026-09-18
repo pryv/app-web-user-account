@@ -3,6 +3,8 @@ import {
   closeOrRedirect,
   loadAccessState,
   updateAccessState,
+  buildAcceptedState,
+  createHandoffSecret,
   type AccessState,
 } from "./accessFlow";
 
@@ -140,5 +142,90 @@ describe("consent form + accept-result shaping", () => {
     }));
     vi.stubGlobal("fetch", fn);
     expect(await updateAccessState(POLL, { status: "ACCEPTED" })).toEqual({ status: 502 });
+  });
+});
+
+/**
+ * [AFH] Credential hand-off accept shapes.
+ *
+ * The ACCEPTED payload is either inline (token) or hand-off (a one-time key),
+ * never both — a token beside a hand-off would defeat the whole point.
+ */
+describe("[AFH] credential hand-off accept shapes", () => {
+  const common = {
+    username: "alice",
+    endpoint: "https://alice.pryv.me/",
+    token: "app-token-123",
+    apiEndpointWithToken: "https://app-token-123@alice.pryv.me/",
+  };
+
+  it("[AFH1] shape H (handoffKey present) carries the key and a token-less endpoint, never the token", () => {
+    const accepted = buildAcceptedState({ ...common, handoffKey: "evt.rand" });
+    expect(accepted.status).toBe("ACCEPTED");
+    expect(accepted.username).toBe("alice");
+    expect(accepted.handoff).toEqual({ type: "shared-secret", key: "evt.rand" });
+    expect(accepted.token).toBeUndefined();
+    expect(accepted.apiEndpoint).toBe("https://alice.pryv.me/");
+  });
+
+  it("[AFH2] shape L (no handoffKey) carries the inline token, never a hand-off", () => {
+    const accepted = buildAcceptedState({ ...common, handoffKey: null });
+    expect(accepted.token).toBe("app-token-123");
+    expect(accepted.apiEndpoint).toBe("https://app-token-123@alice.pryv.me/");
+    expect(accepted.handoff).toBeUndefined();
+    // Exclusivity: exactly one of token / handoff is ever set.
+    expect((accepted.token == null) !== (accepted.handoff == null)).toBe(true);
+  });
+
+  it("[AFH3] the delegation hint rides at the top level of either shape", () => {
+    const delegation = {
+      isDelegatedAccess: true as const,
+      controlledUsername: "kid",
+      delegate: { username: "parent" },
+    };
+    const h = buildAcceptedState({ ...common, handoffKey: "evt.r", delegation });
+    const l = buildAcceptedState({ ...common, handoffKey: null, delegation });
+    expect(h.delegation).toEqual(delegation);
+    expect(l.delegation).toEqual(delegation);
+    expect(h.token).toBeUndefined();
+    expect(l.handoff).toBeUndefined();
+  });
+
+  it("[AFH4] createHandoffSecret posts to the account's shared-secrets with the personal token and returns the key", async () => {
+    let captured: { url: string; options: RequestInit } | null = null;
+    const fn = vi.fn(async (url: string, options: RequestInit) => {
+      captured = { url, options };
+      return { ok: true, json: async () => ({ sharedSecret: { key: "evt.the-key" } }) };
+    });
+    vi.stubGlobal("fetch", fn);
+    try {
+      const key = await createHandoffSecret("https://alice.pryv.me/", "personal-tok", {
+        requestingAppId: "my-app",
+        secret: { username: "alice", token: "app-token-123", apiEndpoint: "https://app-token-123@alice.pryv.me/" },
+      });
+      expect(key).toBe("evt.the-key");
+      expect(captured!.url).toBe("https://alice.pryv.me/shared-secrets");
+      expect((captured!.options.headers as Record<string, string>).Authorization).toBe("personal-tok");
+      const body = JSON.parse(captured!.options.body as string);
+      expect(body.title).toBe("access-handoff:my-app");
+      expect(body.secret.token).toBe("app-token-123");
+      expect(typeof body.ttl).toBe("number");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("[AFH5] createHandoffSecret throws on a non-ok response (caller falls back to inline)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 403, json: async () => ({}) })));
+    try {
+      await expect(
+        createHandoffSecret("https://alice.pryv.me/", "personal-tok", {
+          requestingAppId: "my-app",
+          secret: { username: "alice", token: "t", apiEndpoint: "https://t@alice.pryv.me/" },
+        }),
+      ).rejects.toThrow(/create shared secret failed/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

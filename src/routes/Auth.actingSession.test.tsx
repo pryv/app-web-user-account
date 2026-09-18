@@ -21,7 +21,10 @@ const flow = vi.hoisted(() => ({
   closeOrRedirect: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
 }));
-vi.mock("../lib/accessFlow", () => flow);
+vi.mock("../lib/accessFlow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/accessFlow")>()),
+  ...flow,
+}));
 
 const deleg = vi.hoisted(() => ({ listControlled: vi.fn(), getToken: vi.fn() }));
 vi.mock("@pryv/delegation", async (importOriginal) => {
