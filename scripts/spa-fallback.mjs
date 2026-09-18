@@ -31,6 +31,7 @@ const routes = [
   "account/security",
   "account/apps",
   "account/data",
+  "account/delegation",
 ];
 
 for (const route of routes) {

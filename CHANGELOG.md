@@ -22,6 +22,8 @@
 
 - **Reloading the auth popup after it finished** says the request is complete
   instead of reporting an unknown request, once the server has forgotten it.
+- **A direct link to `/account/delegation` loads the page** on static hosts (it
+  answered "Not Found": the route was missing from the static fallback list).
 - **`/cmc-scope-update` reports success only once the change is applied.** The
   page said "The new permission set has been granted" as soon as the answer was
   written, even when the platform changed nothing. It now waits for the
