@@ -9,6 +9,7 @@ import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { isTrustedResultOrigin } from "../lib/oauth2Flow";
 import { signInLinkFor } from "../lib/handoffReturn";
+import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "../lib/delegation";
 
 /** Operator allowlist of origins trusted to receive the token-bearing
  * `dataGrantApiEndpoint` — same control as the OAuth `pryvApi` allowlist. */
@@ -16,6 +17,18 @@ const TRUSTED_RESULT_ORIGINS = (import.meta.env.VITE_OAUTH_TRUSTED_API_ORIGINS ?
   .split(",")
   .map((s: string) => s.trim())
   .filter(Boolean);
+
+/**
+ * Message shown and reason handed back for a failed accept / refuse. Only the
+ * accept can meet the owner refusal (the platform does not gate a refusal).
+ */
+function inviteFailure(err: unknown, fallback: string): { reason: string; message: string } {
+  if (isGrantRequiresOwner(err)) {
+    return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
+  }
+  const message = err instanceof Error ? err.message : fallback;
+  return { reason: message, message };
+}
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
 function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
@@ -182,9 +195,9 @@ export default function CmcApprove() {
         params,
       );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not approve.";
-      setError(msg);
-      deliverResult({ ok: false, reason: msg }, params);
+      const failure = inviteFailure(err, "Could not approve.");
+      setError(failure.message);
+      deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
     }
@@ -201,9 +214,9 @@ export default function CmcApprove() {
       setDone("refused");
       deliverResult({ ok: false, reason: "declined-by-user" }, params);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not decline.";
-      setError(msg);
-      deliverResult({ ok: false, reason: msg }, params);
+      const failure = inviteFailure(err, "Could not decline.");
+      setError(failure.message);
+      deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
     }

@@ -76,30 +76,55 @@ export function delegationErrorMessage(err: unknown): string {
       return "This account is still active and cannot be dismissed.";
     case errorIds.DELEGATE_MISMATCH:
       return "This invitation does not match the invited account.";
+    case errorIds.GRANT_REQUIRES_OWNER:
+      return GRANT_REQUIRES_OWNER_MESSAGE;
     default:
       if (err instanceof Error && err.message) return err.message;
       return "Something went wrong. Please try again.";
   }
 }
 
-/** Stable `delegation-*` id of a thrown error, or `undefined` when absent. */
+/**
+ * Stable `delegation-*` id of a thrown error, else its first API error id, else
+ * `undefined`. Also reads the API error a `pryv` `PryvError` carries (in
+ * `innerObject`, or `response.body.error`), where the platform puts a delegation
+ * refusal under `data.id` (the error's own `id` being the generic
+ * `invalid-operation`).
+ */
 export function delegationErrorId(err: unknown): string | undefined {
   if (err instanceof DelegationError) return err.id;
-  if (
-    err != null &&
-    typeof err === "object" &&
-    "id" in err &&
-    typeof (err as { id: unknown }).id === "string"
-  ) {
-    return (err as { id: string }).id;
-  }
-  return undefined;
+  const inner = field(err, "innerObject");
+  const body = field(field(field(err, "response"), "body"), "error");
+  const ids = [err, field(err, "data"), inner, field(inner, "data"), body, field(body, "data")]
+    .map((v) => field(v, "id"))
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  return ids.find((id) => id.startsWith("delegation-")) ?? ids[0];
+}
+
+function field(value: unknown, key: string): unknown {
+  return value != null && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
 }
 
 /** True when the failure is the genuine-login gate on detach / cancel. */
 export function isGenuineLoginRequired(err: unknown): boolean {
   return delegationErrorId(err) === errorIds.GENUINE_LOGIN_REQUIRED;
 }
+
+/**
+ * Shown when the platform refuses a grant (CMC consent accept, scope update)
+ * made with a token obtained through account delegation: only the account
+ * owner can answer those.
+ */
+export const GRANT_REQUIRES_OWNER_MESSAGE =
+  "Only the account owner can answer this request. You are acting for this account through a delegation: ask its owner to answer it.";
+
+/** True when the platform refused a grant because the token came through a delegation. */
+export function isGrantRequiresOwner(err: unknown): boolean {
+  return delegationErrorId(err) === errorIds.GRANT_REQUIRES_OWNER;
+}
+
+/** Stable id of {@link GRANT_REQUIRES_OWNER_MESSAGE}, handed back to calling apps. */
+export const GRANT_REQUIRES_OWNER_ID = errorIds.GRANT_REQUIRES_OWNER;
 
 /** Normalised outcome of a delegation client call. */
 export type FlowResult<T> =

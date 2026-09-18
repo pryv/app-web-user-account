@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0.2.1 — 2026-09-18
+
+### Changed
+
+- Built with the latest Pryv client libraries: `pryv`, `@pryv/delegation` and
+  `@pryv/socket.io` 3.13.0, `@pryv/cmc` 3.16.1 (were 3.11.0, 3.11.0, 3.8.0 and
+  3.14.0).
+
+### Fixed
+
+- **A CMC request answered while acting for a controlled account now says why it
+  was refused.** open-pryv.io 2.0.0-rc.23 refuses approving a CMC request or
+  answering a scope update with a token obtained through account delegation
+  (`delegation-grant-requires-owner`): only the account owner can do it. The
+  `/cmc-accept` and `/cmc-scope-update` pages now show that in plain words instead
+  of the raw API error, and hand `delegation-grant-requires-owner` back to the
+  calling app as the failure reason.
+
 ## 0.2.0 — 2026-09-18
 
 Granting an app access for a controlled account needs a core that advertises
