@@ -3,6 +3,7 @@
  * wording and the id handed back to the calling app are unit-testable.
  */
 
+import { platformError } from "./apiError";
 import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
 
 /** The platform could not find the request on the signed-in account. */
@@ -44,8 +45,7 @@ export function scopeUpdateFailure(err: unknown, fallback = "Could not complete 
   if (isGrantRequiresOwner(err)) {
     return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
   }
-  const id = errorId(err);
-  const message = err instanceof Error && err.message ? err.message : fallback;
+  const { id, message } = platformError(err, fallback);
   if (id != null && NOT_FOUND_IDS.has(id)) {
     return { reason: id, message: REQUEST_NOT_FOUND_MESSAGE };
   }
@@ -67,10 +67,4 @@ export function scopeUpdateSuccessNote(result: { peerNotified?: boolean } | null
     return "The collector could not be notified yet; the platform will retry.";
   }
   return null;
-}
-
-function errorId(err: unknown): string | null {
-  if (err == null || typeof err !== "object") return null;
-  const id = (err as { id?: unknown }).id;
-  return typeof id === "string" && id.length > 0 ? id : null;
 }
