@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-09-18
+
+Granting an app access for a controlled account needs a core that advertises
+`features.delegation` in its service info, and the credential hand-off on `/auth`
+needs a core that supports `credentialHandoff` (open-pryv.io 2.0.0-rc.23 or later).
+On an older core the first is not offered and the second falls back to the inline
+delivery.
+
 ### Added
 
 - **Credential hand-off: the `/auth` page can deliver an app's token through a
@@ -123,6 +131,7 @@
 - **Accepting an invitation no longer fails when the scope stream does not exist
   yet.** Fixed on the platform side (a core carrying the fix provisions the
   scope when the user accepts); no change to `/cmc-accept`. Fixes #2.
+
 ## 0.1.0 — 2026-07-17
 
 ### Security
