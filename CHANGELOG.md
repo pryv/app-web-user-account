@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Third-party sign-in now finishes the flow you started.** Signing in with a
+  provider used to land on the account profile and forget the calling app's
+  `returnURL` and `state`; arriving from an approval link (`/cmc-accept`,
+  `/cmc-scope-update`) forgot the link itself. The sign-in page now hands the core
+  an opaque return context (never a credential, and never the service-info URL),
+  which comes back on the landing page and is applied exactly as it is after a
+  password sign-in; the approval link itself stays in this browser tab and is
+  restored when the sign-in returns to it. With a core that does not echo the
+  return context, the same-tab restore still works.
+- **After a second factor, the profile fallback keeps `pryvServiceInfoUrl`.**
+  Completing an MFA challenge without a `returnURL` or a hand-off sent the user to
+  `/account`, dropping the platform the session belonged to; it now goes to the
+  same `/account/profile?pryvServiceInfoUrl=…` every other sign-in path uses.
+
+### Changed
+
+- Password, second-factor and third-party sign-in now share one completion
+  decision (`returnURL`, then a hand-off `next`, then the profile) instead of
+  re-implementing it three times.
+
 ## 0.2.2 — 2026-09-18
 
 ### Fixed

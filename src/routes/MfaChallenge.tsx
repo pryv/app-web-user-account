@@ -2,8 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
-import { handoffReturnPath } from "../lib/handoffReturn";
+import { parseAuthParams } from "../lib/authParams";
+import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 
 interface MfaState {
@@ -48,16 +48,16 @@ export default function MfaChallenge() {
         mfaToken,
         code,
       )) as unknown as PryvConnection;
-      const { returnURL, serviceInfoUrl, state: csrfState } = parseAuthParams(search);
+      const { serviceInfoUrl } = parseAuthParams(search);
       setConnection(connection, serviceInfoUrl);
-      if (returnURL) {
-        window.location.href = buildCompletionUrl(
-          returnURL,
-          connection.endpoint,
-          csrfState,
-        );
+      // Same completion decision as a password or third-party sign-in. This
+      // also restores `pryvServiceInfoUrl` on the profile fallback, which the
+      // old inline `/account` default dropped.
+      const target = signedInTarget(search, connection.endpoint);
+      if (target.kind === "external") {
+        window.location.href = target.href;
       } else {
-        navigate(handoffReturnPath(search) ?? "/account");
+        navigate(target.path);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Verification failed.");
