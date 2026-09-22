@@ -68,9 +68,21 @@ export function ssoProvidersUrl(coreOrigin: string): string {
   return coreOrigin.replace(/\/+$/, "") + "/auth/sso/providers";
 }
 
-/** Where a sign-in button sends the browser to begin a provider flow. */
-export function ssoStartUrl(coreOrigin: string, providerId: string): string {
-  return coreOrigin.replace(/\/+$/, "") + "/auth/sso/" + encodeURIComponent(providerId) + "/start";
+/**
+ * Where a sign-in button sends the browser to begin a provider flow.
+ *
+ * `ssoReturn` is an opaque string the core stores and hands back on the landing
+ * fragment; build it with `buildSsoReturn`, and never put a credential or the
+ * service-info URL in it (the start URL is a GET, logged by the core).
+ */
+export function ssoStartUrl(
+  coreOrigin: string,
+  providerId: string,
+  ssoReturn?: string | null,
+): string {
+  const base = coreOrigin.replace(/\/+$/, "") + "/auth/sso/" + encodeURIComponent(providerId) + "/start";
+  if (!ssoReturn) return base;
+  return base + "?ssoReturn=" + encodeURIComponent(ssoReturn);
 }
 
 export interface SsoProvider {

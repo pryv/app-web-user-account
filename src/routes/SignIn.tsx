@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
-import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
-import { handoffReturnPath } from "../lib/handoffReturn";
+import { parseAuthParams } from "../lib/authParams";
+import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 import {
   fetchSsoProviders,
@@ -11,6 +11,7 @@ import {
   ssoStartUrl,
   type SsoProvider,
 } from "../lib/ssoLanding";
+import { buildSsoReturn, stashSsoReturn } from "../lib/ssoReturn";
 
 /**
  * Sign-in / authorize. Calls `Service.login`; on `MfaRequiredError` it routes to
@@ -75,26 +76,18 @@ export default function SignIn() {
     };
   }, [connection]);
 
-  function completeSignedIn(conn: PryvConnection, serviceInfoUrl: string | null, returnURL: string | null, state: string | null) {
-    if (returnURL) {
-      window.location.href = buildCompletionUrl(returnURL, conn.endpoint, state);
+  function completeSignedIn(conn: PryvConnection) {
+    const target = signedInTarget(search, conn.endpoint);
+    if (target.kind === "external") {
+      window.location.href = target.href;
       return;
     }
-    const handoff = handoffReturnPath(search);
-    if (handoff) {
-      navigate(handoff);
-      return;
-    }
-    const target = serviceInfoUrl
-      ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
-      : "/account/profile";
-    navigate(target);
+    navigate(target.path);
   }
 
   function continueAs() {
     if (!connection) return;
-    const { returnURL, serviceInfoUrl, state } = parseAuthParams(search);
-    completeSignedIn(connection, serviceInfoUrl, returnURL, state);
+    completeSignedIn(connection);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -103,7 +96,7 @@ export default function SignIn() {
     setBusy(true);
     let userId = username;
     try {
-      const { appId, returnURL, serviceInfoUrl, state } = parseAuthParams(search);
+      const { appId, serviceInfoUrl } = parseAuthParams(search);
       const service = getService(search);
       userId = await resolveUserId(service, username);
       const connection = (await service.login(
@@ -116,7 +109,7 @@ export default function SignIn() {
       // every account-side <Navigate> can preserve it from useLocation().search
       // without depending on localStorage state (which gets cleared when
       // setConnection(null) runs, racing AccountLayout's re-render).
-      completeSignedIn(connection, serviceInfoUrl, returnURL, state);
+      completeSignedIn(connection);
     } catch (err: unknown) {
       if (isMfaRequired(err)) {
         navigate("/mfa-challenge", {
@@ -198,7 +191,12 @@ export default function SignIn() {
                 key={p.id}
                 type="button"
                 onClick={() => {
-                  window.location.href = ssoStartUrl(ssoOrigin, p.id);
+                  // Keep the app's return context across the provider
+                  // round-trip: an allow-listed subset rides the core, the
+                  // full query stays in this tab. See lib/ssoReturn.ts.
+                  const { value, nonce } = buildSsoReturn(search);
+                  stashSsoReturn(nonce, search);
+                  window.location.href = ssoStartUrl(ssoOrigin, p.id, value);
                 }}
                 className="w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
