@@ -16,6 +16,8 @@ import {
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
+import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
+import { AppIcon } from "../components/AppIcon";
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -101,14 +103,22 @@ export default function Oauth2Authorize() {
   const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
 
+  // Only looked up once `pryvApi` passed the trust check (initError unset).
+  const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
+  // The operator's catalog is the only source of a display name for the app;
+  // the client id is shown when the catalog does not know it.
+  const requestingApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  const labelFor = useStreamLabels(platformUrl);
+
   const entries = useMemo(
     () =>
       oauthState?.offer
         ? consentEntries(oauthState.offer.permissions, {
             allowUserChoice: oauthState.offer.allowUserChoice,
+            labelFor,
           })
         : [],
-    [oauthState],
+    [oauthState, labelFor],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
   // the user has to choose deliberately.
@@ -184,9 +194,13 @@ export default function Oauth2Authorize() {
     const consentText = pickText(offer.consent);
     return (
       <Card>
-        <h1 id="oauthClientIdText" className="mb-2 text-2xl">
-          <strong>{oauthState.clientId}</strong>
+        <h1 className="mb-2 flex items-center gap-2 text-2xl">
+          <AppIcon icon={requestingApp?.icon ?? null} />
+          <strong id="oauthClientIdText">{requestingApp?.name ?? oauthState.clientId}</strong>
         </h1>
+        {requestingApp?.description != null && (
+          <p className="mb-2 text-sm text-muted">{requestingApp.description}</p>
+        )}
         {title && <p className="mb-1 text-lg font-medium">{title}</p>}
         {description && <p className="mb-2 text-sm text-muted">{description}</p>}
         <p className="mb-2 text-sm">is requesting permission:</p>
@@ -229,7 +243,7 @@ export default function Oauth2Authorize() {
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
-          <strong>{oauthState.clientId}</strong> wants to access your Pryv account.
+          <strong>{requestingApp?.name ?? oauthState.clientId}</strong> wants to access your Pryv account.
         </span>
       }
       onSignedIn={({ username: u, personalToken: token }) => {

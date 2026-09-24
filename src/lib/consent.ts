@@ -10,6 +10,8 @@
  * `ConsentEntry[]` and hands it to the shared components.
  */
 
+import type { StreamLabelResolver } from "./streamLabels";
+
 /** Localized text map: language code → string (e.g. `{ en: "…" }`). */
 export type LocalizableText = Record<string, string>;
 
@@ -63,17 +65,21 @@ export interface ConsentEntry {
  * all-or-nothing consent every row is locked and ticked, so opening one
  * unticked would show a state the user cannot act on and the server would
  * refuse.
+ *
+ * `labelFor` (a deployment's stream-label resolver, see `streamLabels.ts`)
+ * names a stream before the request's own `name` / `defaultName`; a `null`
+ * answer keeps those.
  */
 export function consentEntries(
   permissions: OfferPermission[],
-  opts: { allowUserChoice?: boolean } = {},
+  opts: { allowUserChoice?: boolean; labelFor?: StreamLabelResolver } = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
   return permissions.map((p) => {
     const locked = !allowUserChoice || p.mandatory === true;
     return {
       permission: p,
-      label: permissionLabel(p),
+      label: permissionLabel(p, opts.labelFor),
       locked,
       showRequiredHint: allowUserChoice && p.mandatory === true,
       initiallyTicked: locked || p.optIn !== true,
@@ -127,10 +133,12 @@ const LEVEL_LABELS: Record<string, string> = {
  * render as "<level verb> “<stream name>”"; known feature permissions
  * get a dedicated wording, unknown ones fall back to `feature: setting`.
  */
-export function permissionLabel(p: OfferPermission): string {
+export function permissionLabel(p: OfferPermission, labelFor?: StreamLabelResolver): string {
   if ("streamId" in p && typeof p.streamId === "string") {
     const target =
-      p.streamId === "*" ? "all your data" : `“${p.name ?? p.defaultName ?? p.streamId}”`;
+      p.streamId === "*"
+        ? "all your data"
+        : `“${resolvedLabel(labelFor, p.streamId) ?? p.name ?? p.defaultName ?? p.streamId}”`;
     return `${LEVEL_LABELS[p.level] ?? p.level} ${target}`;
   }
   const f = p as { feature: string; setting: string };
@@ -138,6 +146,17 @@ export function permissionLabel(p: OfferPermission): string {
     return "The app cannot revoke its own access (only you can)";
   }
   return `${f.feature}: ${f.setting}`;
+}
+
+/** A resolver's label, or null when it has none (or fails: display only, never fatal). */
+function resolvedLabel(labelFor: StreamLabelResolver | undefined, streamId: string): string | null {
+  if (labelFor == null) return null;
+  try {
+    const label = labelFor(streamId);
+    return typeof label === "string" && label !== "" ? label : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Pick the best language variant from a localized text map. */
