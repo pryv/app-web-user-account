@@ -11,8 +11,11 @@
   send a user's password to someone else's server. New `settings.json` key
   `allowedServiceInfoUrls`: when set, only those platforms and the default
   `serviceInfoUrl` are served, and any other is refused before a password can be
-  typed. Opt-in (unset keeps today's behaviour); recommended for every
-  deployment that serves a single platform.
+  typed. On `/auth` both the service-info in the link and the platform of the
+  poll URL must be served, so a granted token cannot be posted to someone
+  else's poll URL. An empty list means the default platform only. Opt-in (the
+  key absent keeps today's behaviour); recommended for every deployment that
+  serves a single platform.
 - The README now states that the app must be served from its own origin (the
   session, stored in `localStorage`, holds the user's personal token and is
   readable by every page of that origin), and marks the copy published under

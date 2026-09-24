@@ -66,6 +66,20 @@ const APP_ID = "pryv-app-web-user-account";
  * - its clientData differs: the core merges clientData on update, so stale
  *   keys would stay and the access would never match again.
  */
+/**
+ * Whether this deployment may handle an access request: BOTH the platform the
+ * poll URL belongs to and the one named by the link's service-info param must
+ * be served. The poll URL matters on its own: the page loads the request from
+ * it and posts the granted token back to it, so an allowed service-info next
+ * to someone else's poll URL would hand them the token. An undeterminable poll
+ * platform is refused when the deployment restricts platforms.
+ */
+function requestPlatformAllowed(pollUrl: string | null, serviceInfoUrl: string | null): boolean {
+  const pollPlatform = pollUrl ? deriveServiceInfoUrlFromPollUrl(pollUrl) : null;
+  if (!isAllowedServiceInfoUrl(pollPlatform ?? "")) return false;
+  return serviceInfoUrl == null || isAllowedServiceInfoUrl(serviceInfoUrl);
+}
+
 function updatesInPlace(
   mismatching: AppAccess | null | undefined,
   state: AccessState,
@@ -277,11 +291,8 @@ export default function Auth() {
       );
       return;
     }
-    // The platform the user will sign in to must be one this deployment
-    // serves; checked before anything is fetched from the link.
-    const linkSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl);
-    // An undeterminable platform is refused too when the deployment restricts them.
-    if (!isAllowedServiceInfoUrl(linkSvcInfoUrl ?? "")) {
+    // Checked before anything is fetched from the link.
+    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) {
       setInitError(PLATFORM_NOT_ALLOWED);
       return;
     }
@@ -328,7 +339,7 @@ export default function Auth() {
   function makeService() {
     const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
     // The password goes to this platform: refuse one this deployment does not serve.
-    if (!isAllowedServiceInfoUrl(svcInfoUrl ?? "")) throw new Error(PLATFORM_NOT_ALLOWED);
+    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) throw new Error(PLATFORM_NOT_ALLOWED);
     return new Pryv.Service(svcInfoUrl ?? "");
   }
 

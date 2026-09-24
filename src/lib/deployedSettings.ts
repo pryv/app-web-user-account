@@ -77,8 +77,11 @@ export function parseDeployedSettings(raw: unknown): DeployedSettings {
   const serviceInfoUrl = url(json.serviceInfoUrl);
   if (serviceInfoUrl) out.serviceInfoUrl = serviceInfoUrl;
   if (Array.isArray(json.allowedServiceInfoUrls)) {
-    const allowed = json.allowedServiceInfoUrls.map(url).filter((u): u is string => u != null);
-    if (allowed.length > 0) out.allowedServiceInfoUrls = allowed;
+    // Kept even when empty: a restriction that parses to nothing means "the
+    // default platform only", never "no restriction" (fail closed).
+    out.allowedServiceInfoUrls = json.allowedServiceInfoUrls
+      .map(url)
+      .filter((u): u is string => u != null);
   }
   const trusted = origins(json.trustedApiOrigins);
   if (trusted) out.trustedApiOrigins = trusted;

@@ -47,6 +47,21 @@ describe("[DSAL] allowed platforms", () => {
     expect(isAllowedServiceInfoUrl("https://evil.example/service/info")).toBe(false);
     expect(isAllowedServiceInfoUrl("https://reg.example.com/service/info/../x")).toBe(false);
     expect(isAllowedServiceInfoUrl("")).toBe(false);
+    expect(isAllowedServiceInfoUrl("javascript:x")).toBe(false);
+    expect(isAllowedServiceInfoUrl("https://user@reg.partner.example/service/info")).toBe(false);
+    expect(isAllowedServiceInfoUrl(OTHER + "?x=1")).toBe(false);
+    expect(isAllowedServiceInfoUrl("https://reg.partner.example:8443/service/info")).toBe(false);
+    expect(isAllowedServiceInfoUrl("https://reg.partner.example:443/service/info")).toBe(true);
+  });
+
+  it("[DAL3] an empty or all-invalid list means the default platform only, never unrestricted", () => {
+    for (const list of [[], ["javascript:x", "not a url"]]) {
+      _setDeployedSettingsForTest(parseDeployedSettings({ serviceInfoUrl: OWN, allowedServiceInfoUrls: list }));
+      expect(isAllowedServiceInfoUrl(OWN)).toBe(true);
+      expect(isAllowedServiceInfoUrl(OTHER)).toBe(false);
+    }
+    _setDeployedSettingsForTest(parseDeployedSettings({ allowedServiceInfoUrls: [] }));
+    expect(isAllowedServiceInfoUrl(OWN)).toBe(false);
   });
 });
 
