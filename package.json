@@ -1,7 +1,7 @@
 {
   "name": "app-web-user-account",
   "description": "Pryv user-account web app: authentication flows and self-service account management (profile, security/MFA, connected apps, data rights). Reference implementation, themeable and meant to be self-hosted by operators.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "license": "BSD-3-Clause",
   "author": "Pryv <info@pryv.com> (https://pryv.com)",
   "type": "module",
@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "webserver": "node scripts/spa-fallback.mjs && backloop.dev ./dist 4443",
     "prebuild:pages": "node scripts/check-lockfile-sync.mjs",
-    "build:pages":"tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
+    "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
     "test": "vitest run",
     "e2e": "playwright test"
   },
