@@ -3,8 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
-import { PermissionList } from "../components/consent/PermissionList";
-import { ConsentActions } from "../components/consent/ConsentActions";
+import { ConsentPanel } from "../components/consent/ConsentPanel";
 import {
   consentEntries,
   grantedPermissions,
@@ -18,7 +17,6 @@ import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSe
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
-import { AppIcon } from "../components/AppIcon";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
@@ -711,29 +709,28 @@ export default function Auth() {
     const consentMsg = consentMessage(accessState.clientData);
     return (
       <Card>
-        <h1 className="mb-2 flex items-center gap-2 text-2xl">
-          <AppIcon icon={requestingApp?.icon ?? null} />
-          <strong>{requestingApp?.name ?? accessState.requestingAppId}</strong>
-        </h1>
-        {requestingApp?.description != null && (
-          <p className="mb-2 text-sm text-muted">{requestingApp.description}</p>
-        )}
-        <p className="mb-2 text-sm">is requesting permission:</p>
-        {consentMsg != null && (
-          // The app's own explanation comes before the technical breakdown.
-          // Untrusted text: MarkdownLite builds React elements, never innerHTML.
-          // Framed and captioned so the app's words never read as the platform's.
-          <div className="mb-3">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
-            <div
-              data-testid="consent-message"
-              className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
-            >
-              <MarkdownLite text={consentMsg} />
-            </div>
-          </div>
-        )}
-        <PermissionList
+        <ConsentPanel
+          app={{
+            name: requestingApp?.name ?? accessState.requestingAppId ?? "",
+            icon: requestingApp?.icon,
+            description: requestingApp?.description,
+          }}
+          consentText={
+            consentMsg != null && (
+              // The app's own explanation comes before the technical breakdown.
+              // Untrusted text: MarkdownLite builds React elements, never innerHTML.
+              // Framed and captioned so the app's words never read as the platform's.
+              <div className="mb-3">
+                <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
+                <div
+                  data-testid="consent-message"
+                  className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
+                >
+                  <MarkdownLite text={consentMsg} />
+                </div>
+              </div>
+            )
+          }
           entries={entries}
           flags={allowsChoice ? grantedFlags : undefined}
           onToggle={
@@ -741,32 +738,31 @@ export default function Auth() {
               ? (i, checked) => setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
               : undefined
           }
-        />
-        {allowsChoice && (
-          <p className="mb-2 text-sm text-muted">
-            Untick anything you would rather not share. Entries marked as required cannot be
-            unticked.
-          </p>
-        )}
-        {accessState.expireAfter != null && (
-          <p className="mb-2 text-sm">
-            <strong>Expires after:</strong> {accessState.expireAfter}s
-          </p>
-        )}
-        {check.mismatchingAccess && (
-          <Alert tone="info">
-            A different access was already given to this app.{" "}
-            {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
-              ? "Approving will update it."
-              : "Approving will replace it."}
-          </Alert>
-        )}
-        {error && <Alert>{error}</Alert>}
-        <ConsentActions
+          choiceHint={
+            allowsChoice && (
+              <p className="mb-2 text-sm text-muted">
+                Untick anything you would rather not share. Entries marked as required cannot be
+                unticked.
+              </p>
+            )
+          }
+          expireAfterSeconds={accessState.expireAfter ?? null}
+          mismatchWarning={
+            check.mismatchingAccess ? (
+              <>
+                A different access was already given to this app.{" "}
+                {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
+                  ? "Approving will update it."
+                  : "Approving will replace it."}
+              </>
+            ) : undefined
+          }
           busy={finishing}
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
-        />
+        >
+          {error && <Alert>{error}</Alert>}
+        </ConsentPanel>
       </Card>
     );
   }

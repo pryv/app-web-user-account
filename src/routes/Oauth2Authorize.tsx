@@ -3,8 +3,7 @@ import { useLocation } from "react-router-dom";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
-import { PermissionList } from "../components/consent/PermissionList";
-import { ConsentActions } from "../components/consent/ConsentActions";
+import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
 import { assertHttpUrl } from "../lib/safeRedirect";
 import {
@@ -18,7 +17,6 @@ import {
 import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { brand } from "../brand";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
-import { AppIcon } from "../components/AppIcon";
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -195,42 +193,47 @@ export default function Oauth2Authorize() {
     const consentText = pickText(offer.consent);
     return (
       <Card>
-        <h1 className="mb-2 flex items-center gap-2 text-2xl">
-          <AppIcon icon={requestingApp?.icon ?? null} />
-          <strong id="oauthClientIdText">{requestingApp?.name ?? oauthState.clientId}</strong>
-        </h1>
-        {requestingApp?.description != null && (
-          <p className="mb-2 text-sm text-muted">{requestingApp.description}</p>
-        )}
-        {title && <p className="mb-1 text-lg font-medium">{title}</p>}
-        {description && <p className="mb-2 text-sm text-muted">{description}</p>}
-        <p className="mb-2 text-sm">is requesting permission:</p>
-        <PermissionList
+        <ConsentPanel
+          app={{
+            name: requestingApp?.name ?? oauthState.clientId,
+            icon: requestingApp?.icon,
+            description: requestingApp?.description,
+          }}
+          appNameId="oauthClientIdText"
+          title={
+            <>
+              {title && <p className="mb-1 text-lg font-medium">{title}</p>}
+              {description && <p className="mb-2 text-sm text-muted">{description}</p>}
+            </>
+          }
           entries={entries}
           flags={grantedFlags}
           idPrefix="oauthScope"
           onToggle={(i, checked) =>
             setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
           }
-        />
-        {consentText && (
-          <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
-            {consentText}
-          </p>
-        )}
-        <p className="mb-4 text-sm text-muted">
-          {offer.allowUserChoice
-            ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
-            : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
-        </p>
-        {error && <Alert>{error}</Alert>}
-        <ConsentActions
+          afterList={
+            consentText && (
+              <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
+                {consentText}
+              </p>
+            )
+          }
+          choiceHint={
+            <p className="mb-4 text-sm text-muted">
+              {offer.allowUserChoice
+                ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
+                : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
+            </p>
+          }
           busy={busy}
           acceptId="oauthAccept"
           refuseId="oauthRefuse"
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
-        />
+        >
+          {error && <Alert>{error}</Alert>}
+        </ConsentPanel>
       </Card>
     );
   }
