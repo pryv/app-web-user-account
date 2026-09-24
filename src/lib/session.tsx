@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import Pryv from "pryv";
+import { getDefaultServiceInfoUrl } from "./deployedSettings";
 
 /** Minimal shape of a Pryv `Connection` that the account pages rely on. */
 export interface PryvConnection {
@@ -56,7 +57,7 @@ const STORE_KEY_ACTING = "pryv.session.actingAs";
  * round-trip to /signin. Falls back to the last persisted session's
  * service-info URL so a clean sign-out → sign-in lands the user on the
  * right Pryv instance without needing the calling app to re-include the
- * param.
+ * param. Last, the deployment's default platform from settings.json.
  */
 export function signinPath(searchOrUndefined?: string, returnTo?: string | null): string {
   let serviceInfoUrl: string | null = null;
@@ -69,6 +70,7 @@ export function signinPath(searchOrUndefined?: string, returnTo?: string | null)
       serviceInfoUrl = null;
     }
   }
+  serviceInfoUrl ??= getDefaultServiceInfoUrl();
   const out = new URLSearchParams();
   if (serviceInfoUrl) out.set("pryvServiceInfoUrl", serviceInfoUrl);
   carryHandoffParams(sp, out);
@@ -143,7 +145,9 @@ export function storedServiceInfoUrl(): string | null {
 
 function connectionFor(apiEndpoint: string | null): PryvConnection | null {
   try {
-    const serviceInfoUrl = localStorage.getItem(STORE_KEY_SERVICE);
+    // A session created without the param stored nothing here: use the
+    // deployment's own platform rather than dropping the session.
+    const serviceInfoUrl = localStorage.getItem(STORE_KEY_SERVICE) ?? getDefaultServiceInfoUrl();
     if (!apiEndpoint || !serviceInfoUrl) return null;
     const service = new Pryv.Service(serviceInfoUrl);
     return new Pryv.Connection(apiEndpoint, service) as unknown as PryvConnection;
@@ -219,7 +223,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setConnection = (c: PryvConnection | null, serviceInfoUrl?: string | null) => {
     clearStack();
-    storeActive(c, serviceInfoUrl);
+    // Persist the resolved platform (param, else the deployment default) so a
+    // session opened without the param survives a reload, and the
+    // platform-match checks on storedServiceInfoUrl() have a value.
+    storeActive(c, serviceInfoUrl ?? getDefaultServiceInfoUrl());
     setActingAs(null);
     setConnectionState(c);
   };

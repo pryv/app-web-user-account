@@ -23,6 +23,7 @@ vi.mock("pryv", () => ({
 }));
 
 import { SessionProvider, useSession, type PryvConnection } from "./session";
+import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 const conn = (apiEndpoint: string) => ({ apiEndpoint, endpoint: apiEndpoint }) as unknown as PryvConnection;
 let session: ReturnType<typeof useSession>;
@@ -80,5 +81,38 @@ describe("[SST] session stack", () => {
       expect(JSON.stringify({ ...localStorage })).not.toContain("parent-tok");
       cleanup();
     }
+  });
+});
+
+describe("[SSDF] session platform from settings.json", () => {
+  const DEPLOY_URL = "https://reg.deploy.test/service/info";
+  beforeEach(() => {
+    localStorage.clear();
+    _setDeployedSettingsForTest({ serviceInfoUrl: DEPLOY_URL });
+  });
+  afterEach(() => {
+    cleanup();
+    _setDeployedSettingsForTest(null);
+  });
+
+  it("[SSD1] a session opened without the param survives a remount", () => {
+    mount();
+    act(() => session.setConnection(conn("https://tok@core.test/alice/"), null));
+    expect(localStorage.getItem("pryv.session.serviceInfoUrl")).toBe(DEPLOY_URL);
+    cleanup();
+    mount();
+    expect(session.connection?.apiEndpoint).toBe("https://tok@core.test/alice/");
+  });
+
+  it("[SSD2] an endpoint stored without a platform restores on the deployment default", () => {
+    localStorage.setItem("pryv.session.apiEndpoint", "https://tok@core.test/alice/");
+    mount();
+    expect(session.connection?.apiEndpoint).toBe("https://tok@core.test/alice/");
+  });
+
+  it("[SSD3] an explicit platform is persisted as given", () => {
+    mount();
+    act(() => session.setConnection(conn("https://tok@core.test/alice/"), "https://reg.other.test/service/info"));
+    expect(localStorage.getItem("pryv.session.serviceInfoUrl")).toBe("https://reg.other.test/service/info");
   });
 });
