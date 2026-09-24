@@ -209,24 +209,35 @@ export default function Auth() {
   // display names come from check-app, which resolved them against the
   // account's real stream names. They are matched on what an entry GRANTS,
   // never on its name, which is the server's identity rule.
-  const entries = useMemo(() => {
+  const rowPermissions = useMemo(() => {
     const checked = (check?.checkedPermissions ?? []) as OfferPermission[];
-    if (consentForm == null) return consentEntries(checked, { labelFor });
+    if (consentForm == null) return checked;
     const byKey = new Map(checked.map((p) => [permissionKey(p), p]));
-    const annotated = (consentForm.permissions as OfferPermission[]).map((p) => {
+    return (consentForm.permissions as OfferPermission[]).map((p) => {
       const resolved = byKey.get(permissionKey(p));
       return resolved == null ? p : { ...resolved, mandatory: p.mandatory, optIn: p.optIn };
     });
-    return consentEntries(annotated, { allowUserChoice: allowsChoice, labelFor });
-  }, [check, consentForm, allowsChoice, labelFor]);
+  }, [check, consentForm]);
+  // What each row grants and whether it is locked: the identity of the rows.
+  const rows = useMemo(
+    () => consentEntries(rowPermissions, { allowUserChoice: consentForm != null && allowsChoice }),
+    [rowPermissions, consentForm, allowsChoice],
+  );
+  // The same rows, in the same order, with display labels (which may arrive
+  // later from the deployment's stream-label loader).
+  const entries = useMemo(
+    () => consentEntries(rowPermissions, { allowUserChoice: consentForm != null && allowsChoice, labelFor }),
+    [rowPermissions, consentForm, allowsChoice, labelFor],
+  );
 
-  // Re-seeded whenever the rows change, because they arrive asynchronously
+  // Re-seeded whenever the ROWS change, because they arrive asynchronously
   // (check-app runs after sign-in), so a one-shot initializer would capture
-  // an empty list and leave every optional entry unticked.
+  // an empty list and leave every optional entry unticked. Keyed on `rows`,
+  // not `entries`: a label arriving late must never reset the user's choices.
   const [grantedFlags, setGrantedFlags] = useState<boolean[]>([]);
   useEffect(() => {
-    setGrantedFlags(initialFlags(entries));
-  }, [entries]);
+    setGrantedFlags(initialFlags(rows));
+  }, [rows]);
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".

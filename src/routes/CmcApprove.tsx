@@ -142,7 +142,8 @@ export default function CmcApprove() {
       <Card>
         <h1 className="mb-2 text-2xl">Approve request</h1>
         <p className="mb-4 text-sm text-muted">
-          Sign in to review and approve this request{offer?.requester?.displayName ? ` from ${offer.requester.displayName}` : ""}.
+          Sign in to review and approve this request
+          {offer?.requester?.username ? ` from ${offer.requester.username}@${offer.requester.host}` : ""}.
         </p>
         <Link
           to={signInLinkFor("/cmc-accept", search)}
@@ -233,12 +234,17 @@ export default function CmcApprove() {
       {offer && (
         <>
           <p className="mb-4 text-sm">
-            <strong>
-              {offer.requester.displayName ??
-                (offer.requester.username
-                  ? `${offer.requester.username}@${offer.requester.host}`
-                  : "An application")}
-            </strong>{" "}
+            {/* The account comes from the capability itself (verified); the
+                display name is what the requester says about itself, so it is
+                shown as such and never in place of the account. */}
+            <strong data-testid="cmc-requester">
+              {offer.requester.username
+                ? `${offer.requester.username}@${offer.requester.host}`
+                : "An unidentified requester"}
+            </strong>
+            {offer.requester.displayName && (
+              <span className="text-muted"> (calls itself &ldquo;{offer.requester.displayName}&rdquo;)</span>
+            )}{" "}
             is requesting access:
           </p>
           {offer.consent && Object.values(offer.consent)[0] && (

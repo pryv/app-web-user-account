@@ -31,7 +31,8 @@ export interface ConsentPanelProps {
   mismatchWarning?: ReactNode;
   busy: "accept" | "refuse" | null;
   disabled?: boolean;
-  onAccept: () => void;
+  /** Receives the tick state at the moment of Accept (undefined when all-or-nothing). */
+  onAccept: (flags?: boolean[]) => void;
   onRefuse: () => void;
   labels?: Partial<{ accept: string; refuse: string; expiresAfter: string }>;
   acceptId?: string;
@@ -96,7 +97,7 @@ export function ConsentPanel({
         refuseLabel={labels?.refuse}
         acceptId={acceptId}
         refuseId={refuseId}
-        onAccept={onAccept}
+        onAccept={() => onAccept(flags)}
         onRefuse={onRefuse}
       />
     </>

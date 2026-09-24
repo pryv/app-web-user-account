@@ -9,14 +9,18 @@ import { join, relative } from "node:path";
  */
 
 const SRC = join(__dirname, "..");
-const CLIENT_IMPORT = /\bfrom\s+["'](pryv|@pryv\/[^"']+)["']|\bimport\s*\(\s*["'](pryv|@pryv\/[^"']+)["']\s*\)/;
+const SPEC = "(?:pryv(?:\\/[^\"'`]*)?|@pryv\\/[^\"'`]+)";
+const CLIENT_IMPORT = new RegExp(
+  `\\bfrom\\s+["'\`]${SPEC}["'\`]|\\bimport\\s*\\(\\s*["'\`]${SPEC}["'\`]\\s*\\)|\\brequire\\s*\\(\\s*["'\`]${SPEC}["'\`]\\s*\\)|^\\s*import\\s+["'\`]${SPEC}["'\`]`,
+  "m",
+);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) out.push(...sourceFiles(path));
-    else if (/\.(ts|tsx)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name)) out.push(path);
+    else if (/\.(ts|tsx|js|jsx|mjs)$/.test(name) && !/\.test\.(ts|tsx|js|jsx)$/.test(name)) out.push(path);
   }
   return out;
 }
@@ -33,6 +37,11 @@ describe("[PCLI] single client import point", () => {
   it("[PCL2] the guard does see a direct import", () => {
     expect(CLIENT_IMPORT.test('import Pryv from "pryv";')).toBe(true);
     expect(CLIENT_IMPORT.test("import type { X } from '@pryv/delegation';")).toBe(true);
+    expect(CLIENT_IMPORT.test('import x from "pryv/src/utils";')).toBe(true);
+    expect(CLIENT_IMPORT.test("const m = await import(`@pryv/cmc`);")).toBe(true);
+    expect(CLIENT_IMPORT.test('const p = require("pryv");')).toBe(true);
+    expect(CLIENT_IMPORT.test('import "@pryv/socket.io";')).toBe(true);
     expect(CLIENT_IMPORT.test('import { Pryv } from "./pryvClient";')).toBe(false);
+    expect(CLIENT_IMPORT.test('import { x } from "./pryvately";')).toBe(false);
   });
 });

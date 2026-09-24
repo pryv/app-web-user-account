@@ -46,6 +46,23 @@ describe("[CPNL] ConsentPanel", () => {
     expect(onToggle).toHaveBeenCalledWith(1, true);
   });
 
+  it("[CPN4] Accept hands back the tick state it was rendered with", () => {
+    const onAccept = vi.fn();
+    render(
+      <ConsentPanel
+        app={{ name: "My App" }}
+        entries={entries}
+        flags={[true, false]}
+        onToggle={() => {}}
+        busy={null}
+        onAccept={onAccept}
+        onRefuse={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    expect(onAccept).toHaveBeenCalledWith([true, false]);
+  });
+
   it("[CPN3] shows expiry and the mismatch notice, and disables both actions while busy", () => {
     const onAccept = vi.fn();
     render(

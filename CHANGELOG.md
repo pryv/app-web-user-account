@@ -22,7 +22,20 @@
 ### Changed
 
 - The access-request and OAuth2 consent screens render one shared
-  `ConsentPanel`; markup, ids and wording are unchanged.
+  `ConsentPanel`; markup and wording are unchanged, except that on
+  `/oauth2-authorize` the `oauthClientIdText` id now sits on the app name
+  itself (its text is the catalog's name when the catalog knows the app).
+- The stream-label seam also labels the rows of `/cmc-accept` and
+  `/cmc-scope-update`.
+
+### Security
+
+- **`/cmc-accept` names the requester by its account.** The approval page used
+  to show the requester's self-chosen display name in place of the account the
+  capability belongs to, so a request could present itself as anyone. It now
+  shows the verified `username@host` and, when present, the display name only as
+  "calls itself …". Without a verified account it says "An unidentified
+  requester".
 - Fonts load from `src/brand.css`; the Register and OAuth2 copy use the brand's
   account noun.
 

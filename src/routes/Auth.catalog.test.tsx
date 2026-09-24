@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, act, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 /**
@@ -123,6 +123,64 @@ describe("[AUCT] /auth consent names the app from the catalog", () => {
     await renderAndSignIn("unknown-app");
     expect(screen.getByRole("heading", { name: "unknown-app" })).toBeTruthy();
     expect(screen.queryByText(/Totally Official App/)).toBeNull();
+  });
+
+  it("[AUT4] labels arriving after the user unticked a row do not tick it back", async () => {
+    let resolveLabels: (r: (id: string) => string | null) => void = () => {};
+    ext.loadStreamLabels.mockReturnValue(
+      new Promise((resolve) => {
+        resolveLabels = resolve;
+      }),
+    );
+    const TWO = [
+      { streamId: "diary", level: "read", defaultName: "Journal" },
+      { streamId: "weight", level: "read", defaultName: "Weight" },
+    ];
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      requestingAppId: "diary-app",
+      requestedPermissions: TWO,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      consent: {
+        allowUserChoice: true,
+        permissions: [
+          { streamId: "diary", level: "read", defaultName: "Journal", mandatory: true },
+          { streamId: "weight", level: "read", defaultName: "Weight" },
+        ],
+      },
+    });
+    flow.checkAppAccess.mockResolvedValue({ checkedPermissions: TWO });
+    flow.createAppAccess.mockResolvedValue({ id: "acc-new", token: "app-token" });
+    flow.updateAccessState.mockResolvedValue({ status: 200 });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/is requesting permission/);
+
+    const boxes = () => Array.from(document.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
+    expect(boxes()[1].checked).toBe(true);
+    await act(async () => {
+      boxes()[1].click();
+    });
+    expect(boxes()[1].checked).toBe(false);
+
+    // The deployment's labels land late.
+    await act(async () => {
+      resolveLabels((id) => (id === "weight" ? "Body weight" : null));
+    });
+    expect(await screen.findByText(/Body weight/)).toBeTruthy();
+    expect(boxes()[1].checked).toBe(false);
+
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.createAppAccess.mock.calls[0][2].permissions.map((p: { streamId: string }) => p.streamId)).toEqual([
+      "diary",
+    ]);
   });
 
   it("[AUT3] labels stream rows with the deployment's stream labels", async () => {
