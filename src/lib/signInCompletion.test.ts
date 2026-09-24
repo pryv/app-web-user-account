@@ -74,4 +74,39 @@ describe("[SICT] signed-in target", () => {
     expect(p.get("poll")).toBe(poll);
     expect(p.get("pryvServiceInfoUrl")).toBe(SI);
   });
+
+  it("[SICT7] returns a bounced visitor to the account page it asked for", () => {
+    expect(
+      signedInTarget("?returnTo=%2Faccount%2Fsecurity%3FbackLabel%3DApp", ENDPOINT),
+    ).toEqual({ kind: "internal", path: "/account/security?backLabel=App" });
+  });
+
+  it("[SICT8] returnTo loses to returnURL and wins over a hand-off next", () => {
+    expect(
+      signedInTarget("?returnURL=https%3A%2F%2Fapp.example%2Fcb&returnTo=%2Faccount%2Fapps", ENDPOINT).kind,
+    ).toBe("external");
+    expect(signedInTarget("?returnTo=%2Faccount%2Fapps&next=%2Fcmc-accept", ENDPOINT)).toEqual({
+      kind: "internal",
+      path: "/account/apps",
+    });
+  });
+
+  it("[SICT9] an unsafe returnTo falls through to the profile", () => {
+    expect(signedInTarget("?returnTo=https%3A%2F%2Fevil.test", ENDPOINT)).toEqual({
+      kind: "internal",
+      path: "/account/profile",
+    });
+  });
+
+  it("[SICT10] the profile fallback keeps backUrl and backLabel", () => {
+    const target = signedInTarget(
+      `?pryvServiceInfoUrl=${encodeURIComponent(SI)}&backUrl=https%3A%2F%2Fapp.test&backLabel=App`,
+      ENDPOINT,
+    ) as { path: string };
+    const p = new URLSearchParams(target.path.slice(target.path.indexOf("?")));
+    expect(target.path.startsWith("/account/profile?")).toBe(true);
+    expect(p.get("backUrl")).toBe("https://app.test");
+    expect(p.get("backLabel")).toBe("App");
+    expect(p.get("pryvServiceInfoUrl")).toBe(SI);
+  });
 });

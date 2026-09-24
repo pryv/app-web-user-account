@@ -32,9 +32,16 @@
  */
 
 import { httpUrlOrNull } from "./safeRedirect";
+import { safeReturnTo } from "./session";
 
-/** The only keys that ride through the core. Never a credential. */
-const RETURN_KEYS = ["returnURL", "state", "requestingAppId", "next"] as const;
+/**
+ * The only keys that ride through the core. Never a credential: that is why a
+ * pending access request's `poll` is NOT here (once the request is accepted,
+ * whoever holds the poll URL can read the app's token), so it survives through
+ * the same-tab stash only. `returnTo` is safe because `safeReturnTo` limits it
+ * to account pages, whose query carries nothing secret.
+ */
+const RETURN_KEYS = ["returnURL", "state", "requestingAppId", "next", "returnTo"] as const;
 
 /** Matches the core's own bound on `ssoReturn`; over it we fall back to the stash. */
 const MAX_RETURN_CHARS = 2048;
@@ -79,6 +86,7 @@ export function buildSsoReturn(search: string): { value: string | null; nonce: s
     // A returnURL that is not an absolute http(s) URL can never be navigated
     // to, so it is dropped here rather than on the way back.
     if (key === "returnURL" && httpUrlOrNull(raw) == null) continue;
+    if (key === "returnTo" && safeReturnTo(raw) == null) continue;
     out.set(key, raw);
   }
   if ([...out.keys()].length === 0) return { value: null, nonce };
@@ -161,6 +169,8 @@ export function restoreSsoReturn(
 
   const returnURL = full.get("returnURL");
   if (returnURL != null && httpUrlOrNull(returnURL) == null) full.delete("returnURL");
+  const returnTo = full.get("returnTo");
+  if (returnTo != null && safeReturnTo(returnTo) == null) full.delete("returnTo");
 
   const merged = new URLSearchParams(landingSearch);
   for (const [key, value] of full) {

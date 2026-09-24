@@ -73,6 +73,28 @@ describe("[SSRT] SSO return context", () => {
     }
   });
 
+  it("[SSRT14] carries an account-page returnTo, drops any other", () => {
+    const ok = buildSsoReturn("?returnTo=%2Faccount%2Fsecurity%3FbackLabel%3DApp").value;
+    expect(new URLSearchParams(ok ?? "").get("returnTo")).toBe("/account/security?backLabel=App");
+    for (const bad of ["https://evil.example/", "/cmc-accept?capabilityUrl=secret", "//evil.example"]) {
+      const { value } = buildSsoReturn(`?returnTo=${encodeURIComponent(bad)}&state=s`);
+      expect(new URLSearchParams(value ?? "").get("returnTo")).toBeNull();
+    }
+  });
+
+  it("[SSRT15] a pending access request's poll never rides through the core", () => {
+    const { value } = buildSsoReturn(
+      "?poll=https%3A%2F%2Fcore%2Freg%2Faccess%2Fk1&key=k1&state=s",
+    );
+    expect(new URLSearchParams(value ?? "").get("poll")).toBeNull();
+    expect(value ?? "").not.toContain("access");
+  });
+
+  it("[SSRT16] a restored returnTo is re-validated", () => {
+    const back = restoreSsoReturn("returnTo=https%3A%2F%2Fevil.example&h=x", "");
+    expect(new URLSearchParams(back).get("returnTo")).toBeNull();
+  });
+
   it("[SSRT3] gives up on an oversize subset rather than sending a value the core refuses", () => {
     const huge = "https://app.example/cb?x=" + "y".repeat(2100);
     const { value, nonce } = buildSsoReturn(`?returnURL=${encodeURIComponent(huge)}`);

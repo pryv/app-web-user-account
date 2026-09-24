@@ -17,11 +17,12 @@ const TABS = [
  */
 export default function AccountLayout() {
   const { connection, setConnection, actingAs, backToParent } = useSession();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
 
   if (!connection) {
-    return <Navigate to={signinPath(search)} replace />;
+    // Come back to the page that was asked for once signed in.
+    return <Navigate to={signinPath(search, pathname + search)} replace />;
   }
 
   function signOut() {

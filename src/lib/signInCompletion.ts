@@ -12,10 +12,12 @@
  *      user to an app that is still waiting for its access.
  *   1. `returnURL` — the calling app asked to be handed control back, so the
  *      browser leaves for it with `state` and the token-less API endpoint.
- *   2. `next` — the user came from an in-app approval hand-off and should land
+ *   2. `returnTo` — a signed-out visitor was bounced from an account page and
+ *      goes back to it (validated by `safeReturnTo`: account pages only).
+ *   3. `next` — the user came from an in-app approval hand-off and should land
  *      back on it with the query it carried.
- *   3. otherwise the account profile, keeping `pryvServiceInfoUrl` so the
- *      account section knows which platform it is talking to.
+ *   4. otherwise the account profile, keeping `pryvServiceInfoUrl` and the
+ *      hand-off params (`backUrl`, `backLabel`, ...) of the entry link.
  */
 
 import {
@@ -25,6 +27,7 @@ import {
   hasPendingAccessRequest,
 } from "./authParams";
 import { handoffReturnPath } from "./handoffReturn";
+import { safeReturnTo, accountPath } from "./session";
 
 export type SignedInTarget =
   | { kind: "external"; href: string }
@@ -38,12 +41,9 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
   if (returnURL) {
     return { kind: "external", href: buildCompletionUrl(returnURL, endpointWithoutToken, state) };
   }
+  const returnTo = safeReturnTo(new URLSearchParams(search).get("returnTo"));
+  if (returnTo) return { kind: "internal", path: returnTo };
   const handoff = handoffReturnPath(search);
   if (handoff) return { kind: "internal", path: handoff };
-  return {
-    kind: "internal",
-    path: serviceInfoUrl
-      ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
-      : "/account/profile",
-  };
+  return { kind: "internal", path: accountPath("/account/profile", search, serviceInfoUrl) };
 }
