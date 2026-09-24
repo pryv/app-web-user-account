@@ -90,6 +90,15 @@ describe("[DSET] deployed settings", () => {
       trustedApiOrigins: ["https://ok.example"],
       legal: { privacy: { fr: "https://ok.example/fr" } },
     });
+    expect(
+      parseDeployedSettings({
+        serviceInfoUrl: "  https://reg.example.com/service/info  ",
+        trustedApiOrigins: ["http://core.example.com", "http://localhost:3000"],
+      }),
+    ).toEqual({
+      serviceInfoUrl: "https://reg.example.com/service/info",
+      trustedApiOrigins: ["http://localhost:3000"],
+    });
     expect(parseDeployedSettings([])).toEqual({});
     expect(parseDeployedSettings(null)).toEqual({});
   });

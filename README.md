@@ -96,7 +96,8 @@ Every route accepts these query parameters:
   `https://core.example.com`), at deploy time in `settings.json` as
   `"trustedApiOrigins": ["https://core.example.com"]`, or both: the page trusts
   the union of the two lists and rejects any other `pryvApi`. Entries are exact
-  origins (no wildcards; invalid entries are ignored), and the list is never
+  origins (no wildcards; invalid entries are ignored; in `settings.json`, plain
+  `http` is accepted for loopback only), and the list is never
   read from the URL. A production build with both lists empty refuses every
   `pryvApi`. In development, with no list, the page falls back to accepting only a `pryvApi` on the same
   registrable domain as this deploy (so `https://attacker.com` is refused, but a

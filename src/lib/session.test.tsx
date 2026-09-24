@@ -22,7 +22,7 @@ vi.mock("pryv", () => ({
   },
 }));
 
-import { SessionProvider, useSession, type PryvConnection } from "./session";
+import { SessionProvider, useSession, storedServiceInfoUrl, type PryvConnection } from "./session";
 import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 const conn = (apiEndpoint: string) => ({ apiEndpoint, endpoint: apiEndpoint }) as unknown as PryvConnection;
@@ -108,6 +108,10 @@ describe("[SSDF] session platform from settings.json", () => {
     localStorage.setItem("pryv.session.apiEndpoint", "https://tok@core.test/alice/");
     mount();
     expect(session.connection?.apiEndpoint).toBe("https://tok@core.test/alice/");
+    // The platform checks agree with what was restored.
+    expect(storedServiceInfoUrl()).toBe(DEPLOY_URL);
+    localStorage.clear();
+    expect(storedServiceInfoUrl()).toBeNull();
   });
 
   it("[SSD3] an explicit platform is persisted as given", () => {

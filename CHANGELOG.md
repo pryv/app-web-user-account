@@ -20,7 +20,8 @@
   `trustedApiOrigins` is added to the build-time
   `VITE_OAUTH_TRUSTED_API_ORIGINS` for the OAuth2 consent page and CMC result
   delivery. Entries are compared as exact origins (scheme, host, port), invalid
-  ones are ignored, and the list is never read from the URL; a production build
+  ones are ignored (and plain `http` is kept for loopback only), and the list is
+  never read from the URL; a production build
   with both lists empty still refuses every `pryvApi`.
 - **Terms acceptance at registration.** When the deployment names its Terms or
   Privacy policy (`settings.json` `legal`, or the platform's service-info

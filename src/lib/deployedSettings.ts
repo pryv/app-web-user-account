@@ -38,17 +38,26 @@ let current: DeployedSettings = {};
 
 /** An absolute http(s) URL string, or undefined. */
 function url(raw: unknown): string | undefined {
-  return typeof raw === "string" && httpUrlOrNull(raw) ? raw : undefined;
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  return httpUrlOrNull(value) ? value : undefined;
 }
 
-/** Exact origins only (scheme + host + port); anything else is dropped. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Exact origins only (scheme + host + port); anything else is dropped. These
+ * are trusted with credentials, so plain http is kept for loopback only.
+ */
 function origins(raw: unknown): string[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: string[] = [];
   for (const item of raw) {
     if (typeof item !== "string") continue;
     const parsed = httpUrlOrNull(item.trim());
-    if (parsed) out.push(parsed.origin);
+    if (!parsed) continue;
+    if (parsed.protocol !== "https:" && !LOOPBACK_HOSTS.has(parsed.hostname)) continue;
+    out.push(parsed.origin);
   }
   return out.length > 0 ? out : undefined;
 }

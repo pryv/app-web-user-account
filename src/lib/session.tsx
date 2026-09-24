@@ -134,10 +134,16 @@ export function accountPath(path: string, search: string | undefined, serviceInf
   return query ? path + "?" + query : path;
 }
 
-/** Service-info URL of the persisted session (platform-match checks). */
+/**
+ * Service-info URL of the persisted session (platform-match checks). Same rule
+ * as restoring the session: a stored session with no stored platform is on the
+ * deployment's own platform.
+ */
 export function storedServiceInfoUrl(): string | null {
   try {
-    return localStorage.getItem(STORE_KEY_SERVICE);
+    const stored = localStorage.getItem(STORE_KEY_SERVICE);
+    if (stored) return stored;
+    return localStorage.getItem(STORE_KEY_API) ? getDefaultServiceInfoUrl() : null;
   } catch {
     return null;
   }
