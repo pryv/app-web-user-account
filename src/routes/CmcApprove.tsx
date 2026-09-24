@@ -8,15 +8,9 @@ import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { isTrustedResultOrigin } from "../lib/oauth2Flow";
+import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_MESSAGE } from "../lib/cmcAccept";
-
-/** Operator allowlist of origins trusted to receive the token-bearing
- * `dataGrantApiEndpoint` — same control as the OAuth `pryvApi` allowlist. */
-const TRUSTED_RESULT_ORIGINS = (import.meta.env.VITE_OAUTH_TRUSTED_API_ORIGINS ?? "")
-  .split(",")
-  .map((s: string) => s.trim())
-  .filter(Boolean);
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
 function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
@@ -65,7 +59,9 @@ function deliverResult(
   // target origin is chosen, so a crafted `returnUrl` can never harvest it.
   const selfOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
   const trustOpts = {
-    trustedOrigins: TRUSTED_RESULT_ORIGINS,
+    // Origins trusted to receive the token-bearing `dataGrantApiEndpoint`:
+    // the same operator allowlist as the OAuth `pryvApi` check.
+    trustedOrigins: trustedApiOrigins(),
     selfOrigin,
     requireAllowlist: import.meta.env.PROD,
   };

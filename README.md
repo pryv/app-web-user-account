@@ -48,7 +48,7 @@ Every route accepts these query parameters:
 
 | Param | Meaning |
 |---|---|
-| `pryvServiceInfoUrl` | Which Pryv platform to talk to (required on entry links). |
+| `pryvServiceInfoUrl` | Which Pryv platform to talk to. Optional when the deployment's `settings.json` names the platform (see [Deploy](#deploy-settingsjson)); when present it wins. |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
 | `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
@@ -91,10 +91,15 @@ Every route accepts these query parameters:
 
   **Security — trusted `pryvApi`:** the page sends the user's password (sign-in)
   and personal token (Accept) to the `pryvApi` origin, so it must be a core you
-  trust, not an attacker-supplied one. Set `VITE_OAUTH_TRUSTED_API_ORIGINS`
-  (comma-separated origins, e.g. `https://core.example.com`) at build time to an
-  allowlist of your core origin(s); the page rejects any other `pryvApi`. If you
-  don't set it, the page falls back to accepting only a `pryvApi` on the same
+  trust, not an attacker-supplied one. Set the allowlist of your core origin(s)
+  at build time with `VITE_OAUTH_TRUSTED_API_ORIGINS` (comma-separated, e.g.
+  `https://core.example.com`), at deploy time in `settings.json` as
+  `"trustedApiOrigins": ["https://core.example.com"]`, or both: the page trusts
+  the union of the two lists and rejects any other `pryvApi`. Entries are exact
+  origins (no wildcards; invalid entries are ignored; in `settings.json`, plain
+  `http` is accepted for loopback only), and the list is never
+  read from the URL. A production build with both lists empty refuses every
+  `pryvApi`. In development, with no list, the page falls back to accepting only a `pryvApi` on the same
   registrable domain as this deploy (so `https://attacker.com` is refused, but a
   multi-label public suffix such as `*.co.uk` or a cross-domain core needs the
   explicit allowlist). Non-https `pryvApi` is always refused (loopback aside).
@@ -120,6 +125,39 @@ for the session.
 > separate from the authentication-completion redirect (`returnURL` /
 > OAuth2 `redirect_uri`), which the auth flow handles on its own. It never
 > carries tokens.
+
+## Deploy: `settings.json`
+
+The build ships a `settings.json` next to `index.html`. The app reads it once
+when it starts (it never waits more than 4 seconds, and a missing or broken file
+just leaves everything unset). Replace it on your deployment to configure the
+app without rebuilding. Every key is optional; the shipped file is `{}`.
+
+```json
+{
+  "serviceInfoUrl": "https://reg.example.com/service/info",
+  "trustedApiOrigins": ["https://core.example.com"],
+  "legal": {
+    "terms": { "en": "https://example.com/terms", "fr": "https://example.com/fr/terms" },
+    "privacy": "https://example.com/privacy"
+  },
+  "appCatalogUrl": "https://assets.example.com/apps/list.json"
+}
+```
+
+| Key | Effect |
+|---|---|
+| `serviceInfoUrl` | The platform this deployment serves, used when a link carries no `pryvServiceInfoUrl`. Sessions opened this way are stored against it. |
+| `trustedApiOrigins` | Core origins the OAuth2 consent page and CMC result delivery may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`. |
+| `legal.terms`, `legal.privacy` | Links shown at registration, each a URL or a `{ "<lang>": url }` map. When at least one resolves, registering requires ticking "I accept". The Terms fall back to the platform's service-info `terms`. |
+| `appCatalogUrl` | Where the operator publishes its app list (reserved for naming requesting apps). |
+
+Only absolute `http(s)` URLs are accepted. For the same concern the order is:
+URL parameter, then `settings.json`, then the build-time setting. The trust list
+is the exception: it is never read from the URL.
+
+`npm run build:pages` first checks that `node_modules` matches the lockfile and
+refuses to build otherwise (run `npm ci`).
 
 ## Replacing `app-web-auth3` on an operator platform
 

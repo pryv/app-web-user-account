@@ -160,7 +160,7 @@ export function serviceInfoUrlFromPryvApi(pryvApi: string): string {
  *
  * Two layers, most-specific first:
  *   1. If the operator configured an allowlist (`trustedOrigins`, from the
- *      `VITE_OAUTH_TRUSTED_API_ORIGINS` build-time env), require an exact
+ *      build-time env and settings.json, see trustedOrigins.ts), require an exact
  *      origin match — this is the authoritative, recommended control.
  *   2. Otherwise fall back to requiring `pryvApi` to share the consent UI's own
  *      registrable domain (`selfOrigin`): operators deploy the core and this
@@ -234,7 +234,7 @@ export function assertTrustedPryvApi(
  * Best-effort registrable domain (eTLD+1 without a public-suffix list): the
  * last two dot-separated labels. Sufficient for the same-parent-domain
  * fallback; operators on multi-label public suffixes (e.g. `*.co.uk`) or
- * cross-domain deployments should set `VITE_OAUTH_TRUSTED_API_ORIGINS`.
+ * cross-domain deployments should configure the trusted origin list.
  */
 function registrableDomain(host: string): string {
   const labels = host.split(".");

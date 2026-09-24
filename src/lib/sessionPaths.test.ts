@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * [SRTP] The sign-in bounce: which page a signed-out visitor returns to, and
@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("pryv", () => ({ default: { Service: class {}, Connection: class {} } }));
 
 import { safeReturnTo, signinPath, accountPath } from "./session";
+import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 const SI = "https://core.test/reg/service/info";
 
@@ -90,5 +91,24 @@ describe("[SRTP] signinPath / accountPath", () => {
     expect(q.get("backLabel")).toBe("App");
     expect(q.get("returnTo")).toBeNull();
     expect(accountPath("/account/profile", "", null)).toBe("/account/profile");
+  });
+});
+
+describe("[SPDF] signinPath platform fallback", () => {
+  const DEPLOY_URL = "https://reg.deploy.test/service/info";
+  beforeEach(() => {
+    localStorage.clear();
+    _setDeployedSettingsForTest({ serviceInfoUrl: DEPLOY_URL });
+  });
+  afterEach(() => _setDeployedSettingsForTest(null));
+
+  it("[SPD1] uses the deployment default when neither the query nor a session names one", () => {
+    expect(queryOf(signinPath("")).get("pryvServiceInfoUrl")).toBe(DEPLOY_URL);
+  });
+
+  it("[SPD2] the query, then the stored session, win over the default", () => {
+    expect(queryOf(signinPath(`?pryvServiceInfoUrl=${encodeURIComponent(SI)}`)).get("pryvServiceInfoUrl")).toBe(SI);
+    localStorage.setItem("pryv.session.serviceInfoUrl", SI);
+    expect(queryOf(signinPath("")).get("pryvServiceInfoUrl")).toBe(SI);
   });
 });

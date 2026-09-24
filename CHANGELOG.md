@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Per-deployment `settings.json`.** A file served next to the app, read once
+  at start-up (never more than 4 seconds; a missing or broken file changes
+  nothing), configures a deployment without rebuilding it: the default
+  platform, extra trusted core origins, Terms and Privacy links, and an app
+  catalog URL. Only absolute http(s) URLs are accepted. The shipped file is
+  `{}`, so existing deployments behave as before. See "Deploy: settings.json" in
+  the README.
+- **`pryvServiceInfoUrl` is optional when `settings.json` sets
+  `serviceInfoUrl`.** Links from an app, mailed links and a cold sign-in work
+  without it; the URL parameter still wins when present. A session opened
+  without the parameter is stored against the deployment's platform, so it
+  survives a reload.
+- **Trusted core origins at deploy time.** `settings.json`
+  `trustedApiOrigins` is added to the build-time
+  `VITE_OAUTH_TRUSTED_API_ORIGINS` for the OAuth2 consent page and CMC result
+  delivery. Entries are compared as exact origins (scheme, host, port), invalid
+  ones are ignored (and plain `http` is kept for loopback only), and the list is
+  never read from the URL; a production build
+  with both lists empty still refuses every `pryvApi`.
+- **Terms acceptance at registration.** When the deployment names its Terms or
+  Privacy policy (`settings.json` `legal`, or the platform's service-info
+  `terms`), registering requires ticking "I accept the Terms of use and have
+  read the Privacy policy", with links in the user's language. With no document
+  named, the form is unchanged.
+
+### Changed
+
+- With neither `pryvServiceInfoUrl` nor `settings.json`, the error now points
+  the operator at `settings.json`.
+- An entry of `VITE_OAUTH_TRUSTED_API_ORIGINS` with a path or a trailing slash
+  now matches its origin (it never matched before); a value made only of invalid
+  entries no longer blocks development builds (production still fails closed).
+- `npm run build:pages` refuses to build when `node_modules` does not match
+  `package-lock.json`.
+
 ## 0.3.0 — 2026-09-24
 
 ### Added

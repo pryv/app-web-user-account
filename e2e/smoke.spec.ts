@@ -189,6 +189,25 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   });
 
+  test("a cold /signin with no platform param uses the platform named in settings.json", async ({ page }) => {
+    await page.route("**/settings.json", (route) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ serviceInfoUrl: SVC }) }),
+    );
+    await mockPlatform(page);
+
+    await page.goto("/signin");
+    await page.getByLabel("Username or email").fill("alice");
+    await page.getByLabel("Password").fill("hunter2");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL(/\/account\/profile/);
+    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+
+    // The session was stored against that platform, so it survives a reload.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+  });
+
   test("a signed-out deep link comes back to the page it asked for, back link included", async ({ page }) => {
     await mockPlatform(page);
 
