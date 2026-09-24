@@ -149,7 +149,8 @@ export default function Register() {
         // back to /auth, then returnURL, then the hand-off page, then profile.
         const target = signedInTarget(search, connection.endpoint);
         if (target.kind === "external") window.location.href = target.href;
-        else navigate(target.path);
+        // Replace, so /auth can still close this tab (popup mode) afterwards.
+        else navigate(target.path, { replace: hasPendingAccessRequest(search) });
         return;
       } catch {
         // Account exists but auto-sign-in failed (e.g. platform-side MFA

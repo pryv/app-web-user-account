@@ -645,8 +645,15 @@ export default function Auth() {
         {consentMsg != null && (
           // The app's own explanation comes before the technical breakdown.
           // Untrusted text: MarkdownLite builds React elements, never innerHTML.
-          <div data-testid="consent-message" className="mb-3 text-sm">
-            <MarkdownLite text={consentMsg} />
+          // Framed and captioned so the app's words never read as the platform's.
+          <div className="mb-3">
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
+            <div
+              data-testid="consent-message"
+              className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
+            >
+              <MarkdownLite text={consentMsg} />
+            </div>
           </div>
         )}
         <PermissionList
@@ -731,7 +738,9 @@ export default function Auth() {
   if (linksSvcInfoUrl && !linksParams.has("pryvServiceInfoUrl")) {
     linksParams.set("pryvServiceInfoUrl", linksSvcInfoUrl);
   }
-  const linksSearch = linksParams.size > 0 ? "?" + linksParams.toString() : "";
+  // toString(), not .size: URLSearchParams.size is missing on Safari 16.
+  const linksQs = linksParams.toString();
+  const linksSearch = linksQs ? "?" + linksQs : "";
   return (
     <ConsentSignIn
       makeService={makeService}

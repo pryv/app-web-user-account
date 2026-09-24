@@ -17,18 +17,19 @@ describe("[ARQS] access-request context", () => {
     "&poll_rate_ms=1000&serviceInfo=https%3A%2F%2Fcore.example%2Freg%2Fservice%2Finfo" +
     "&returnURL=https%3A%2F%2Fapp.test%2F";
 
-  it("[ARQS1] keeps poll, key, returnURL, serviceInfo and lang", () => {
+  it("[ARQS1] keeps poll, key, serviceInfo and lang", () => {
     const p = new URLSearchParams(accessRequestSearch(REQ));
     expect(p.get("poll")).toBe("https://core.example/reg/access/KEY1");
     expect(p.get("key")).toBe("KEY1");
-    expect(p.get("returnURL")).toBe("https://app.test/");
     expect(p.get("serviceInfo")).toBe("https://core.example/reg/service/info");
     expect(p.get("lang")).toBe("en");
   });
 
-  it("[ARQS2] drops requestingAppId and params outside the request context", () => {
-    const p = new URLSearchParams(accessRequestSearch(REQ + "&other=1"));
+  it("[ARQS2] drops requestingAppId, returnURL, state and params outside the request context", () => {
+    const p = new URLSearchParams(accessRequestSearch(REQ + "&state=csrf&other=1"));
     expect(p.get("requestingAppId")).toBeNull();
+    expect(p.get("returnURL")).toBeNull();
+    expect(p.get("state")).toBeNull();
     expect(p.get("other")).toBeNull();
     expect(p.get("poll_rate_ms")).toBeNull();
   });
@@ -42,6 +43,7 @@ describe("[ARQS] access-request context", () => {
     expect(hasPendingAccessRequest(REQ)).toBe(true);
     expect(hasPendingAccessRequest("?pollUrl=https%3A%2F%2Fx.test%2Fa")).toBe(true);
     expect(hasPendingAccessRequest("?key=abc&requestingAppId=x")).toBe(false);
+    expect(hasPendingAccessRequest("?poll=&pollUrl=https%3A%2F%2Fx.test%2Fa")).toBe(true);
     expect(hasPendingAccessRequest("")).toBe(false);
   });
 });

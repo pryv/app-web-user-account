@@ -44,22 +44,24 @@ export function parseAuthParams(search: string): AuthParams {
  * holds against the request key. The rest are carried for fidelity (platform,
  * language, CLI mode, CSRF state). An allow-list, not the whole query.
  *
- * `requestingAppId` is deliberately NOT carried: `/register` and `/signin`
- * read it as the appId they sign in with, and on these pages the user signs
- * in to this app, not to the requesting one (which `/auth` reads from the
- * poll state anyway).
+ * Deliberately NOT carried:
+ * - `requestingAppId`: `/register` and `/signin` read it as the appId they
+ *   sign in with, and there the user signs in to this app, not to the
+ *   requesting one (which `/auth` reads from the poll state).
+ * - `returnURL` and `state`: `/auth` takes them from the poll state too, and
+ *   on the other pages they mean the account hand-off. A path that keeps them
+ *   but loses `poll` (a third-party sign-in return, say) would hand the user
+ *   back to an app still waiting for its access.
  */
 const ACCESS_REQUEST_KEYS = [
   "poll",
   "pollUrl",
   "key",
-  "returnURL",
   "serviceInfo",
   "pryvServiceInfoUrl",
   "lang",
   "cli",
   "oauthState",
-  "state",
 ] as const;
 
 /**
@@ -80,7 +82,7 @@ export function accessRequestSearch(search: string): string {
 /** True when `search` carries a pending access request (the poll URL). */
 export function hasPendingAccessRequest(search: string): boolean {
   const p = new URLSearchParams(search);
-  return Boolean(p.get("poll") ?? p.get("pollUrl"));
+  return Boolean(p.get("poll") || p.get("pollUrl"));
 }
 
 /**

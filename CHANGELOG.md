@@ -9,9 +9,13 @@
   field of the request state appended as `prYv<field>`, which included the newly
   created app token, the `apiEndpoint` that embeds it, and the username. They
   ended up in the calling page's address bar, browser history and `Referer`. The
-  return URL now carries only `prYvpoll`, `prYvkey` and `prYvstatus`; the client
-  library already reads just the poll URL (or key) and fetches the rest from it,
-  so apps need no change.
+  return URL now carries only `prYvpoll`, `prYvkey` and `prYvstatus`. Apps using
+  the `pryv` client library need no change: it reads just the poll URL (or key)
+  and fetches the rest from it.
+  **BREAKING for hand-rolled consumers:** an app that read `prYvtoken`,
+  `prYvapiEndpoint`, `prYvusername` or any other `prYv*` field from its return
+  URL (as the legacy auth pages documented) must now fetch the `prYvpoll` URL,
+  whose answer carries the same state.
 
 ### Fixed
 
