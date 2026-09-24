@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`username` sign-in hint.** `/signin?username=alice` pre-fills the username
+  field, like OIDC's `login_hint`, for an app that already knows who the user
+  is. It fills the field only while it is empty, never replaces typed input, and
+  grants nothing (the password is still required). `/register` ignores it.
+
+### Fixed
+
+- **A signed-out deep link into the account section comes back to the page it
+  asked for.** Opening `/account/security` (or any account page, or
+  `/change-password`) while signed out used to land on the profile after sign-in,
+  and `backUrl` / `backLabel` were lost on the way. The guard now sends the page
+  along as `returnTo` (a same-origin account path, validated; never a URL) and
+  keeps `username`, `backUrl` and `backLabel` across the sign-in. A third-party
+  sign-in returns to the page wherever it lands, and keeps the back link when it
+  comes back to the same browser tab. When no page was asked for, the profile
+  keeps them too.
+- The end-to-end smoke test for `/oauth2-authorize` expected the placeholder
+  heading the page had before the consent flow shipped; it now checks the
+  refusal shown when the page is opened without its parameters. New hermetic
+  end-to-end specs cover delegation (banner, warning copy) and email
+  verification.
+
+### Changed
+
+- **Re-approving an app whose access has changed now updates that access in
+  place.** When an app asks for permissions that differ from the access it
+  already holds, `/auth` used to delete that access and create a new one, which
+  rotated its token and could leave other holders of the old token (another
+  device, a cached session) with a dead credential. Approving now updates the
+  existing access (`accesses.update`): same access, same token, new
+  permissions. If the register then refuses the grant, the updated access is
+  left in place (it predates the request) instead of being deleted. The
+  consent screen says "Approving will update it." Apps that proposed their own
+  token in the access request are unaffected: their prior access is still
+  replaced (delete + create) so they get the token they asked for.
+- Sign-in completion order is now: a pending access request, `returnURL`,
+  `returnTo`, the approval hand-off `next`, then the profile.
+- **The delegated-session reminder shows on every page, and follows the
+  server.** It used to appear only inside the account section and only when
+  this browser remembered starting the delegated session. It now sits under the
+  header on every route (including `/auth`) and is driven first by the core's
+  `access-info` `delegation` field, so a delegated session opened elsewhere, or
+  whose local record was cleared, is still flagged; "Back to …" is offered when
+  this browser can return to the delegate's own session.
+- Tests are type-checked by their own `tsconfig.test.json` (with the Node
+  types), so a test may import a Node built-in such as `node:fs` without breaking
+  `npm run build`. The app config now excludes test files; `tsc -b` still checks
+  them.
+
 ## 0.2.4 — 2026-09-24
 
 ### Security

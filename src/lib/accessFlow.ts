@@ -11,8 +11,10 @@
  *                                                     a matching access exists +
  *                                                     fold defaultName/clientData
  *   3. POST {apiEndpoint}/accesses                  — create the app access
- *      (DELETE {apiEndpoint}/accesses/{id} when
- *      a `mismatchingAccess` must be replaced)
+ *      (PUT {apiEndpoint}/accesses/{id} updates a
+ *      `mismatchingAccess` in place instead; when the
+ *      app proposed its own token it is replaced with
+ *      DELETE {apiEndpoint}/accesses/{id} + create)
  *   4. POST pollUrl                                 — notify register of the
  *                                                     final state (ACCEPTED /
  *                                                     REFUSED)
@@ -244,6 +246,81 @@ export async function deleteAppAccess(
   if (!res.ok) {
     throw new Error("delete access failed (" + res.status + ")");
   }
+}
+
+/** JSON with object keys sorted, so equal data compares equal whatever the key order. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(stableJson).join(",") + "]";
+  if (value != null && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return "{" + Object.keys(obj).sort().map((k) => JSON.stringify(k) + ":" + stableJson(obj[k])).join(",") + "}";
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/**
+ * Whether an existing access already carries the clientData a request asks
+ * for, ignoring the `delegation` lineage marker (written by the core, never
+ * by the app). Absent and empty count as the same. An update cannot make a
+ * differing clientData match: the core merges it one level deep.
+ */
+export function sameClientData(
+  current: Record<string, unknown> | null | undefined,
+  requested: Record<string, unknown> | null | undefined,
+): boolean {
+  const strip = (cd: Record<string, unknown> | null | undefined): Record<string, unknown> => {
+    if (cd == null) return {};
+    const { delegation: _delegation, ...rest } = cd;
+    return rest;
+  };
+  return stableJson(strip(current)) === stableJson(strip(requested));
+}
+
+/**
+ * Update an existing app access in place (`accesses.update`). Unlike a
+ * delete + create, the access keeps its id and its token, so whoever
+ * already holds that token keeps a working credential.
+ *
+ * `name` / `defaultName` are display extras that check-app folds into each
+ * permission; they are stripped before sending (older cores reject them on
+ * update, and they are never stored anyway).
+ */
+export async function updateAppAccess(
+  apiEndpoint: string,
+  personalToken: string,
+  accessId: string,
+  update: {
+    permissions: Permission[];
+    clientData?: Record<string, unknown>;
+    deviceName?: string;
+    expireAfter?: number;
+    /** `null` clears an expiry the access had when the request sets none. */
+    expires?: null;
+  },
+): Promise<AppAccess> {
+  const permissions = update.permissions.map((p) => {
+    const { name: _name, defaultName: _defaultName, ...rest } = p;
+    return rest;
+  });
+  const res = await fetch(
+    apiEndpoint.replace(/\/$/, "") + "/accesses/" + encodeURIComponent(accessId),
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: personalToken,
+      },
+      body: JSON.stringify({ ...update, permissions }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error("update access failed (" + res.status + "): " + body.slice(0, 200));
+  }
+  const body = (await res.json()) as { access?: AppAccess };
+  if (!body.access) throw new Error("update access: server returned no access");
+  return body.access;
 }
 
 /**

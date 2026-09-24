@@ -10,7 +10,7 @@ import { useSession, signinPath } from "../lib/session";
  */
 export default function ChangePassword() {
   const { connection } = useSession();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -18,7 +18,7 @@ export default function ChangePassword() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  if (!connection) return <Navigate to={signinPath(search)} replace />;
+  if (!connection) return <Navigate to={signinPath(search, pathname + search)} replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();

@@ -6,6 +6,7 @@ import {
   updateAccessState,
   buildAcceptedState,
   createHandoffSecret,
+  updateAppAccess,
   type AccessState,
 } from "./accessFlow";
 
@@ -308,5 +309,49 @@ describe("[AFH] credential hand-off accept shapes", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("[AFUP] updateAppAccess", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("[AFU1] PUTs the update to the access by id with the personal token, without display extras", async () => {
+    let captured: { url: string; options: RequestInit } | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, options: RequestInit) => {
+        captured = { url, options };
+        return { ok: true, json: async () => ({ access: { id: "a/1", token: "kept-token", type: "app", permissions: [] } }) };
+      }),
+    );
+    const access = await updateAppAccess("https://alice.pryv.me/", "personal-tok", "a/1", {
+      permissions: [
+        { streamId: "diary", level: "read", defaultName: "Journal", name: "Journal" },
+        { streamId: "weight", level: "contribute" },
+      ],
+      clientData: { k: "v" },
+      deviceName: "phone",
+      expireAfter: 60,
+    });
+    expect(access.token).toBe("kept-token");
+    expect(captured!.url).toBe("https://alice.pryv.me/accesses/a%2F1");
+    expect(captured!.options.method).toBe("PUT");
+    expect((captured!.options.headers as Record<string, string>).Authorization).toBe("personal-tok");
+    expect(JSON.parse(captured!.options.body as string)).toEqual({
+      permissions: [
+        { streamId: "diary", level: "read" },
+        { streamId: "weight", level: "contribute" },
+      ],
+      clientData: { k: "v" },
+      deviceName: "phone",
+      expireAfter: 60,
+    });
+  });
+
+  it("[AFU2] throws on a non-ok response", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 403, text: async () => "forbidden" })));
+    await expect(
+      updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", { permissions: [] }),
+    ).rejects.toThrow(/update access failed \(403\)/);
   });
 });

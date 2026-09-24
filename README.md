@@ -51,6 +51,7 @@ Every route accepts these query parameters:
 | `pryvServiceInfoUrl` | Which Pryv platform to talk to (required on entry links). |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
+| `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
 
 **Hand-off targets:**
 
@@ -61,7 +62,13 @@ Every route accepts these query parameters:
   access request (below).
 - `/account/profile`, `/account/security`, `/account/apps`, `/account/data`,
   `/change-password`, `/reset-password` — self-service pages; combine with
-  `backUrl`/`backLabel` so users find their way back to you.
+  `backUrl`/`backLabel` so users find their way back to you. You can link any
+  of them directly: a signed-out user is sent to sign in and then back to the
+  page you linked, with `backUrl`, `backLabel` and `username` kept (after a
+  third-party sign-in, the back link is kept when it returns to the same
+  browser tab). (The page
+  rides along as `returnTo`, a same-origin account path the app validates; you
+  do not need to set it yourself.)
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.
@@ -105,7 +112,9 @@ build-time env var.
 (`localStorage`), so a returning user gets a "Continue as {username}" step
 instead of retyping credentials — with a "Not me — use another account"
 escape so a shared browser can't silently act (or grant access) under the
-wrong account.
+wrong account. While a session acts for another account (delegation), a
+banner under the header says so on every page, based on what the core reports
+for the session.
 
 > Note: `backUrl` is a user-initiated *cancel / go-back* affordance. It is
 > separate from the authentication-completion redirect (`returnURL` /
