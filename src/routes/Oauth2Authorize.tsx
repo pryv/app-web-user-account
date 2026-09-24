@@ -16,6 +16,7 @@ import {
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
+import { brand } from "../brand";
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -229,7 +230,7 @@ export default function Oauth2Authorize() {
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
-          <strong>{oauthState.clientId}</strong> wants to access your Pryv account.
+          <strong>{oauthState.clientId}</strong> wants to access your {brand.accountNoun}.
         </span>
       }
       onSignedIn={({ username: u, personalToken: token }) => {
