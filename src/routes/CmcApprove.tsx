@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
-import { useSession } from "../lib/session";
+import { useSession, storedServiceInfoUrl } from "../lib/session";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
@@ -11,6 +11,7 @@ import { isTrustedResultOrigin } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_MESSAGE } from "../lib/cmcAccept";
+import { useStreamLabels } from "../lib/useConsentDisplay";
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
 function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
@@ -111,6 +112,7 @@ export default function CmcApprove() {
   const [error, setError] = useState<{ message: string; tone: "danger" | "info" } | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
+  const labelFor = useStreamLabels(storedServiceInfoUrl());
 
   // Always try to read the offer (anonymous read via the capability access).
   useEffect(() => {
@@ -242,7 +244,7 @@ export default function CmcApprove() {
           {offer.consent && Object.values(offer.consent)[0] && (
             <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
           )}
-          <PermissionList entries={consentEntries(offer.requestedPermissions)} />
+          <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
         </>
       )}
       <ConsentActions

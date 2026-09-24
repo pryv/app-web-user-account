@@ -17,6 +17,8 @@ import { accessRequestSearch } from "../lib/authParams";
 import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
+import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
+import { AppIcon } from "../components/AppIcon";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
@@ -197,20 +199,28 @@ export default function Auth() {
   const consentForm = accessState?.consent;
   const allowsChoice = consentForm?.allowUserChoice === true;
 
+  const flowSvcInfoUrl =
+    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
+  // The operator's catalog is the only source of a display name for the app:
+  // the request's own id is shown when the catalog does not know it, never a
+  // name the app supplied about itself.
+  const requestingApp = useRequestingApp(accessState?.requestingAppId, flowSvcInfoUrl);
+  const labelFor = useStreamLabels(flowSvcInfoUrl);
+
   // The rows to render. The annotations come from the consent form; the
   // display names come from check-app, which resolved them against the
   // account's real stream names. They are matched on what an entry GRANTS,
   // never on its name, which is the server's identity rule.
   const entries = useMemo(() => {
     const checked = (check?.checkedPermissions ?? []) as OfferPermission[];
-    if (consentForm == null) return consentEntries(checked);
+    if (consentForm == null) return consentEntries(checked, { labelFor });
     const byKey = new Map(checked.map((p) => [permissionKey(p), p]));
     const annotated = (consentForm.permissions as OfferPermission[]).map((p) => {
       const resolved = byKey.get(permissionKey(p));
       return resolved == null ? p : { ...resolved, mandatory: p.mandatory, optIn: p.optIn };
     });
-    return consentEntries(annotated, { allowUserChoice: allowsChoice });
-  }, [check, consentForm, allowsChoice]);
+    return consentEntries(annotated, { allowUserChoice: allowsChoice, labelFor });
+  }, [check, consentForm, allowsChoice, labelFor]);
 
   // Re-seeded whenever the rows change, because they arrive asynchronously
   // (check-app runs after sign-in), so a one-shot initializer would capture
@@ -222,8 +232,6 @@ export default function Auth() {
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
-  const flowSvcInfoUrl =
-    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
   const storedUsable =
     storedConnection !== null &&
     flowSvcInfoUrl !== null &&
@@ -653,7 +661,7 @@ export default function Auth() {
 
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
-    const appName = accessState.requestingAppId || "the requesting app";
+    const appName = requestingApp?.name ?? (accessState.requestingAppId || "the requesting app");
     const unavailable = unavailableActAs(targets, accessState.actAs);
     return (
       <Card>
@@ -703,9 +711,13 @@ export default function Auth() {
     const consentMsg = consentMessage(accessState.clientData);
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">
-          <strong>{accessState.requestingAppId}</strong>
+        <h1 className="mb-2 flex items-center gap-2 text-2xl">
+          <AppIcon icon={requestingApp?.icon ?? null} />
+          <strong>{requestingApp?.name ?? accessState.requestingAppId}</strong>
         </h1>
+        {requestingApp?.description != null && (
+          <p className="mb-2 text-sm text-muted">{requestingApp.description}</p>
+        )}
         <p className="mb-2 text-sm">is requesting permission:</p>
         {consentMsg != null && (
           // The app's own explanation comes before the technical breakdown.
@@ -773,7 +785,7 @@ export default function Auth() {
             </>
           ) : null}
           . Continue to review the access requested by{" "}
-          <strong>{accessState.requestingAppId || "the requesting app"}</strong>?
+          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>?
         </p>
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
@@ -820,7 +832,7 @@ export default function Auth() {
       prompt={
         <>
           Sign in to grant access to{" "}
-          <strong>{accessState.requestingAppId || "the requesting app"}</strong>.
+          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>.
         </>
       }
       onSignedIn={async (s) => {
