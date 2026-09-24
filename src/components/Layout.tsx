@@ -1,7 +1,7 @@
 import { useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { parseBackTo } from "../lib/backTo";
-import PryvLogo from "./PryvLogo";
+import { Logo } from "../brand";
 import DelegatedSessionBanner from "./DelegatedSessionBanner";
 
 /**
@@ -19,7 +19,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-body text-ink">
       <header className="flex items-center justify-between border-b border-divider bg-card px-4 py-3">
-        <PryvLogo className="h-7 w-auto text-ink" />
+        <Logo className="h-7 w-auto text-ink" />
         {backTo.url && (
           <a href={backTo.url} className="text-sm text-primary hover:underline">
             ← Back{backTo.label ? ` to ${backTo.label}` : ""}

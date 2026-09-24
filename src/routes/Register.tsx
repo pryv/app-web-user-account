@@ -7,6 +7,7 @@ import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
+import { brand } from "../brand";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {
   registrationRequiresVerifiedEmail,
@@ -242,7 +243,7 @@ export default function Register() {
   return (
     <Card>
       <h1 className="mb-1 text-2xl">Create account</h1>
-      <p className="mb-6 text-sm text-muted">Register a new Pryv account.</p>
+      <p className="mb-6 text-sm text-muted">Register a new {brand.accountNoun}.</p>
       {error && <Alert>{error}</Alert>}
       {hostingsError && <Alert tone="info">{hostingsError} Falling back to default hosting.</Alert>}
       <form onSubmit={onSubmit}>
