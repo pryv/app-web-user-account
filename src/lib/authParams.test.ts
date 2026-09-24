@@ -68,6 +68,14 @@ describe("parseAuthParams", () => {
     expect(p.serviceInfoUrl).toBeNull();
     expect(p.returnURL).toBeNull();
     expect(p.state).toBeNull();
+    expect(p.username).toBeNull();
+  });
+
+  it("[SIUH1] reads the username sign-in hint, trimmed, empty as null", () => {
+    expect(parseAuthParams("?username=alice").username).toBe("alice");
+    expect(parseAuthParams("?username=%20bob%20").username).toBe("bob");
+    expect(parseAuthParams("?username=").username).toBeNull();
+    expect(parseAuthParams("?username=%20").username).toBeNull();
   });
 });
 

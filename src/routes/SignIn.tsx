@@ -21,7 +21,13 @@ export default function SignIn() {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { connection, setConnection } = useSession();
-  const [username, setUsername] = useState("");
+  // `?username=` is a sign-in hint from the calling app. It fills the field only
+  // while it is empty, so it never replaces what the user typed.
+  const usernameHint = parseAuthParams(search).username;
+  const [username, setUsername] = useState(usernameHint ?? "");
+  useEffect(() => {
+    if (usernameHint) setUsername((current) => current || usernameHint);
+  }, [usernameHint]);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

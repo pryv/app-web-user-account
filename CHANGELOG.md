@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Added
+
+- **`username` sign-in hint.** `/signin?username=alice` pre-fills the username
+  field, like OIDC's `login_hint`, for an app that already knows who the user
+  is. It fills the field only while it is empty, never replaces typed input, and
+  grants nothing (the password is still required). `/register` ignores it.
+
+### Fixed
+
+- **A signed-out deep link into the account section comes back to the page it
+  asked for.** Opening `/account/security` (or any account page, or
+  `/change-password`) while signed out used to land on the profile after sign-in,
+  and `backUrl` / `backLabel` were lost on the way. The guard now sends the page
+  along as `returnTo` (a same-origin account path, validated; never a URL) and
+  keeps `username`, `backUrl` and `backLabel` across the sign-in, including a
+  third-party one. When no page was asked for, the profile keeps them too.
+
 ### Changed
 
 - **Re-approving an app whose access has changed now updates that access in
@@ -15,6 +32,12 @@
   consent screen says "Approving will update it." Apps that proposed their own
   token in the access request are unaffected: their prior access is still
   replaced (delete + create) so they get the token they asked for.
+- Sign-in completion order is now: a pending access request, `returnURL`,
+  `returnTo`, the approval hand-off `next`, then the profile.
+- Tests are type-checked by their own `tsconfig.test.json` (with the Node
+  types), so a test may import a Node built-in such as `node:fs` without breaking
+  `npm run build`. The app config now excludes test files; `tsc -b` still checks
+  them.
 
 ## 0.2.4 — 2026-09-24
 
