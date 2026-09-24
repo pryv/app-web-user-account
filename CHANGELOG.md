@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Tests are type-checked by their own `tsconfig.test.json` (with the Node
+  types), so a test may import a Node built-in such as `node:fs` without breaking
+  `npm run build`. The app config now excludes test files; `tsc -b` still checks
+  them.
+
 ## 0.2.4 — 2026-09-24
 
 ### Security
