@@ -56,17 +56,6 @@ import {
 const APP_ID = "pryv-app-web-user-account";
 
 /**
- * Whether a diverged access is updated in place (keeping its token, so
- * whoever holds it keeps a working credential) rather than replaced by
- * delete + create. Replaced when an update could not make it match:
- * - the app proposed its own token, and asked for THAT token;
- * - a delegation is involved on either side: the core stamps the delegation
- *   lineage only when an access is created, so an update would leave it
- *   wrong (unmarked, or still marked when the owner re-grants);
- * - its clientData differs: the core merges clientData on update, so stale
- *   keys would stay and the access would never match again.
- */
-/**
  * Whether this deployment may handle an access request: BOTH the platform the
  * poll URL belongs to and the one named by the link's service-info param must
  * be served. The poll URL matters on its own: the page loads the request from
@@ -80,6 +69,17 @@ function requestPlatformAllowed(pollUrl: string | null, serviceInfoUrl: string |
   return serviceInfoUrl == null || isAllowedServiceInfoUrl(serviceInfoUrl);
 }
 
+/**
+ * Whether a diverged access is updated in place (keeping its token, so
+ * whoever holds it keeps a working credential) rather than replaced by
+ * delete + create. Replaced when an update could not make it match:
+ * - the app proposed its own token, and asked for THAT token;
+ * - a delegation is involved on either side: the core stamps the delegation
+ *   lineage only when an access is created, so an update would leave it
+ *   wrong (unmarked, or still marked when the owner re-grants);
+ * - its clientData differs: the core merges clientData on update, so stale
+ *   keys would stay and the access would never match again.
+ */
 function updatesInPlace(
   mismatching: AppAccess | null | undefined,
   state: AccessState,
