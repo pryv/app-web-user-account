@@ -66,6 +66,71 @@ describe("closeOrRedirect redirect-target scheme guard", () => {
 });
 
 /**
+ * The return leg of an access request must not carry credentials: an ACCEPTED
+ * state holds the token, the token-bearing apiEndpoint and the username, and
+ * everything appended to returnURL lands in the calling page's address bar,
+ * history and Referer. The caller reads only poll/key and fetches the rest.
+ */
+describe("[RURP] closeOrRedirect returnURL params", () => {
+  let hrefSet: string;
+  const pollUrl = "https://core.example/reg/access/KEY123";
+  const accepted: AccessState = {
+    status: "ACCEPTED",
+    key: "KEY123",
+    requestingAppId: "my-app",
+    returnURL: "https://app.example/#/route?",
+    lang: "en",
+    expireAfter: 3600,
+    token: "cktzv0mn80001qw3ktokenvalue",
+    apiEndpoint: "https://cktzv0mn80001qw3ktokenvalue@core.example/alice/",
+    username: "alice",
+  };
+
+  beforeEach(() => {
+    hrefSet = "";
+    vi.stubGlobal("window", {
+      location: {
+        set href(v: string) { hrefSet = v; },
+        get href() { return hrefSet; },
+      },
+      close: () => {},
+    });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("never emits the token, apiEndpoint or username", () => {
+    closeOrRedirect(pollUrl, accepted, false);
+    expect(hrefSet).not.toContain("prYvtoken");
+    expect(hrefSet).not.toContain("prYvapiEndpoint");
+    expect(hrefSet).not.toContain("prYvusername");
+    expect(hrefSet).not.toContain("cktzv0mn80001qw3ktokenvalue");
+    expect(hrefSet).not.toContain("alice");
+  });
+
+  it("emits only poll, key and status, and keeps the poll URL intact", () => {
+    closeOrRedirect(pollUrl, accepted, false);
+    const emitted = [...hrefSet.matchAll(/[?&](prYv[^=]+)=/g)].map((m) => m[1]).sort();
+    expect(emitted).toEqual(["prYvkey", "prYvpoll", "prYvstatus"]);
+    expect(hrefSet).toContain("prYvpoll=" + encodeURIComponent(pollUrl));
+    expect(hrefSet.startsWith("https://app.example/#/route?")).toBe(true);
+  });
+
+  it("omits allow-listed params absent from the state", () => {
+    closeOrRedirect(pollUrl, { status: "REFUSED", returnURL: "https://app.example/cb" }, false);
+    expect(hrefSet).toContain("prYvstatus=REFUSED");
+    expect(hrefSet).not.toContain("prYvkey");
+  });
+
+  it("keeps the oauth2 branch free of prYv params and credentials", () => {
+    closeOrRedirect(pollUrl, { ...accepted, oauthState: "opaque-state" }, false);
+    expect(hrefSet).toContain("state=opaque-state");
+    expect(hrefSet).toContain("code=KEY123");
+    expect(hrefSet).not.toContain("prYv");
+    expect(hrefSet).not.toContain("cktzv0mn80001qw3ktokenvalue");
+  });
+});
+
+/**
  * The consent form on the poll, and what the register's answer to an
  * ACCEPTED post carries when it refuses the grant. The distinction between
  * "this grant is wrong" and "I could not check" decides whether the page

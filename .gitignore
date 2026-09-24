@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# backloop.dev secret (local HTTPS dev certificates)
+backloop.dev.json
+
 # Test artifacts
 test-results
 playwright-report
