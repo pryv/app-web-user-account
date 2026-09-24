@@ -90,9 +90,10 @@ test.describe("smoke — new routes (consent-track placeholders + scope-update +
     await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   });
 
-  test("/oauth2-authorize shows the pending-consent-track placeholder", async ({ page }) => {
+  test("/oauth2-authorize without its parameters refuses the request", async ({ page }) => {
     await page.goto("/oauth2-authorize");
-    await expect(page.getByRole("heading", { name: "OAuth2 authorize" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Invalid authorization request" })).toBeVisible();
+    await expect(page.getByText("Missing required `state` query parameter.")).toBeVisible();
   });
 
   test("/reset-password?resetToken=… switches into set-new-password mode", async ({ page }) => {
@@ -186,6 +187,21 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(new RegExp(`/signin\\?pryvServiceInfoUrl=${encodeURIComponent(SVC).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  });
+
+  test("a signed-out deep link comes back to the page it asked for, back link included", async ({ page }) => {
+    await mockPlatform(page);
+
+    await page.goto(
+      `/account/security?pryvServiceInfoUrl=${encodeURIComponent(SVC)}&backUrl=${encodeURIComponent("https://app.example.test/")}&backLabel=MyApp`,
+    );
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await page.getByLabel("Username or email").fill("alice");
+    await page.getByLabel("Password").fill("hunter2");
+    await page.getByRole("button", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL(/\/account\/security\?/);
+    await expect(page.getByRole("link", { name: /Back to MyApp/ })).toBeVisible();
   });
 
   test("returning user sees Continue-as; 'Not me' clears the session back to the form", async ({ page }) => {

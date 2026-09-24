@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { parseBackTo } from "../lib/backTo";
 import PryvLogo from "./PryvLogo";
+import DelegatedSessionBanner from "./DelegatedSessionBanner";
 
 /**
  * App shell. Renders the brand header and, when the opener passed
@@ -26,6 +27,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </a>
         )}
       </header>
+      <DelegatedSessionBanner />
       <main className="mx-auto max-w-md px-4 py-8">{children}</main>
     </div>
   );

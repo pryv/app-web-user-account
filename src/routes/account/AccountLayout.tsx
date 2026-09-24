@@ -16,7 +16,7 @@ const TABS = [
  * /account can rely on it being present without re-implementing it.
  */
 export default function AccountLayout() {
-  const { connection, setConnection, actingAs, backToParent } = useSession();
+  const { connection, setConnection } = useSession();
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
 
@@ -53,26 +53,6 @@ export default function AccountLayout() {
           <LogOut size={14} aria-hidden /> Sign out
         </button>
       </div>
-      {actingAs && (
-        <div
-          role="status"
-          className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded border border-primary/40 bg-primary/10 px-3 py-2 text-sm"
-        >
-          <span>
-            Acting as <strong>{actingAs.username}</strong> via <strong>{actingAs.parentUsername}</strong>.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              backToParent();
-              navigate("/account/delegation" + search);
-            }}
-            className="rounded px-2 py-1 text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            Back to {actingAs.parentUsername}
-          </button>
-        </div>
-      )}
       <nav
         aria-label="Account sections"
         className="mb-6 flex flex-wrap gap-1 border-b border-divider"
