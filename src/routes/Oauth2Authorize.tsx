@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import Pryv from "pryv";
+import { Pryv } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { PermissionList } from "../components/consent/PermissionList";

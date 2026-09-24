@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import Pryv from "pryv";
+import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";

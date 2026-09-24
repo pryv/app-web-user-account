@@ -13,12 +13,12 @@
  *   - best-effort multi-core detection for the "create account" core selector.
  */
 
-import { DelegationError, errorIds, STATUS } from "@pryv/delegation";
+import { DelegationError, delegationErrorIds as errorIds, delegationStatus as STATUS } from "./pryvClient";
 import type {
   DelegateRecord,
   ControlledRecord,
   RelationshipStatus,
-} from "@pryv/delegation";
+} from "./pryvClient";
 
 /**
  * The account-owner warning, shown whenever someone is about to hand another

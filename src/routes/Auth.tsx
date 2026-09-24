@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import Pryv from "pryv";
+import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { PermissionList } from "../components/consent/PermissionList";
@@ -17,7 +17,7 @@ import { accessRequestSearch } from "../lib/authParams";
 import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
-import { Delegation } from "@pryv/delegation";
+import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
 import {

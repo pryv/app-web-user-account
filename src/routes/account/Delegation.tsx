@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { RefreshCw, UserPlus, LogIn, X, Trash2, Check } from "lucide-react";
-import Pryv from "pryv";
-import { Delegation } from "@pryv/delegation";
-import type { DelegateRecord, ControlledRecord } from "@pryv/delegation";
+import { Pryv } from "../../lib/pryvClient";
+import { Delegation } from "../../lib/pryvClient";
+import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
 import { useSession, type PryvConnection } from "../../lib/session";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../../lib/username";

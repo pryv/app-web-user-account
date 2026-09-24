@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import * as cmc from "@pryv/cmc";
+import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { useSession } from "../lib/session";
 import { PermissionList } from "../components/consent/PermissionList";

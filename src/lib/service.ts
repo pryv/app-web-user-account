@@ -1,4 +1,4 @@
-import Pryv from "pryv";
+import { Pryv } from "./pryvClient";
 import { parseAuthParams } from "./authParams";
 import {
   getDefaultServiceInfoUrl,
