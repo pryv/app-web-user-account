@@ -21,6 +21,7 @@ const flow = vi.hoisted(() => ({
   checkAppAccess: vi.fn(),
   createAppAccess: vi.fn(),
   deleteAppAccess: vi.fn(),
+  updateAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
   createHandoffSecret: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
@@ -115,6 +116,7 @@ describe("[AUCP] /auth consent panel", () => {
     for (const fn of Object.values(flow)) if (typeof fn.mockReset === "function") fn.mockReset();
     flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
     flow.createAppAccess.mockResolvedValue({ id: "acc-new", token: "app-token" });
+    flow.updateAppAccess.mockResolvedValue({ id: "acc-old", token: "old-token" });
     flow.updateAccessState.mockResolvedValue({ status: 200 });
   });
   afterEach(() => {
@@ -290,6 +292,82 @@ describe("[AUCP] /auth consent panel", () => {
 
     expect(await screen.findByText(/permissions this app requires were not granted/i)).toBeTruthy();
     // The pre-existing access is not ours to delete: it predates this request.
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  /** A plain request whose check-app found a diverged access for this app. */
+  async function renderWithMismatch(extra: Record<string, unknown> = {}) {
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      ...extra,
+    });
+    flow.checkAppAccess.mockResolvedValue({
+      checkedPermissions: OFFER,
+      mismatchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: [] },
+    });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/is requesting permission/);
+  }
+
+  it("[AUUP] a diverged access is updated in place: token kept, nothing deleted or created", async () => {
+    await renderWithMismatch();
+    expect(screen.getByText(/Approving will update it/)).toBeTruthy();
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(flow.updateAppAccess).toHaveBeenCalledTimes(1);
+    const [, tokenArg, idArg, update] = flow.updateAppAccess.mock.calls[0];
+    expect(tokenArg).toBe("personal-token");
+    expect(idArg).toBe("acc-old");
+    expect(update.permissions).toEqual(OFFER);
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    // The app receives the token it already had.
+    expect(flow.updateAccessState.mock.calls[0][1].token).toBe("old-token");
+  });
+
+  it("[AUUT] a diverged access is replaced when the app proposed its own token", async () => {
+    await renderWithMismatch({ token: "app-chosen-token" });
+    expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.updateAppAccess).not.toHaveBeenCalled();
+    expect(flow.deleteAppAccess).toHaveBeenCalledTimes(1);
+    expect(flow.deleteAppAccess.mock.calls[0][2]).toBe("acc-old");
+    // Delete first, then create with the token the app asked for.
+    expect(flow.deleteAppAccess.mock.invocationCallOrder[0]).toBeLessThan(
+      flow.createAppAccess.mock.invocationCallOrder[0],
+    );
+    expect(flow.createAppAccess.mock.calls[0][2].token).toBe("app-chosen-token");
+  });
+
+  it("[AUUR] a refusal after an in-place update does not delete the access", async () => {
+    await renderWithMismatch();
+    flow.updateAccessState.mockResolvedValue({
+      status: 400,
+      errorId: "invalid-consent-grant",
+      reason: "mandatory-refused",
+    });
+
+    screen.getByRole("button", { name: /accept/i }).click();
+
+    expect(await screen.findByText(/permissions this app requires were not granted/i)).toBeTruthy();
+    expect(flow.updateAppAccess).toHaveBeenCalledTimes(1);
+    // The updated access predates this request: it is not ours to remove.
     expect(flow.deleteAppAccess).not.toHaveBeenCalled();
     expect(flow.closeOrRedirect).not.toHaveBeenCalled();
   });
