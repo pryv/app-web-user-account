@@ -3,7 +3,7 @@
  * and the id handed back to the calling app are unit-testable.
  */
 
-import { errorIds } from "@pryv/cmc";
+import { cmcErrorIds as errorIds } from "./pryvClient";
 import { platformError } from "./apiError";
 import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
 

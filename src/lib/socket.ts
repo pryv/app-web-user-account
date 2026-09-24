@@ -1,5 +1,4 @@
-import Pryv from "pryv";
-import attachSocketIO from "@pryv/socket.io";
+import { Pryv, attachSocketIO } from "./pryvClient";
 import type { PryvConnection } from "./session";
 
 /** Shape added onto `Pryv.Connection` by the `@pryv/socket.io` add-on. */

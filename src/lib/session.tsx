@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import Pryv from "pryv";
+import { Pryv } from "./pryvClient";
 import { getDefaultServiceInfoUrl } from "./deployedSettings";
 
 /** Minimal shape of a Pryv `Connection` that the account pages rely on. */

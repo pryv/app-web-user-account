@@ -143,3 +143,45 @@ describe("permissionLabel + pickText", () => {
     expect(pickText(null)).toBe("");
   });
 });
+
+describe("[CSLB] consentEntries with a stream-label resolver", () => {
+  const perms: OfferPermission[] = [
+    { streamId: "weight", level: "read", name: "Weight (app)", defaultName: "Weight" },
+    { streamId: "diary", level: "read", defaultName: "Diary" },
+    { streamId: "*", level: "read" },
+  ];
+
+  it("[CSL1] a resolver's label wins over the request's own names", () => {
+    const entries = consentEntries(perms, {
+      labelFor: (id) => (id === "weight" ? "Body weight" : null),
+    });
+    expect(entries[0].label).toBe("Read “Body weight”");
+  });
+
+  it("[CSL2] a null (or empty) answer falls through to name, defaultName, then streamId", () => {
+    const entries = consentEntries(
+      [...perms, { streamId: "raw", level: "read" }],
+      { labelFor: (id) => (id === "diary" ? "" : null) },
+    );
+    expect(entries.map((e) => e.label)).toEqual([
+      "Read “Weight (app)”",
+      "Read “Diary”",
+      "Read all your data",
+      "Read “raw”",
+    ]);
+  });
+
+  it("[CSL3] a throwing resolver never breaks the list", () => {
+    const entries = consentEntries(perms, {
+      labelFor: () => {
+        throw new Error("boom");
+      },
+    });
+    expect(entries[1].label).toBe("Read “Diary”");
+  });
+
+  it("[CSL4] keeps the locking rules when a resolver is passed", () => {
+    const entries = consentEntries(perms, { allowUserChoice: true, labelFor: () => null });
+    expect(entries.map((e) => e.locked)).toEqual([false, false, false]);
+  });
+});

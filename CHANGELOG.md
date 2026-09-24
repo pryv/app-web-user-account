@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Consent screens name the app from the operator's catalog.** `/auth` and
+  `/oauth2-authorize` show the requesting app's name, icon and description from
+  `settings.json` `appCatalogUrl` (schema in the README). An app not in the
+  catalog shows its raw id, never a name it supplies about itself.
+- **Extension points for forks and operators** (see "Extension points" in the
+  README): `src/lib/pryvClient.ts` (the only module importing the Pryv client
+  libraries, enforced by a test), `src/brand.tsx` / `src/brand.css` (product
+  name, account noun, logo, fonts), `src/accountTabs.tsx` + `src/routes.json`
+  (account tabs and extra pages, with a test that keeps the static-hosting
+  fallback in step), `src/extensions/ProfileExtensions.tsx` (extra profile
+  sections), `src/extensions/streamLabels.ts` (stream labels on consent rows),
+  and `src/components/consent/ConsentPanel.tsx` (the consent screen layout).
+- `SelectField` form component. The profile's language becomes selectable when
+  more than one language is offered.
+
+### Changed
+
+- The access-request and OAuth2 consent screens render one shared
+  `ConsentPanel`; markup and wording are unchanged, except that on
+  `/oauth2-authorize` the `oauthClientIdText` id now sits on the app name
+  itself (its text is the catalog's name when the catalog knows the app).
+- The stream-label seam also labels the rows of `/cmc-accept` and
+  `/cmc-scope-update`.
+
+### Security
+
+- **`/cmc-accept` names the requester by its account.** The approval page used
+  to show the requester's self-chosen display name in place of the account the
+  capability belongs to, so a request could present itself as anyone. It now
+  shows the verified `username@host` and, when present, the display name only as
+  "calls itself …". Without a verified account it says "An unidentified
+  requester".
+- Fonts load from `src/brand.css`; the Register and OAuth2 copy use the brand's
+  account noun.
+
 ## 0.4.1 — 2026-09-24
 
 ### Security

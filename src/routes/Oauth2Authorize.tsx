@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import Pryv from "pryv";
+import { Pryv } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
-import { PermissionList } from "../components/consent/PermissionList";
-import { ConsentActions } from "../components/consent/ConsentActions";
+import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
 import { assertHttpUrl } from "../lib/safeRedirect";
 import {
@@ -16,6 +15,8 @@ import {
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
+import { brand } from "../brand";
+import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -101,14 +102,22 @@ export default function Oauth2Authorize() {
   const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
 
+  // Only looked up once `pryvApi` passed the trust check (initError unset).
+  const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
+  // The operator's catalog is the only source of a display name for the app;
+  // the client id is shown when the catalog does not know it.
+  const requestingApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  const labelFor = useStreamLabels(platformUrl);
+
   const entries = useMemo(
     () =>
       oauthState?.offer
         ? consentEntries(oauthState.offer.permissions, {
             allowUserChoice: oauthState.offer.allowUserChoice,
+            labelFor,
           })
         : [],
-    [oauthState],
+    [oauthState, labelFor],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
   // the user has to choose deliberately.
@@ -184,38 +193,47 @@ export default function Oauth2Authorize() {
     const consentText = pickText(offer.consent);
     return (
       <Card>
-        <h1 id="oauthClientIdText" className="mb-2 text-2xl">
-          <strong>{oauthState.clientId}</strong>
-        </h1>
-        {title && <p className="mb-1 text-lg font-medium">{title}</p>}
-        {description && <p className="mb-2 text-sm text-muted">{description}</p>}
-        <p className="mb-2 text-sm">is requesting permission:</p>
-        <PermissionList
+        <ConsentPanel
+          app={{
+            name: requestingApp?.name ?? oauthState.clientId,
+            icon: requestingApp?.icon,
+            description: requestingApp?.description,
+          }}
+          appNameId="oauthClientIdText"
+          title={
+            <>
+              {title && <p className="mb-1 text-lg font-medium">{title}</p>}
+              {description && <p className="mb-2 text-sm text-muted">{description}</p>}
+            </>
+          }
           entries={entries}
           flags={grantedFlags}
           idPrefix="oauthScope"
           onToggle={(i, checked) =>
             setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
           }
-        />
-        {consentText && (
-          <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
-            {consentText}
-          </p>
-        )}
-        <p className="mb-4 text-sm text-muted">
-          {offer.allowUserChoice
-            ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
-            : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
-        </p>
-        {error && <Alert>{error}</Alert>}
-        <ConsentActions
+          afterList={
+            consentText && (
+              <p id="oauthConsentText" className="mb-2 rounded border border-divider px-3 py-2 text-sm">
+                {consentText}
+              </p>
+            )
+          }
+          choiceHint={
+            <p className="mb-4 text-sm text-muted">
+              {offer.allowUserChoice
+                ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
+                : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
+            </p>
+          }
           busy={busy}
           acceptId="oauthAccept"
           refuseId="oauthRefuse"
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
-        />
+        >
+          {error && <Alert>{error}</Alert>}
+        </ConsentPanel>
       </Card>
     );
   }
@@ -229,7 +247,7 @@ export default function Oauth2Authorize() {
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
-          <strong>{oauthState.clientId}</strong> wants to access your Pryv account.
+          <strong>{requestingApp?.name ?? oauthState.clientId}</strong> wants to access your {brand.accountNoun}.
         </span>
       }
       onSignedIn={({ username: u, personalToken: token }) => {

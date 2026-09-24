@@ -9,7 +9,7 @@
  * The app receives an ordinary app access on the controlled account.
  */
 
-import type { ControlledRecord } from "@pryv/delegation";
+import type { ControlledRecord } from "./pryvClient";
 
 /** One choice of the selector. */
 export interface GrantTarget {

@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import Pryv from "pryv";
+import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
-import { PermissionList } from "../components/consent/PermissionList";
-import { ConsentActions } from "../components/consent/ConsentActions";
+import { ConsentPanel } from "../components/consent/ConsentPanel";
 import {
   consentEntries,
   grantedPermissions,
@@ -17,7 +16,8 @@ import { accessRequestSearch } from "../lib/authParams";
 import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
-import { Delegation } from "@pryv/delegation";
+import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
+import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
 import {
@@ -197,33 +197,50 @@ export default function Auth() {
   const consentForm = accessState?.consent;
   const allowsChoice = consentForm?.allowUserChoice === true;
 
+  const flowSvcInfoUrl =
+    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
+  // The operator's catalog is the only source of a display name for the app:
+  // the request's own id is shown when the catalog does not know it, never a
+  // name the app supplied about itself.
+  const requestingApp = useRequestingApp(accessState?.requestingAppId, flowSvcInfoUrl);
+  const labelFor = useStreamLabels(flowSvcInfoUrl);
+
   // The rows to render. The annotations come from the consent form; the
   // display names come from check-app, which resolved them against the
   // account's real stream names. They are matched on what an entry GRANTS,
   // never on its name, which is the server's identity rule.
-  const entries = useMemo(() => {
+  const rowPermissions = useMemo(() => {
     const checked = (check?.checkedPermissions ?? []) as OfferPermission[];
-    if (consentForm == null) return consentEntries(checked);
+    if (consentForm == null) return checked;
     const byKey = new Map(checked.map((p) => [permissionKey(p), p]));
-    const annotated = (consentForm.permissions as OfferPermission[]).map((p) => {
+    return (consentForm.permissions as OfferPermission[]).map((p) => {
       const resolved = byKey.get(permissionKey(p));
       return resolved == null ? p : { ...resolved, mandatory: p.mandatory, optIn: p.optIn };
     });
-    return consentEntries(annotated, { allowUserChoice: allowsChoice });
-  }, [check, consentForm, allowsChoice]);
+  }, [check, consentForm]);
+  // What each row grants and whether it is locked: the identity of the rows.
+  const rows = useMemo(
+    () => consentEntries(rowPermissions, { allowUserChoice: consentForm != null && allowsChoice }),
+    [rowPermissions, consentForm, allowsChoice],
+  );
+  // The same rows, in the same order, with display labels (which may arrive
+  // later from the deployment's stream-label loader).
+  const entries = useMemo(
+    () => consentEntries(rowPermissions, { allowUserChoice: consentForm != null && allowsChoice, labelFor }),
+    [rowPermissions, consentForm, allowsChoice, labelFor],
+  );
 
-  // Re-seeded whenever the rows change, because they arrive asynchronously
+  // Re-seeded whenever the ROWS change, because they arrive asynchronously
   // (check-app runs after sign-in), so a one-shot initializer would capture
-  // an empty list and leave every optional entry unticked.
+  // an empty list and leave every optional entry unticked. Keyed on `rows`,
+  // not `entries`: a label arriving late must never reset the user's choices.
   const [grantedFlags, setGrantedFlags] = useState<boolean[]>([]);
   useEffect(() => {
-    setGrantedFlags(initialFlags(entries));
-  }, [entries]);
+    setGrantedFlags(initialFlags(rows));
+  }, [rows]);
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
-  const flowSvcInfoUrl =
-    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
   const storedUsable =
     storedConnection !== null &&
     flowSvcInfoUrl !== null &&
@@ -653,7 +670,7 @@ export default function Auth() {
 
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
-    const appName = accessState.requestingAppId || "the requesting app";
+    const appName = requestingApp?.name ?? (accessState.requestingAppId || "the requesting app");
     const unavailable = unavailableActAs(targets, accessState.actAs);
     return (
       <Card>
@@ -703,25 +720,28 @@ export default function Auth() {
     const consentMsg = consentMessage(accessState.clientData);
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">
-          <strong>{accessState.requestingAppId}</strong>
-        </h1>
-        <p className="mb-2 text-sm">is requesting permission:</p>
-        {consentMsg != null && (
-          // The app's own explanation comes before the technical breakdown.
-          // Untrusted text: MarkdownLite builds React elements, never innerHTML.
-          // Framed and captioned so the app's words never read as the platform's.
-          <div className="mb-3">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
-            <div
-              data-testid="consent-message"
-              className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
-            >
-              <MarkdownLite text={consentMsg} />
-            </div>
-          </div>
-        )}
-        <PermissionList
+        <ConsentPanel
+          app={{
+            name: requestingApp?.name ?? accessState.requestingAppId ?? "",
+            icon: requestingApp?.icon,
+            description: requestingApp?.description,
+          }}
+          consentText={
+            consentMsg != null && (
+              // The app's own explanation comes before the technical breakdown.
+              // Untrusted text: MarkdownLite builds React elements, never innerHTML.
+              // Framed and captioned so the app's words never read as the platform's.
+              <div className="mb-3">
+                <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
+                <div
+                  data-testid="consent-message"
+                  className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
+                >
+                  <MarkdownLite text={consentMsg} />
+                </div>
+              </div>
+            )
+          }
           entries={entries}
           flags={allowsChoice ? grantedFlags : undefined}
           onToggle={
@@ -729,32 +749,31 @@ export default function Auth() {
               ? (i, checked) => setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
               : undefined
           }
-        />
-        {allowsChoice && (
-          <p className="mb-2 text-sm text-muted">
-            Untick anything you would rather not share. Entries marked as required cannot be
-            unticked.
-          </p>
-        )}
-        {accessState.expireAfter != null && (
-          <p className="mb-2 text-sm">
-            <strong>Expires after:</strong> {accessState.expireAfter}s
-          </p>
-        )}
-        {check.mismatchingAccess && (
-          <Alert tone="info">
-            A different access was already given to this app.{" "}
-            {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
-              ? "Approving will update it."
-              : "Approving will replace it."}
-          </Alert>
-        )}
-        {error && <Alert>{error}</Alert>}
-        <ConsentActions
+          choiceHint={
+            allowsChoice && (
+              <p className="mb-2 text-sm text-muted">
+                Untick anything you would rather not share. Entries marked as required cannot be
+                unticked.
+              </p>
+            )
+          }
+          expireAfterSeconds={accessState.expireAfter ?? null}
+          mismatchWarning={
+            check.mismatchingAccess ? (
+              <>
+                A different access was already given to this app.{" "}
+                {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
+                  ? "Approving will update it."
+                  : "Approving will replace it."}
+              </>
+            ) : undefined
+          }
           busy={finishing}
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
-        />
+        >
+          {error && <Alert>{error}</Alert>}
+        </ConsentPanel>
       </Card>
     );
   }
@@ -773,7 +792,7 @@ export default function Auth() {
             </>
           ) : null}
           . Continue to review the access requested by{" "}
-          <strong>{accessState.requestingAppId || "the requesting app"}</strong>?
+          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>?
         </p>
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
@@ -820,7 +839,7 @@ export default function Auth() {
       prompt={
         <>
           Sign in to grant access to{" "}
-          <strong>{accessState.requestingAppId || "the requesting app"}</strong>.
+          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>.
         </>
       }
       onSignedIn={async (s) => {

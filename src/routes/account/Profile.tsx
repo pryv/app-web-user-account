@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Pencil } from "lucide-react";
-import { Card, Button, Field, Alert } from "../../components/ui";
+import { Card, Button, Field, Alert, SelectField } from "../../components/ui";
 import { useSession } from "../../lib/session";
 import { emailBadge, verificationOnAccount, type EmailView } from "../../lib/emailVerification";
+import { LANGUAGE_OPTIONS } from "../../lib/languages";
+import ProfileExtensions from "../../extensions/ProfileExtensions";
 
 interface AccountInfo {
   username?: string;
@@ -38,6 +40,7 @@ export default function Profile() {
   const [addingEmail, setAddingEmail] = useState(false);
   const [secondaryEmail, setSecondaryEmail] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
+  const [savingLanguage, setSavingLanguage] = useState(false);
 
   async function load() {
     if (!connection) return;
@@ -160,6 +163,23 @@ export default function Profile() {
     }
   }
 
+  async function onLanguageChange(language: string) {
+    if (!connection || language === info?.language) return;
+    setSavingLanguage(true);
+    setError(null);
+    try {
+      const [res] = (await connection.api([
+        { method: "account.update", params: { update: { language } } },
+      ])) as Array<{ account?: AccountInfo; error?: { message: string } }>;
+      if (res?.error) throw new Error(res.error.message);
+      setInfo(res?.account ?? null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not update language.");
+    } finally {
+      setSavingLanguage(false);
+    }
+  }
+
   return (
     <section className="space-y-4">
       {error && <Alert>{error}</Alert>}
@@ -167,6 +187,9 @@ export default function Profile() {
         <div className="text-xs uppercase tracking-wide text-muted">Username</div>
         <div className="text-lg">{info?.username ?? "…"}</div>
       </Card>
+      {connection && info?.username && (
+        <ProfileExtensions connection={connection} username={info.username} />
+      )}
       <Card>
         <div className="mb-1 text-xs uppercase tracking-wide text-muted">Email</div>
         {emailNotice && <Alert tone="success">{emailNotice}</Alert>}
@@ -303,11 +326,25 @@ export default function Profile() {
           </form>
         )}
       </Card>
-      {info?.language && (
+      {/* A choice only when there is one to make; otherwise read-only. */}
+      {info && LANGUAGE_OPTIONS.length > 1 ? (
         <Card>
-          <div className="text-xs uppercase tracking-wide text-muted">Language</div>
-          <div className="text-sm">{info.language}</div>
+          <SelectField
+            id="language"
+            label="Language"
+            value={info.language ?? LANGUAGE_OPTIONS[0].value}
+            options={LANGUAGE_OPTIONS}
+            disabled={savingLanguage}
+            onChange={(v) => void onLanguageChange(v)}
+          />
         </Card>
+      ) : (
+        info?.language && (
+          <Card>
+            <div className="text-xs uppercase tracking-wide text-muted">Language</div>
+            <div className="text-sm">{info.language}</div>
+          </Card>
+        )
       )}
       {info?.storageUsed && (
         <Card>

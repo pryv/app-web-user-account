@@ -1,0 +1,17 @@
+{
+  "static": [
+    "signin",
+    "sso-signin",
+    "register",
+    "reset-password",
+    "verify-email",
+    "change-password",
+    "mfa-challenge",
+    "cmc-accept",
+    "cmc/approve",
+    "cmc-scope-update",
+    "auth",
+    "oauth2-authorize"
+  ],
+  "account": ["profile", "security", "apps", "delegation", "data"]
+}

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import * as cmc from "@pryv/cmc";
+import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
-import { useSession } from "../lib/session";
+import { useSession, storedServiceInfoUrl } from "../lib/session";
+import { useStreamLabels } from "../lib/useConsentDisplay";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
@@ -73,6 +74,7 @@ function deliverResult(
  */
 export default function CmcScopeUpdate() {
   const { connection } = useSession();
+  const labelFor = useStreamLabels(storedServiceInfoUrl());
   const { search } = useLocation();
   const params = parseParams(search);
   const [proposal, setProposal] = useState<{
@@ -232,7 +234,7 @@ export default function CmcScopeUpdate() {
         <>
           {proposal.message && <p className="mb-4 text-sm text-muted">{proposal.message}</p>}
           <p className="mb-2 text-sm">Proposed permissions:</p>
-          <PermissionList entries={consentEntries(proposal.newPermissions)} />
+          <PermissionList entries={consentEntries(proposal.newPermissions, { labelFor })} />
         </>
       )}
       {!proposal && !loadError && (

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import * as cmc from "@pryv/cmc";
+import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
-import { useSession } from "../lib/session";
+import { useSession, storedServiceInfoUrl } from "../lib/session";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
@@ -11,6 +11,7 @@ import { isTrustedResultOrigin } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_MESSAGE } from "../lib/cmcAccept";
+import { useStreamLabels } from "../lib/useConsentDisplay";
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
 function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
@@ -111,6 +112,7 @@ export default function CmcApprove() {
   const [error, setError] = useState<{ message: string; tone: "danger" | "info" } | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
+  const labelFor = useStreamLabels(storedServiceInfoUrl());
 
   // Always try to read the offer (anonymous read via the capability access).
   useEffect(() => {
@@ -140,7 +142,8 @@ export default function CmcApprove() {
       <Card>
         <h1 className="mb-2 text-2xl">Approve request</h1>
         <p className="mb-4 text-sm text-muted">
-          Sign in to review and approve this request{offer?.requester?.displayName ? ` from ${offer.requester.displayName}` : ""}.
+          Sign in to review and approve this request
+          {offer?.requester?.username ? ` from ${offer.requester.username}@${offer.requester.host}` : ""}.
         </p>
         <Link
           to={signInLinkFor("/cmc-accept", search)}
@@ -231,18 +234,23 @@ export default function CmcApprove() {
       {offer && (
         <>
           <p className="mb-4 text-sm">
-            <strong>
-              {offer.requester.displayName ??
-                (offer.requester.username
-                  ? `${offer.requester.username}@${offer.requester.host}`
-                  : "An application")}
-            </strong>{" "}
+            {/* The account comes from the capability itself (verified); the
+                display name is what the requester says about itself, so it is
+                shown as such and never in place of the account. */}
+            <strong data-testid="cmc-requester">
+              {offer.requester.username
+                ? `${offer.requester.username}@${offer.requester.host}`
+                : "An unidentified requester"}
+            </strong>
+            {offer.requester.displayName && (
+              <span className="text-muted"> (calls itself &ldquo;{offer.requester.displayName}&rdquo;)</span>
+            )}{" "}
             is requesting access:
           </p>
           {offer.consent && Object.values(offer.consent)[0] && (
             <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
           )}
-          <PermissionList entries={consentEntries(offer.requestedPermissions)} />
+          <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
         </>
       )}
       <ConsentActions
