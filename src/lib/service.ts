@@ -1,17 +1,22 @@
 import Pryv from "pryv";
 import { parseAuthParams } from "./authParams";
+import { getDefaultServiceInfoUrl } from "./deployedSettings";
 
 /**
- * Resolves the Pryv `Service` for the current auth request, from the
- * `pryvServiceInfoUrl` query parameter. Memoised per service-info URL.
+ * Resolves the Pryv `Service` for the current page. Memoised per service-info URL.
+ *
+ * The `pryvServiceInfoUrl` query parameter wins when present (one deployment can
+ * serve another platform); otherwise the deployment's own platform from
+ * settings.json is used, so entry links need not carry the param.
  */
 let cached: { url: string; service: InstanceType<typeof Pryv.Service> } | null = null;
 
 export function getService(search: string = window.location.search) {
-  const { serviceInfoUrl } = parseAuthParams(search);
+  const serviceInfoUrl = parseAuthParams(search).serviceInfoUrl ?? getDefaultServiceInfoUrl();
   if (!serviceInfoUrl) {
+    // A deployment problem, not a user one: no param and no settings.json platform.
     throw new Error(
-      "Missing pryvServiceInfoUrl — the auth page must be opened with a service-info URL.",
+      "No platform configured: set serviceInfoUrl in settings.json or open this page with pryvServiceInfoUrl.",
     );
   }
   if (cached?.url !== serviceInfoUrl) {
