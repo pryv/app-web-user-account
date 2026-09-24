@@ -1,14 +1,7 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import { useSession, signinPath } from "../../lib/session";
-
-const TABS = [
-  { to: "/account/profile", label: "Profile" },
-  { to: "/account/security", label: "Security" },
-  { to: "/account/apps", label: "Connected apps" },
-  { to: "/account/delegation", label: "Delegation" },
-  { to: "/account/data", label: "Your data" },
-];
+import { ACCOUNT_TABS } from "../../accountTabs";
 
 /**
  * Account-management shell (signed-in subject only). Redirects to sign-in when
@@ -57,10 +50,10 @@ export default function AccountLayout() {
         aria-label="Account sections"
         className="mb-6 flex flex-wrap gap-1 border-b border-divider"
       >
-        {TABS.map((t) => (
+        {ACCOUNT_TABS.map((t) => (
           <NavLink
-            key={t.to}
-            to={t.to + search}
+            key={t.path}
+            to={`/account/${t.path}${search}`}
             className={({ isActive }) =>
               `-mb-px flex-1 border-b-2 px-3 py-2 text-center text-sm transition-colors sm:flex-none ${
                 isActive

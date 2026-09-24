@@ -2,36 +2,25 @@
 // servers (no history-API fallback) resolve deep links like /auth?poll=…
 // GitHub Pages gets the same effect from the 404.html copy in build:pages;
 // this covers `npm run webserver` (local backloop.dev serving).
-import { cpSync, mkdirSync, existsSync } from "node:fs";
+import { cpSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const dist = join(dirname(fileURLToPath(import.meta.url)), "..", "dist");
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const dist = join(root, "dist");
 const index = join(dist, "index.html");
 if (!existsSync(index)) {
   console.error("dist/index.html not found — run `npm run build` first.");
   process.exit(1);
 }
 
+// Route list shared with the app (src/routes.json): top-level paths, then
+// the /account shell and each account tab under it.
+const routeTable = JSON.parse(readFileSync(join(root, "src", "routes.json"), "utf8"));
 const routes = [
-  "signin",
-  "sso-signin",
-  "register",
-  "reset-password",
-  "verify-email",
-  "change-password",
-  "mfa-challenge",
-  "cmc-accept",
-  "cmc/approve",
-  "cmc-scope-update",
-  "auth",
-  "oauth2-authorize",
+  ...routeTable.static,
   "account",
-  "account/profile",
-  "account/security",
-  "account/apps",
-  "account/data",
-  "account/delegation",
+  ...routeTable.account.map((tab) => `account/${tab}`),
 ];
 
 for (const route of routes) {
@@ -40,7 +29,7 @@ for (const route of routes) {
   cpSync(index, join(dir, "index.html"));
 }
 // Routes with a dynamic segment (/account/audit-access/:accessId) cannot be
-// listed above: they are served by 404.html, the same fallback GitHub Pages
+// listed in routes.json: they are served by 404.html, the same fallback GitHub Pages
 // uses (build:pages) and that backloop.dev serves for any unknown path. The
 // body is the app, which routes on the URL; the HTTP status stays 404.
 cpSync(index, join(dist, "404.html"));

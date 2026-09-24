@@ -13,12 +13,8 @@ import CmcScopeUpdate from "./routes/CmcScopeUpdate";
 import Auth from "./routes/Auth";
 import Oauth2Authorize from "./routes/Oauth2Authorize";
 import AccountLayout from "./routes/account/AccountLayout";
-import Profile from "./routes/account/Profile";
-import Security from "./routes/account/Security";
-import ConnectedApps from "./routes/account/ConnectedApps";
-import DataRights from "./routes/account/DataRights";
-import DelegationPage from "./routes/account/Delegation";
 import AuditAccess from "./routes/account/AuditAccess";
+import { ACCOUNT_TABS, EXTRA_ROUTES } from "./accountTabs";
 
 /** Internal redirect that forwards the current `?…` query through. */
 function NavigatePreservingSearch({ to }: { to: string }) {
@@ -63,16 +59,20 @@ export default function App() {
             points here; reached via 302 from `GET /oauth2/authorize`. */}
         <Route path="/oauth2-authorize" element={<Oauth2Authorize />} />
 
-        {/* Self-service account management (subject) */}
+        {/* Self-service account management (subject). The tabs come from
+            src/accountTabs.tsx; audit-access is reached from a tab, not the nav. */}
         <Route path="/account" element={<AccountLayout />}>
           <Route index element={<NavigatePreservingSearch to="/account/profile" />} />
-          <Route path="profile" element={<Profile />} />
-          <Route path="security" element={<Security />} />
-          <Route path="apps" element={<ConnectedApps />} />
-          <Route path="data" element={<DataRights />} />
-          <Route path="delegation" element={<DelegationPage />} />
+          {ACCOUNT_TABS.map((t) => (
+            <Route key={t.path} path={t.path} element={t.element} />
+          ))}
           <Route path="audit-access/:accessId" element={<AuditAccess />} />
         </Route>
+
+        {/* Deployment-specific top-level routes (src/accountTabs.tsx) */}
+        {EXTRA_ROUTES.map((r) => (
+          <Route key={r.path} path={r.path} element={r.element} />
+        ))}
 
         {/* Landing + 404 */}
         <Route path="/" element={<NavigatePreservingSearch to="/signin" />} />
