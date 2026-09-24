@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- **The access-request return URL no longer carries the app's token.** After an
+  access request, `/auth` redirected to the calling app's `returnURL` with every
+  field of the request state appended as `prYv<field>`, which included the newly
+  created app token, the `apiEndpoint` that embeds it, and the username. They
+  ended up in the calling page's address bar, browser history and `Referer`. The
+  return URL now carries only `prYvpoll`, `prYvkey` and `prYvstatus`. Apps using
+  the `pryv` client library need no change: it reads just the poll URL (or key)
+  and fetches the rest from it.
+  **BREAKING for hand-rolled consumers:** an app that read `prYvtoken`,
+  `prYvapiEndpoint`, `prYvusername` or any other `prYv*` field from its return
+  URL (as the legacy auth pages documented) must now fetch the `prYvpoll` URL,
+  whose answer carries the same state.
+
+### Fixed
+
+- **Creating an account or resetting a password from an app's access request no
+  longer loses the request.** The "Create account" and "Forgot password?" links
+  on the `/auth` sign-in screen now carry the pending request, and a sign-in or
+  registration that has one returns to `/auth` to finish the grant, instead of
+  landing on the profile while the app keeps waiting.
+- **The consent screen shows the app's own message.** An app's
+  `clientData["app-web-auth:description"]` was shown only when reviewing an access
+  afterwards; `/auth` now displays it above the permission list (as text with
+  light formatting, never as HTML).
+- **The "Send verification link" button on the profile no longer breaks onto
+  three lines** in a narrow column; the email actions move to their own row.
+
+### Changed
+
+- Registration now shares the sign-in completion decision (pending access
+  request, then `returnURL`, then a hand-off `next`, then the profile) instead of
+  a copy of it.
+- `backloop.dev.json` (the local HTTPS certificate secret) is git-ignored.
+
 ## 0.2.3 — 2026-09-22
 
 ### Fixed

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import type { ReactNode } from "react";
 
 /**
  * The legacy `/auth` consent screen, driven end to end through its wire
@@ -36,9 +37,11 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
   ConsentSignIn: ({
     onSignedIn,
     externalError,
+    footer,
   }: {
     onSignedIn: (s: { username: string; personalToken: string; endpoint: string }) => void;
     externalError?: string | null;
+    footer?: ReactNode;
   }) => (
     <div>
       <button
@@ -56,6 +59,7 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
       {/* The real component renders this; the stub must too, or a message
           raised before the consent panel exists would look swallowed. */}
       {externalError ? <p>{externalError}</p> : null}
+      {footer}
     </div>
   ),
 }));
@@ -305,5 +309,38 @@ describe("[AUCP] /auth consent panel", () => {
     await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
     // The whole checked set is minted, exactly as before consent forms.
     expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual(OFFER);
+  });
+
+  it("[AUC9] shows the app's consent message, as text and not as HTML", async () => {
+    await renderAndSignIn({
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      clientData: { "app-web-auth:description": { content: "We read your **diary** <img src=x>" } },
+    });
+
+    const msg = screen.getByTestId("consent-message");
+    expect(msg.textContent).toContain("We read your diary <img src=x>");
+    expect(msg.querySelector("strong")?.textContent).toBe("diary");
+    expect(msg.querySelector("img")).toBeNull();
+  });
+
+  it("[AUC10] Create account and Forgot password carry the pending request", async () => {
+    flow.loadAccessState.mockResolvedValue(stateWithConsent());
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1&key=k1"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    for (const name of ["Create account", "Forgot password?"]) {
+      const href = (await screen.findByText(name)).closest("a")!.getAttribute("href")!;
+      const p = new URLSearchParams(href.slice(href.indexOf("?")));
+      expect(p.get("poll")).toBe("https://core.test/reg/access/k1");
+      expect(p.get("key")).toBe("k1");
+      expect(p.get("pryvServiceInfoUrl")).toBe("https://core.test/service/info");
+    }
   });
 });

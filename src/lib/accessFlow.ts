@@ -247,13 +247,28 @@ export async function deleteAppAccess(
 }
 
 /**
+ * The ONLY access-state fields echoed back to the calling app as `prYv<field>`
+ * params. An allow-list on purpose: enumerating every scalar field put the
+ * freshly minted `token` (and `apiEndpoint`, which embeds it, and `username`)
+ * in the caller's address bar, browser history and Referer.
+ *
+ * The contract needs no more: lib-js `Browser.LoginButton.retrievePollUrl`
+ * reads `pryvPoll`/`prYvpoll` or `pryvKey`/`prYvkey`, then FETCHES the poll
+ * URL to obtain the endpoint.
+ *
+ * Never add a credential-bearing field here.
+ */
+const RETURN_URL_PARAMS = ["key", "status"] as const;
+
+/**
  * After accept/refuse, either close the popup or redirect to returnURL.
- * Mirrors app-web-auth3's `ops/close_or_redirect.js` exactly:
+ * Mirrors app-web-auth3's `ops/close_or_redirect.js`, except for the params
+ * appended to returnURL (see RETURN_URL_PARAMS):
  *
  *   - REDIRECTED status → follow redirectUrl (multi-core handoff).
  *   - no returnURL → window.close().
  *   - oauthState present → appendparams: state=<oauthState>&code=<key>&poll=<pollUrl>.
- *   - else → append `prYvpoll=<pollUrl>` + `prYv<each scalar accessState field>=<value>`
+ *   - else → append `prYvpoll=<pollUrl>` plus the RETURN_URL_PARAMS allow-list
  *           (legacy convention; lib-js's consumer reads both prYvpoll and
  *           the modern pryvPoll since the dual-form back-compat shipped in
  *           lib-js bcf56ea — produces the legacy form for compatibility).
@@ -296,8 +311,9 @@ export function closeOrRedirect(
       "state=" + encodeURIComponent(state.oauthState) + code + "&poll=" + encodeURIComponent(pollUrl);
   } else {
     url += "prYvpoll=" + encodeURIComponent(pollUrl);
-    for (const [k, v] of Object.entries(state)) {
-      if (typeof v === "string" || typeof v === "number") {
+    for (const k of RETURN_URL_PARAMS) {
+      const v = state[k];
+      if (typeof v === "string") {
         url += "&prYv" + k + "=" + encodeURIComponent(String(v));
       }
     }

@@ -1,5 +1,52 @@
 import { describe, it, expect } from "vitest";
-import { parseAuthParams, buildCompletionUrl } from "./authParams";
+import {
+  parseAuthParams,
+  buildCompletionUrl,
+  accessRequestSearch,
+  hasPendingAccessRequest,
+} from "./authParams";
+
+/**
+ * [ARQS] A pending access request survives the create-account /
+ * reset-password / sign-in hops, so a new user can complete the grant.
+ */
+describe("[ARQS] access-request context", () => {
+  const REQ =
+    "?lang=en&key=KEY1&requestingAppId=my-app" +
+    "&poll=https%3A%2F%2Fcore.example%2Freg%2Faccess%2FKEY1" +
+    "&poll_rate_ms=1000&serviceInfo=https%3A%2F%2Fcore.example%2Freg%2Fservice%2Finfo" +
+    "&returnURL=https%3A%2F%2Fapp.test%2F";
+
+  it("[ARQS1] keeps poll, key, serviceInfo and lang", () => {
+    const p = new URLSearchParams(accessRequestSearch(REQ));
+    expect(p.get("poll")).toBe("https://core.example/reg/access/KEY1");
+    expect(p.get("key")).toBe("KEY1");
+    expect(p.get("serviceInfo")).toBe("https://core.example/reg/service/info");
+    expect(p.get("lang")).toBe("en");
+  });
+
+  it("[ARQS2] drops requestingAppId, returnURL, state and params outside the request context", () => {
+    const p = new URLSearchParams(accessRequestSearch(REQ + "&state=csrf&other=1"));
+    expect(p.get("requestingAppId")).toBeNull();
+    expect(p.get("returnURL")).toBeNull();
+    expect(p.get("state")).toBeNull();
+    expect(p.get("other")).toBeNull();
+    expect(p.get("poll_rate_ms")).toBeNull();
+  });
+
+  it("[ARQS3] returns '' without a pending request", () => {
+    expect(accessRequestSearch("?pryvServiceInfoUrl=https%3A%2F%2Fx.test%2Finfo")).toBe("");
+    expect(accessRequestSearch("")).toBe("");
+  });
+
+  it("[ARQS4] hasPendingAccessRequest keys on the poll URL only", () => {
+    expect(hasPendingAccessRequest(REQ)).toBe(true);
+    expect(hasPendingAccessRequest("?pollUrl=https%3A%2F%2Fx.test%2Fa")).toBe(true);
+    expect(hasPendingAccessRequest("?key=abc&requestingAppId=x")).toBe(false);
+    expect(hasPendingAccessRequest("?poll=&pollUrl=https%3A%2F%2Fx.test%2Fa")).toBe(true);
+    expect(hasPendingAccessRequest("")).toBe(false);
+  });
+});
 
 describe("parseAuthParams", () => {
   it("extracts pryvServiceInfoUrl, requestingAppId, returnURL, state", () => {

@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { parseAuthParams, buildCompletionUrl } from "../lib/authParams";
-import { handoffReturnPath } from "../lib/handoffReturn";
+import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
+import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {
@@ -105,7 +105,7 @@ export default function Register() {
     }
     setBusy(true);
     try {
-      const { appId, returnURL, serviceInfoUrl, state } = parseAuthParams(search);
+      const { appId, serviceInfoUrl } = parseAuthParams(search);
       const service = getService(search);
       if (gateOn === true && emailProof != null) {
         // The gate needs the proof carried on the create-account call, which
@@ -145,19 +145,12 @@ export default function Register() {
           appId,
         )) as unknown as PryvConnection;
         setConnection(connection, serviceInfoUrl);
-        if (returnURL) {
-          window.location.href = buildCompletionUrl(
-            returnURL,
-            connection.endpoint,
-            state,
-          );
-        } else {
-          const target = serviceInfoUrl
-            ? "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(serviceInfoUrl)
-            : "/account/profile";
-          // Back to the hand-off page the user came from, if any.
-          navigate(handoffReturnPath(search) ?? target);
-        }
+        // Same decision as every other sign-in: a pending access request goes
+        // back to /auth, then returnURL, then the hand-off page, then profile.
+        const target = signedInTarget(search, connection.endpoint);
+        if (target.kind === "external") window.location.href = target.href;
+        // Replace, so /auth can still close this tab (popup mode) afterwards.
+        else navigate(target.path, { replace: hasPendingAccessRequest(search) });
         return;
       } catch {
         // Account exists but auto-sign-in failed (e.g. platform-side MFA
@@ -208,12 +201,18 @@ export default function Register() {
     }
   }
 
+  // With a pending access request, signing in happens on /auth itself, so the
+  // grant is issued in the same step.
+  const signInPath = hasPendingAccessRequest(search)
+    ? `/auth${accessRequestSearch(search)}`
+    : `/signin${search}`;
+
   if (done) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">Account created</h1>
         <Alert tone="success">Your account is ready.</Alert>
-        <Link to={`/signin${search}`} className="text-primary hover:underline">
+        <Link to={signInPath} className="text-primary hover:underline">
           Continue to sign in
         </Link>
       </Card>
@@ -357,7 +356,7 @@ export default function Register() {
         </Button>
       </form>
       <div className="mt-4 text-sm">
-        <Link to={`/signin${search}`} className="text-primary hover:underline">
+        <Link to={signInPath} className="text-primary hover:underline">
           Already have an account? Sign in
         </Link>
       </div>

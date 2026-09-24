@@ -59,4 +59,19 @@ describe("[SICT] signed-in target", () => {
   it("[SICT5] refuses a returnURL that is not an absolute http(s) URL", () => {
     expect(() => signedInTarget("?returnURL=javascript%3Aalert(1)", ENDPOINT)).toThrow();
   });
+
+  it("[SICT6] a pending access request goes back to /auth, before returnURL", () => {
+    const poll = "https://core.example/reg/access/KEY1";
+    const target = signedInTarget(
+      `?poll=${encodeURIComponent(poll)}&key=KEY1&returnURL=https%3A%2F%2Fapp.example%2Fcb` +
+        `&pryvServiceInfoUrl=${encodeURIComponent(SI)}`,
+      ENDPOINT,
+    );
+    expect(target.kind).toBe("internal");
+    const path = (target as { path: string }).path;
+    expect(path.startsWith("/auth?")).toBe(true);
+    const p = new URLSearchParams(path.slice("/auth".length));
+    expect(p.get("poll")).toBe(poll);
+    expect(p.get("pryvServiceInfoUrl")).toBe(SI);
+  });
 });

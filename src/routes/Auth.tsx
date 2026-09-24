@@ -13,6 +13,9 @@ import {
   type OfferPermission,
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
+import { accessRequestSearch } from "../lib/authParams";
+import { consentMessage } from "../lib/consentMessage";
+import { MarkdownLite } from "../lib/markdownLite";
 import { Delegation } from "@pryv/delegation";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
@@ -632,12 +635,27 @@ export default function Auth() {
   // rows carry the app's annotations and behave exactly as on the OAuth2
   // screen: mandatory rows locked, opt-in rows open unticked.
   if (check && check.checkedPermissions) {
+    const consentMsg = consentMessage(accessState.clientData);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           <strong>{accessState.requestingAppId}</strong>
         </h1>
         <p className="mb-2 text-sm">is requesting permission:</p>
+        {consentMsg != null && (
+          // The app's own explanation comes before the technical breakdown.
+          // Untrusted text: MarkdownLite builds React elements, never innerHTML.
+          // Framed and captioned so the app's words never read as the platform's.
+          <div className="mb-3">
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
+            <div
+              data-testid="consent-message"
+              className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
+            >
+              <MarkdownLite text={consentMsg} />
+            </div>
+          </div>
+        )}
         <PermissionList
           entries={entries}
           flags={allowsChoice ? grantedFlags : undefined}
@@ -711,11 +729,18 @@ export default function Auth() {
   // Shared sign-in gate (initial state).
   // Register / password-reset links need the platform's service-info URL;
   // same resolution order as makeService. They open in a new tab so this
-  // popup keeps its pending access request (poll context) alive.
+  // popup keeps its pending access request (poll context) alive. The links
+  // also carry that request, so a user who creates an account or resets a
+  // password there comes back to this consent screen instead of landing on
+  // the profile while the app keeps waiting.
   const linksSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
-  const linksSearch = linksSvcInfoUrl
-    ? `?pryvServiceInfoUrl=${encodeURIComponent(linksSvcInfoUrl)}`
-    : "";
+  const linksParams = new URLSearchParams(accessRequestSearch(search));
+  if (linksSvcInfoUrl && !linksParams.has("pryvServiceInfoUrl")) {
+    linksParams.set("pryvServiceInfoUrl", linksSvcInfoUrl);
+  }
+  // toString(), not .size: URLSearchParams.size is missing on Safari 16.
+  const linksQs = linksParams.toString();
+  const linksSearch = linksQs ? "?" + linksQs : "";
   return (
     <ConsentSignIn
       makeService={makeService}

@@ -19,6 +19,7 @@ import {
   type DataEvent,
 } from "../../lib/audit";
 import { MarkdownLite } from "../../lib/markdownLite";
+import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
 import { delegationManagedKind } from "../../lib/delegation";
 
 interface AccessDetails {
@@ -38,18 +39,6 @@ interface AccessDetails {
 }
 
 const PAGE_SIZE = 15;
-
-/** clientData key carrying the app's consent message (markdown `note/txt`). */
-const CONSENT_KEY = "app-web-auth:description";
-
-function consentText(clientData?: Record<string, unknown>): string | null {
-  const v = clientData?.[CONSENT_KEY];
-  if (typeof v === "string") return v;
-  if (v && typeof v === "object" && typeof (v as { content?: unknown }).content === "string") {
-    return (v as { content: string }).content;
-  }
-  return null;
-}
 
 function fmtTime(t?: number | null): string {
   return t ? new Date(t * 1000).toLocaleString() : "—";
@@ -383,11 +372,11 @@ export default function AuditAccess() {
             </div>
           </div>
         )}
-        {details?.clientData && consentText(details.clientData) !== null && (
+        {details?.clientData && consentMessage(details.clientData) !== null && (
           <div className="mt-3">
             <div className="mb-1 text-xs uppercase tracking-wide text-muted">Consent message</div>
             <div className="rounded border border-divider p-3">
-              <MarkdownLite text={consentText(details.clientData)!} />
+              <MarkdownLite text={consentMessage(details.clientData)!} />
             </div>
           </div>
         )}

@@ -193,12 +193,16 @@ export default function Profile() {
                       {BADGE_LABEL[badge]}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  {/* Unshrinkable group with no-wrap labels: Button's base is
+                      `inline-flex w-full`, so under pressure the longest label broke
+                      onto three lines; this way the parent's flex-wrap moves the
+                      actions to their own row instead. */}
+                  <div className="flex shrink-0 items-center gap-2">
                     {onAccount && badge !== "verified" && (
                       <Button
                         variant="ghost"
                         type="button"
-                        className="w-auto"
+                        className="w-auto whitespace-nowrap"
                         disabled={emailBusy}
                         onClick={() => void onResend(view.value)}
                       >
@@ -209,7 +213,7 @@ export default function Profile() {
                       <Button
                         variant="ghost"
                         type="button"
-                        className="w-auto"
+                        className="w-auto whitespace-nowrap"
                         onClick={() => {
                           setEmailNotice(null);
                           setNewEmail(info?.email ?? "");
