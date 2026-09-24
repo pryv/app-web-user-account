@@ -45,6 +45,13 @@ describe("[SRTP] safeReturnTo", () => {
 
   it("[SRT3] normalises dot segments before checking the prefix", () => {
     expect(safeReturnTo("/account/../cmc-accept?capabilityUrl=x")).toBeNull();
+    expect(safeReturnTo("/account/%2e%2e/cmc-accept")).toBeNull();
+    expect(safeReturnTo("/account\\..\\cmc-accept")).toBeNull();
+  });
+
+  it("[SRT8] strips a nested returnTo and refuses an oversized value", () => {
+    expect(safeReturnTo("/account/apps?returnTo=%2Faccount%2Fsecurity&x=1")).toBe("/account/apps?x=1");
+    expect(safeReturnTo("/account/apps?x=" + "a".repeat(3000))).toBeNull();
   });
 });
 

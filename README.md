@@ -64,7 +64,9 @@ Every route accepts these query parameters:
   `/change-password`, `/reset-password` — self-service pages; combine with
   `backUrl`/`backLabel` so users find their way back to you. You can link any
   of them directly: a signed-out user is sent to sign in and then back to the
-  page you linked, with `backUrl`, `backLabel` and `username` kept. (The page
+  page you linked, with `backUrl`, `backLabel` and `username` kept (after a
+  third-party sign-in, the back link is kept when it returns to the same
+  browser tab). (The page
   rides along as `returnTo`, a same-origin account path the app validates; you
   do not need to set it yourself.)
 - `/verify-email` — the landing page for a verification email. Don't link it

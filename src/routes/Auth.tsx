@@ -40,6 +40,7 @@ import {
   createAppAccess,
   deleteAppAccess,
   updateAppAccess,
+  sameClientData,
   closeOrRedirect,
   deriveServiceInfoUrlFromPollUrl,
   buildAcceptedState,
@@ -52,6 +53,31 @@ import {
 } from "../lib/accessFlow";
 
 const APP_ID = "pryv-app-web-user-account";
+
+/**
+ * Whether a diverged access is updated in place (keeping its token, so
+ * whoever holds it keeps a working credential) rather than replaced by
+ * delete + create. Replaced when an update could not make it match:
+ * - the app proposed its own token, and asked for THAT token;
+ * - a delegation is involved on either side: the core stamps the delegation
+ *   lineage only when an access is created, so an update would leave it
+ *   wrong (unmarked, or still marked when the owner re-grants);
+ * - its clientData differs: the core merges clientData on update, so stale
+ *   keys would stay and the access would never match again.
+ */
+function updatesInPlace(
+  mismatching: AppAccess | null | undefined,
+  state: AccessState,
+  delegationInvolved: boolean,
+): boolean {
+  return (
+    mismatching != null &&
+    state.token == null &&
+    !delegationInvolved &&
+    !isDelegatedChild(mismatching) &&
+    sameClientData(mismatching.clientData, state.clientData)
+  );
+}
 
 interface AuthQuery {
   pollUrl: string | null;
@@ -504,19 +530,15 @@ export default function Auth() {
         setFinishing(null);
         return;
       }
-      // A diverged access is updated in place, so it keeps its token and
-      // whoever holds that token keeps a working credential. When the app
-      // proposed its own token, it asked for THAT token: replace the access
-      // (delete + create) as before.
       const mismatching = check.mismatchingAccess;
-      const updateInPlace = mismatching != null && accessState.token == null;
+      const updateInPlace = updatesInPlace(mismatching, accessState, grantFor != null || actingAs != null);
       let access: AppAccess;
       if (mismatching != null && updateInPlace) {
         access = await updateAppAccess(apiEndpoint, personalToken, mismatching.id, {
           permissions,
           ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
-          ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
-          ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
+          // Mirror the request: no expireAfter means no expiry.
+          ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : { expires: null }),
         });
       } else {
         if (mismatching != null) {
@@ -700,7 +722,9 @@ export default function Auth() {
         {check.mismatchingAccess && (
           <Alert tone="info">
             A different access was already given to this app.{" "}
-            {accessState.token == null ? "Approving will update it." : "Approving will replace it."}
+            {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
+              ? "Approving will update it."
+              : "Approving will replace it."}
           </Alert>
         )}
         {error && <Alert>{error}</Alert>}

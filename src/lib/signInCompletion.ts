@@ -29,6 +29,18 @@ import {
 import { handoffReturnPath } from "./handoffReturn";
 import { safeReturnTo, accountPath } from "./session";
 
+/**
+ * `path` with its `pryvServiceInfoUrl` set to the platform the user just
+ * signed in to (or removed when the sign-in had none), so a crafted returnTo
+ * cannot point the account pages at another platform than the session's.
+ */
+function withPlatform(path: string, serviceInfoUrl: string | null): string {
+  const url = new URL(path, "https://origin.invalid");
+  if (serviceInfoUrl) url.searchParams.set("pryvServiceInfoUrl", serviceInfoUrl);
+  else url.searchParams.delete("pryvServiceInfoUrl");
+  return url.pathname + url.search + url.hash;
+}
+
 export type SignedInTarget =
   | { kind: "external"; href: string }
   | { kind: "internal"; path: string };
@@ -42,7 +54,7 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
     return { kind: "external", href: buildCompletionUrl(returnURL, endpointWithoutToken, state) };
   }
   const returnTo = safeReturnTo(new URLSearchParams(search).get("returnTo"));
-  if (returnTo) return { kind: "internal", path: returnTo };
+  if (returnTo) return { kind: "internal", path: withPlatform(returnTo, serviceInfoUrl) };
   const handoff = handoffReturnPath(search);
   if (handoff) return { kind: "internal", path: handoff };
   return { kind: "internal", path: accountPath("/account/profile", search, serviceInfoUrl) };

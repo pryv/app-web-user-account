@@ -16,8 +16,10 @@
   `/change-password`) while signed out used to land on the profile after sign-in,
   and `backUrl` / `backLabel` were lost on the way. The guard now sends the page
   along as `returnTo` (a same-origin account path, validated; never a URL) and
-  keeps `username`, `backUrl` and `backLabel` across the sign-in, including a
-  third-party one. When no page was asked for, the profile keeps them too.
+  keeps `username`, `backUrl` and `backLabel` across the sign-in. A third-party
+  sign-in returns to the page wherever it lands, and keeps the back link when it
+  comes back to the same browser tab. When no page was asked for, the profile
+  keeps them too.
 - The end-to-end smoke test for `/oauth2-authorize` expected the placeholder
   heading the page had before the consent flow shipped; it now checks the
   refusal shown when the page is opened without its parameters. New hermetic

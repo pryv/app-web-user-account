@@ -297,7 +297,10 @@ describe("[AUCP] /auth consent panel", () => {
   });
 
   /** A plain request whose check-app found a diverged access for this app. */
-  async function renderWithMismatch(extra: Record<string, unknown> = {}) {
+  async function renderWithMismatch(
+    extra: Record<string, unknown> = {},
+    existing: Record<string, unknown> = {},
+  ) {
     flow.loadAccessState.mockResolvedValue({
       status: "NEED_SIGNIN",
       requestingAppId: "test-app",
@@ -307,7 +310,7 @@ describe("[AUCP] /auth consent panel", () => {
     });
     flow.checkAppAccess.mockResolvedValue({
       checkedPermissions: OFFER,
-      mismatchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: [] },
+      mismatchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: [], ...existing },
     });
     render(
       <MemoryRouter initialEntries={["/auth?poll=https://core.test/reg/access/k1"]}>
@@ -336,6 +339,47 @@ describe("[AUCP] /auth consent panel", () => {
     expect(flow.createAppAccess).not.toHaveBeenCalled();
     // The app receives the token it already had.
     expect(flow.updateAccessState.mock.calls[0][1].token).toBe("old-token");
+  });
+
+  it("[AUUE] an in-place update mirrors the request's expiry, clearing one it does not set", async () => {
+    await renderWithMismatch();
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.updateAppAccess).toHaveBeenCalled());
+    const update = flow.updateAppAccess.mock.calls[0][3];
+    expect(update.expires).toBeNull();
+    expect(update.clientData).toBeUndefined();
+  });
+
+  it("[AUUD] a diverged access with delegation lineage is replaced, not updated", async () => {
+    await renderWithMismatch({}, {
+      clientData: { delegation: { kind: "delegated-child", delegate: { username: "parent" } } },
+    });
+    expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.updateAppAccess).not.toHaveBeenCalled();
+    expect(flow.deleteAppAccess.mock.calls[0][2]).toBe("acc-old");
+  });
+
+  it("[AUUC] a diverged access whose clientData differs is replaced, not updated", async () => {
+    await renderWithMismatch(
+      { clientData: { appStreamId: "new-app" } },
+      { clientData: { appStreamId: "old-app", stale: true } },
+    );
+    expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.updateAppAccess).not.toHaveBeenCalled();
+  });
+
+  it("[AUUS] the same clientData, in another key order, still updates in place", async () => {
+    await renderWithMismatch(
+      { clientData: { a: 1, b: { c: 2, d: 3 } } },
+      { clientData: { b: { d: 3, c: 2 }, a: 1, delegation: undefined } },
+    );
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.updateAppAccess).toHaveBeenCalled());
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
   });
 
   it("[AUUT] a diverged access is replaced when the app proposed its own token", async () => {

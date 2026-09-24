@@ -105,7 +105,8 @@ const RETURN_TO_PREFIXES = ["/account/", "/change-password"] as const;
  * hand-offs, whose query holds a bearer link, keep using `next` instead.
  */
 export function safeReturnTo(raw: string | null | undefined): string | null {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  if (!raw || raw.length > 2048) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return null;
   let url: URL;
   try {
     url = new URL(raw, "https://origin.invalid");
@@ -116,6 +117,8 @@ export function safeReturnTo(raw: string | null | undefined): string | null {
   const path = url.pathname;
   const allowed = RETURN_TO_PREFIXES.some((p) => (p.endsWith("/") ? path.startsWith(p) : path === p));
   if (!allowed) return null;
+  // Never nested: a returnTo inside the target could resurrect a stale page.
+  url.searchParams.delete("returnTo");
   return path + url.search + url.hash;
 }
 

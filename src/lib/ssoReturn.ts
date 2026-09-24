@@ -39,7 +39,9 @@ import { safeReturnTo } from "./session";
  * pending access request's `poll` is NOT here (once the request is accepted,
  * whoever holds the poll URL can read the app's token), so it survives through
  * the same-tab stash only. `returnTo` is safe because `safeReturnTo` limits it
- * to account pages, whose query carries nothing secret.
+ * to account pages, whose query carries nothing secret. `backUrl` / `backLabel`
+ * deliberately stay out: through the core they would let a crafted start link
+ * plant a back link after sign-in; they survive through the same-tab stash.
  */
 const RETURN_KEYS = ["returnURL", "state", "requestingAppId", "next", "returnTo"] as const;
 

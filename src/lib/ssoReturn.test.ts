@@ -90,6 +90,17 @@ describe("[SSRT] SSO return context", () => {
     expect(value ?? "").not.toContain("access");
   });
 
+  it("[SSRT17] backUrl / backLabel never ride through the core, only the same-tab stash", () => {
+    const search = "?backUrl=https%3A%2F%2Fapp.example%2F&backLabel=App&state=s";
+    const { value, nonce } = buildSsoReturn(search);
+    const carried = new URLSearchParams(value ?? "");
+    expect(carried.get("backUrl")).toBeNull();
+    expect(carried.get("backLabel")).toBeNull();
+    stashSsoReturn(nonce, search);
+    const restored = new URLSearchParams(restoreSsoReturn(value, ""));
+    expect(restored.get("backLabel")).toBe("App");
+  });
+
   it("[SSRT16] a restored returnTo is re-validated", () => {
     const back = restoreSsoReturn("returnTo=https%3A%2F%2Fevil.example&h=x", "");
     expect(new URLSearchParams(back).get("returnTo")).toBeNull();

@@ -133,7 +133,8 @@ test.describe("delegated-session banner", () => {
   test("is ABSENT on an ordinary personal session", async ({ page }) => {
     await signedInWithDelegation(page, {});
     await page.goto("/account/profile");
-    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
+    await expect(page.getByTestId("delegated-session-banner")).toHaveCount(0);
   });
 });
 

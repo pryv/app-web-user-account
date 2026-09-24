@@ -91,6 +91,18 @@ describe("[SICT] signed-in target", () => {
     });
   });
 
+  it("[SICT11] returnTo keeps the platform the user signed in to", () => {
+    const other = "https://other.example/reg/service/info";
+    const target = signedInTarget(
+      `?pryvServiceInfoUrl=${encodeURIComponent(SI)}&returnTo=` +
+        encodeURIComponent(`/account/apps?pryvServiceInfoUrl=${encodeURIComponent(other)}`),
+      ENDPOINT,
+    ) as { path: string };
+    const p = new URLSearchParams(target.path.slice(target.path.indexOf("?")));
+    expect(target.path.startsWith("/account/apps?")).toBe(true);
+    expect(p.get("pryvServiceInfoUrl")).toBe(SI);
+  });
+
   it("[SICT9] an unsafe returnTo falls through to the profile", () => {
     expect(signedInTarget("?returnTo=https%3A%2F%2Fevil.test", ENDPOINT)).toEqual({
       kind: "internal",
