@@ -37,6 +37,30 @@ Brand tokens (palette, typography, radii) are defined as theme variables in
 [`src/index.css`](src/index.css). Re-brand by overriding the `--color-*` and
 `--font-*` values — no component changes required.
 
+**Branding:** replace [`src/brand.tsx`](src/brand.tsx) and
+[`src/brand.css`](src/brand.css). `brand.tsx` sets the product name, the account
+noun used in copy ("Register a new … account") and the header `Logo`;
+`brand.css` loads the fonts and is imported before the theme tokens, so the
+`--font-*` overrides can refer to them. The page title stays in `index.html`.
+
+## Extension points
+
+A fork adapts the app by replacing a few files rather than editing many. Each
+of them keeps a stable interface; everything else can be merged from upstream.
+
+| File | What to replace it with | Keep stable |
+|---|---|---|
+| `src/lib/pryvClient.ts` | Your own wrapper of the Pryv client libraries. Every other module imports the client from here, and a test refuses a direct import elsewhere. | The exported names (`Pryv`, `attachSocketIO`, `cmc`, `Delegation`, ...). |
+| `src/brand.tsx`, `src/brand.css` | Your product name, account noun, logo and fonts. | `brand`, `Logo`. |
+| `src/accountTabs.tsx` + `src/routes.json` | Extra account tabs (`ACCOUNT_TABS`, path relative to `/account`) or top-level pages (`EXTRA_ROUTES`); add each path to `routes.json` (`account` / `static`) for static hosting. A test fails when the two disagree. | The `AccountTab` shape. |
+| `src/extensions/ProfileExtensions.tsx` | Extra profile sections, rendered between the account and email cards; receives `{ connection, username }`. Renders nothing by default. | The props. |
+| `src/extensions/streamLabels.ts` | `loadStreamLabels(serviceInfoUrl)` returning a `(streamId) => label \| null` resolver, to show your data model's names on consent rows. Default: no labels. | The resolver type. |
+| `src/components/consent/ConsentPanel.tsx` | Your consent screen layout; the access-request and OAuth2 pages pass it the app, the rows, the choice state and the actions. | `ConsentPanelProps`. |
+
+The requesting app's name and icon on consent screens come from the operator's
+app catalog (`settings.json` `appCatalogUrl`, see Deploy), never from the app
+itself.
+
 ## Develop
 
 ```bash
@@ -159,11 +183,34 @@ app without rebuilding. Every key is optional; the shipped file is `{}`.
 | `allowedServiceInfoUrls` | Restrict the deployment to these platforms (plus `serviceInfoUrl`). A link naming any other platform, through `pryvServiceInfoUrl` / `serviceInfo`, or an access request whose poll URL is on another platform, is refused before the user can type a password, so a crafted link on your account domain can neither collect passwords nor receive a granted token for someone else's server. `[]` (or a list with no valid entry) means `serviceInfoUrl` only; the key absent means any platform (needed only to serve several platforms from one deployment). On a multi-core platform, list each core's `https://<core>/reg/service/info`, since access-request poll URLs point at the user's core. **Recommended for every single-platform deployment.** |
 | `trustedApiOrigins` | Core origins the OAuth2 consent page and CMC result delivery may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`. |
 | `legal.terms`, `legal.privacy` | Links shown at registration, each a URL or a `{ "<lang>": url }` map. When at least one resolves, registering requires ticking "I accept". The Terms fall back to the platform's service-info `terms`. |
-| `appCatalogUrl` | Where the operator publishes its app list (reserved for naming requesting apps). |
+| `appCatalogUrl` | The operator's app list, used to name apps on the consent screens (`/auth`, `/oauth2-authorize`) by their id. Apps not listed show their raw id, never a name the app supplies about itself. See the format below. |
 
 Only absolute `http(s)` URLs are accepted. For the same concern the order is:
 URL parameter, then `settings.json`, then the build-time setting. The trust list
 is the exception: it is never read from the URL.
+
+**App catalog format** (`appCatalogUrl`, schema version 1):
+
+```json
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "id": "my-app",
+      "name": "My App",
+      "description": { "en": "Tracks your sleep.", "fr": "Suit votre sommeil." },
+      "icon": { "type": "emoji", "value": "🌙" },
+      "provider": "Example Ltd"
+    }
+  ]
+}
+```
+
+`icon.type` is `emoji`, `url` (absolute http(s)) or `base64` (a PNG, JPEG, GIF
+or WebP data URL; no SVG); an invalid icon is ignored and the entry kept. A
+newer `schemaVersion` is ignored. The file is fetched once, with no
+credentials, within 4 seconds; when unset or unreachable, screens show the raw
+app id.
 
 `npm run build:pages` first checks that `node_modules` matches the lockfile and
 refuses to build otherwise (run `npm ci`).
