@@ -1,7 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
+import { getLegalSettings } from "../lib/deployedSettings";
+import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
@@ -50,6 +52,17 @@ export default function Register() {
   const [challengeBusy, setChallengeBusy] = useState(false);
   const [challengeNotice, setChallengeNotice] = useState<string | null>(null);
 
+  // Terms acceptance. Shown, unticked and required only when the deployment
+  // names a Terms or Privacy document: without one the tick would mean nothing.
+  // Terms come from settings.json `legal.terms`, else the service-info `terms`.
+  const [serviceTerms, setServiceTerms] = useState<string | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const lang = navigator.language || "en";
+  const legal = getLegalSettings();
+  const termsUrl = resolveLocalizedUrl(legal?.terms, lang) ?? serviceTerms;
+  const privacyUrl = resolveLocalizedUrl(legal?.privacy, lang);
+  const termsRequired = termsUrl != null || privacyUrl != null;
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -60,7 +73,10 @@ export default function Register() {
         };
         try {
           const info = await svc.info();
-          if (!cancelled) setGateOn(registrationRequiresVerifiedEmail(info as never));
+          if (!cancelled) {
+            setGateOn(registrationRequiresVerifiedEmail(info as never));
+            setServiceTerms(safeLegalUrl((info as { terms?: unknown } | null)?.terms));
+          }
         } catch {
           // Older core, or the service-info is unreachable: treat the gate as
           // off rather than blocking sign-up on a flag we could not read.
@@ -97,6 +113,10 @@ export default function Register() {
     }
     if (password !== confirm) {
       setError("Passwords do not match.");
+      return;
+    }
+    if (termsRequired && !accepted) {
+      setError("Please accept the terms to create your account.");
       return;
     }
     if (gateOn === true && emailProof == null) {
@@ -351,7 +371,27 @@ export default function Register() {
         )}
         {/* gateOn === null means the service-info has not answered yet: submitting
             then would take the no-gate path and be refused by the core. */}
-        <Button type="submit" disabled={busy || gateOn === null || (gateOn && emailProof == null)}>
+        {termsRequired && (
+          <div className="mb-4 flex items-start gap-2">
+            <input
+              id="acceptTerms"
+              type="checkbox"
+              checked={accepted}
+              onChange={(e) => setAccepted(e.target.checked)}
+              required
+              className="mt-1 h-4 w-4 shrink-0 accent-primary"
+            />
+            <label htmlFor="acceptTerms" className="text-sm text-ink">
+              <TermsLabel termsUrl={termsUrl} privacyUrl={privacyUrl} />
+            </label>
+          </div>
+        )}
+        <Button
+          type="submit"
+          disabled={
+            busy || gateOn === null || (gateOn && emailProof == null) || (termsRequired && !accepted)
+          }
+        >
           {busy ? "Creating…" : "Create account"}
         </Button>
       </form>
@@ -361,6 +401,29 @@ export default function Register() {
         </Link>
       </div>
     </Card>
+  );
+}
+
+/** "I accept ..." naming only the documents the deployment links to. */
+function TermsLabel({ termsUrl, privacyUrl }: { termsUrl: string | null; privacyUrl: string | null }) {
+  const terms = termsUrl && <LegalLink href={termsUrl}>Terms of use</LegalLink>;
+  const privacy = privacyUrl && <LegalLink href={privacyUrl}>Privacy policy</LegalLink>;
+  if (terms && privacy) {
+    return (
+      <>
+        I accept the {terms} and have read the {privacy}
+      </>
+    );
+  }
+  if (terms) return <>I accept the {terms}</>;
+  return <>I have read the {privacy}</>;
+}
+
+function LegalLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+      {children}
+    </a>
   );
 }
 
