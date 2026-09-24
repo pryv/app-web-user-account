@@ -7,6 +7,9 @@
  * - `requestingAppId`    — the app requesting access (used as the login appId).
  * - `returnURL`          — auth-completion redirect (carries state/poll/code).
  *                          Owned by the completion step; NOT the `backUrl`.
+ * - `username`           — sign-in hint: pre-fills the sign-in field when the
+ *                          caller already knows who the user is (like OIDC's
+ *                          `login_hint`).
  *
  * `backUrl`/`backLabel` (the cancel/"go back" affordance) are parsed separately
  * in `backTo.ts`.
@@ -23,6 +26,12 @@ export interface AuthParams {
   returnURL: string | null;
   /** Calling-app supplied state, reflected back on completion for CSRF protection. */
   state: string | null;
+  /**
+   * Sign-in hint that pre-fills the username field. A convenience only: it is
+   * NOT a credential and grants nothing. The user can edit it and the password
+   * is still required.
+   */
+  username: string | null;
 }
 
 export function parseAuthParams(search: string): AuthParams {
@@ -32,6 +41,7 @@ export function parseAuthParams(search: string): AuthParams {
     appId: params.get("requestingAppId") || DEFAULT_APP_ID,
     returnURL: params.get("returnURL"),
     state: params.get("state"),
+    username: params.get("username")?.trim() || null,
   };
 }
 

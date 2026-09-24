@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- **`username` sign-in hint.** `/signin?username=alice` pre-fills the username
+  field, like OIDC's `login_hint`, for an app that already knows who the user
+  is. It fills the field only while it is empty, never replaces typed input, and
+  grants nothing (the password is still required). `/register` ignores it.
+
 ### Changed
 
 - Tests are type-checked by their own `tsconfig.test.json` (with the Node

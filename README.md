@@ -51,6 +51,7 @@ Every route accepts these query parameters:
 | `pryvServiceInfoUrl` | Which Pryv platform to talk to (required on entry links). |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
+| `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
 
 **Hand-off targets:**
 
