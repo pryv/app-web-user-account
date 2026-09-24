@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Pryv from "pryv";
 import { Card, Button, Alert } from "../components/ui";
 import { getService } from "../lib/service";
+import { PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
@@ -109,10 +110,13 @@ export default function SsoLanding() {
         }
       } catch (err: unknown) {
         const id = err != null && typeof err === "object" ? (err as { id?: string }).id : undefined;
+        const message = err instanceof Error ? err.message : "";
         setError(
           id === "shared-secret-unavailable"
             ? "This sign-in link has expired. Please start over from sign-in."
-            : ssoErrorMessage("sso-failed"),
+            : message === PLATFORM_NOT_ALLOWED
+              ? PLATFORM_NOT_ALLOWED
+              : ssoErrorMessage("sso-failed"),
         );
       }
     })();

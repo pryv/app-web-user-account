@@ -16,6 +16,14 @@ It covers the user-facing flows around a Pryv account:
 This is a **reference implementation**: it is themeable and intended to be
 forked, re-branded, and self-hosted by operators.
 
+> **Host it on its own origin.** A signed-in session is kept in the browser's
+> `localStorage`, which every page of the same origin (scheme + host + port)
+> can read, and it contains the user's personal token. Serve the app from a
+> dedicated origin (for example `https://account.example.com/`), never from a
+> path on a host that also serves other pages or apps. The copy published at
+> `https://pryv.github.io/app-web-user-account/` shares its origin with other
+> project pages and is a **demo only**: do not use it with a real account.
+
 ## Tech stack
 
 - [React](https://react.dev) + [TypeScript](https://www.typescriptlang.org)
@@ -148,6 +156,7 @@ app without rebuilding. Every key is optional; the shipped file is `{}`.
 | Key | Effect |
 |---|---|
 | `serviceInfoUrl` | The platform this deployment serves, used when a link carries no `pryvServiceInfoUrl`. Sessions opened this way are stored against it. |
+| `allowedServiceInfoUrls` | Restrict the deployment to these platforms (plus `serviceInfoUrl`). A link naming any other platform, through `pryvServiceInfoUrl` / `serviceInfo`, or an access request whose poll URL is on another platform, is refused before the user can type a password, so a crafted link on your account domain can neither collect passwords nor receive a granted token for someone else's server. `[]` (or a list with no valid entry) means `serviceInfoUrl` only; the key absent means any platform (needed only to serve several platforms from one deployment). On a multi-core platform, list each core's `https://<core>/reg/service/info`, since access-request poll URLs point at the user's core. **Recommended for every single-platform deployment.** |
 | `trustedApiOrigins` | Core origins the OAuth2 consent page and CMC result delivery may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`. |
 | `legal.terms`, `legal.privacy` | Links shown at registration, each a URL or a `{ "<lang>": url }` map. When at least one resolves, registering requires ticking "I accept". The Terms fall back to the platform's service-info `terms`. |
 | `appCatalogUrl` | Where the operator publishes its app list (reserved for naming requesting apps). |

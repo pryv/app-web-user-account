@@ -69,6 +69,7 @@ vi.mock("pryv", () => ({ default: { Service: class {} } }));
 
 import Auth from "./Auth";
 import { SessionProvider } from "../lib/session";
+import { _setDeployedSettingsForTest } from "../lib/deployedSettings";
 
 const OFFER = [
   { streamId: "diary", level: "read", defaultName: "Journal" },
@@ -431,6 +432,68 @@ describe("[AUCP] /auth consent panel", () => {
     await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
     // The whole checked set is minted, exactly as before consent forms.
     expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual(OFFER);
+  });
+
+  it("[AUPG] a restricted deployment refuses a request on another platform before fetching it", async () => {
+    _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://own.test/reg/service/info"] });
+    try {
+      render(
+        <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1"]}>
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText(/does not serve the platform/)).toBeTruthy();
+      expect(flow.loadAccessState).not.toHaveBeenCalled();
+    } finally {
+      _setDeployedSettingsForTest(null);
+    }
+  });
+
+  it("[AUPG2] an allowed serviceInfo next to someone else's poll URL is refused (the core's link shape)", async () => {
+    // The poll URL (mocked to derive https://core.test/service/info) is on a
+    // platform outside the list, while serviceInfo names an allowed one.
+    _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://own.test/reg/service/info"] });
+    try {
+      render(
+        <MemoryRouter
+          initialEntries={[
+            "/auth?serviceInfo=https%3A%2F%2Fown.test%2Freg%2Fservice%2Finfo&poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1",
+          ]}
+        >
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByText(/does not serve the platform/)).toBeTruthy();
+      expect(flow.loadAccessState).not.toHaveBeenCalled();
+    } finally {
+      _setDeployedSettingsForTest(null);
+    }
+  });
+
+  it("[AUPG3] both on an allowed platform: the request loads", async () => {
+    _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://core.test/service/info"] });
+    try {
+      flow.loadAccessState.mockResolvedValue(stateWithConsent());
+      render(
+        <MemoryRouter
+          initialEntries={[
+            "/auth?serviceInfo=https%3A%2F%2Fcore.test%2Fservice%2Finfo&poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1",
+          ]}
+        >
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(flow.loadAccessState).toHaveBeenCalled());
+      expect(screen.queryByText(/does not serve the platform/)).toBeNull();
+    } finally {
+      _setDeployedSettingsForTest(null);
+    }
   });
 
   it("[AUC9] shows the app's consent message, as text and not as HTML", async () => {

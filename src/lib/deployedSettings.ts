@@ -23,6 +23,13 @@ import { parseLegalSettings, type LegalSettings } from "./legal";
 
 export interface DeployedSettings {
   serviceInfoUrl?: string;
+  /**
+   * When set, the only platforms this deployment talks to (with
+   * `serviceInfoUrl`). A link naming another one is refused, so a crafted
+   * link cannot send the user's password to a platform the operator never
+   * chose. Unset: any platform, as before.
+   */
+  allowedServiceInfoUrls?: string[];
   trustedApiOrigins?: string[];
   legal?: LegalSettings;
   appCatalogUrl?: string;
@@ -69,6 +76,13 @@ export function parseDeployedSettings(raw: unknown): DeployedSettings {
   const out: DeployedSettings = {};
   const serviceInfoUrl = url(json.serviceInfoUrl);
   if (serviceInfoUrl) out.serviceInfoUrl = serviceInfoUrl;
+  if (Array.isArray(json.allowedServiceInfoUrls)) {
+    // Kept even when empty: a restriction that parses to nothing means "the
+    // default platform only", never "no restriction" (fail closed).
+    out.allowedServiceInfoUrls = json.allowedServiceInfoUrls
+      .map(url)
+      .filter((u): u is string => u != null);
+  }
   const trusted = origins(json.trustedApiOrigins);
   if (trusted) out.trustedApiOrigins = trusted;
   const legal = parseLegalSettings(json.legal);
@@ -113,6 +127,30 @@ export async function loadDeployedSettings(fetchImpl: typeof fetch = fetch): Pro
 export function getDefaultServiceInfoUrl(): string | null {
   return current.serviceInfoUrl ?? null;
 }
+
+function sameUrl(a: string, b: string): boolean {
+  try {
+    return new URL(a).href === new URL(b).href;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether this deployment may talk to the platform at `serviceInfoUrl`.
+ * Always true unless settings.json sets `allowedServiceInfoUrls`; then only
+ * those and the default `serviceInfoUrl` are allowed.
+ */
+export function isAllowedServiceInfoUrl(serviceInfoUrl: string): boolean {
+  const allowed = current.allowedServiceInfoUrls;
+  if (!allowed) return true;
+  const candidates = current.serviceInfoUrl ? [...allowed, current.serviceInfoUrl] : allowed;
+  return candidates.some((c) => sameUrl(c, serviceInfoUrl));
+}
+
+/** Message shown when a link names a platform this deployment does not serve. */
+export const PLATFORM_NOT_ALLOWED =
+  "This page does not serve the platform named in the link. Open it from your platform's own link.";
 
 /** Extra trusted core origins from settings.json ([] when unset). */
 export function getTrustedApiOrigins(): string[] {
