@@ -14,6 +14,7 @@ import {
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch } from "../lib/authParams";
+import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { Delegation } from "@pryv/delegation";
@@ -276,6 +277,14 @@ export default function Auth() {
       );
       return;
     }
+    // The platform the user will sign in to must be one this deployment
+    // serves; checked before anything is fetched from the link.
+    const linkSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl);
+    // An undeterminable platform is refused too when the deployment restricts them.
+    if (!isAllowedServiceInfoUrl(linkSvcInfoUrl ?? "")) {
+      setInitError(PLATFORM_NOT_ALLOWED);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       try {
@@ -318,6 +327,8 @@ export default function Auth() {
 
   function makeService() {
     const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
+    // The password goes to this platform: refuse one this deployment does not serve.
+    if (!isAllowedServiceInfoUrl(svcInfoUrl ?? "")) throw new Error(PLATFORM_NOT_ALLOWED);
     return new Pryv.Service(svcInfoUrl ?? "");
   }
 

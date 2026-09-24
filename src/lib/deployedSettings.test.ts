@@ -12,6 +12,7 @@ import {
   getTrustedApiOrigins,
   getLegalSettings,
   getAppCatalogUrl,
+  isAllowedServiceInfoUrl,
   _setDeployedSettingsForTest,
   BOOT_FETCH_TIMEOUT_MS,
 } from "./deployedSettings";
@@ -24,6 +25,29 @@ function respond(status: number, body: unknown): typeof fetch {
 afterEach(() => {
   _setDeployedSettingsForTest(null);
   vi.useRealTimers();
+});
+
+describe("[DSAL] allowed platforms", () => {
+  const OWN = "https://reg.example.com/service/info";
+  const OTHER = "https://reg.partner.example/service/info";
+
+  it("[DAL1] allows any platform when the deployment sets no list", () => {
+    _setDeployedSettingsForTest({ serviceInfoUrl: OWN });
+    expect(isAllowedServiceInfoUrl("https://anything.example/service/info")).toBe(true);
+    expect(isAllowedServiceInfoUrl("")).toBe(true);
+  });
+
+  it("[DAL2] with a list, allows it and the default only, and refuses an undeterminable one", () => {
+    _setDeployedSettingsForTest(
+      parseDeployedSettings({ serviceInfoUrl: OWN, allowedServiceInfoUrls: [OTHER, "javascript:x"] }),
+    );
+    expect(isAllowedServiceInfoUrl(OWN)).toBe(true);
+    expect(isAllowedServiceInfoUrl(OTHER)).toBe(true);
+    expect(isAllowedServiceInfoUrl("https://REG.partner.example/service/info")).toBe(true);
+    expect(isAllowedServiceInfoUrl("https://evil.example/service/info")).toBe(false);
+    expect(isAllowedServiceInfoUrl("https://reg.example.com/service/info/../x")).toBe(false);
+    expect(isAllowedServiceInfoUrl("")).toBe(false);
+  });
 });
 
 describe("[DSET] deployed settings", () => {

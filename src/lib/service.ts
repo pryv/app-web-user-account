@@ -1,6 +1,10 @@
 import Pryv from "pryv";
 import { parseAuthParams } from "./authParams";
-import { getDefaultServiceInfoUrl } from "./deployedSettings";
+import {
+  getDefaultServiceInfoUrl,
+  isAllowedServiceInfoUrl,
+  PLATFORM_NOT_ALLOWED,
+} from "./deployedSettings";
 
 /**
  * Resolves the Pryv `Service` for the current page. Memoised per service-info URL.
@@ -19,6 +23,8 @@ export function getService(search: string = window.location.search) {
       "No platform configured: set serviceInfoUrl in settings.json or open this page with pryvServiceInfoUrl.",
     );
   }
+  // Before anything is sent there (a password, a registration).
+  if (!isAllowedServiceInfoUrl(serviceInfoUrl)) throw new Error(PLATFORM_NOT_ALLOWED);
   if (cached?.url !== serviceInfoUrl) {
     cached = { url: serviceInfoUrl, service: new Pryv.Service(serviceInfoUrl) };
   }

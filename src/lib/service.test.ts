@@ -41,4 +41,13 @@ describe("[SVDF] getService platform resolution", () => {
   it("[SVD3] with neither, the error points the operator at settings.json", () => {
     expect(() => getService("")).toThrow(/settings\.json/);
   });
+
+  it("[SVD4] a restricted deployment refuses a link naming another platform", () => {
+    _setDeployedSettingsForTest({ serviceInfoUrl: DEPLOY_URL, allowedServiceInfoUrls: [DEPLOY_URL] });
+    expect(() => getService("?pryvServiceInfoUrl=" + encodeURIComponent(PARAM_URL))).toThrow(
+      /does not serve the platform/,
+    );
+    const own = getService("?pryvServiceInfoUrl=" + encodeURIComponent(DEPLOY_URL)) as unknown as { url: string };
+    expect(own.url).toBe(DEPLOY_URL);
+  });
 });

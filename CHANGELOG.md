@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- **A deployment can restrict which platforms it serves.** Until now any link
+  could point the sign-in, registration, password-reset, third-party sign-in
+  and `/auth` pages at any platform through `pryvServiceInfoUrl` (or an access
+  request's poll URL), so a crafted link on a legitimate account domain could
+  send a user's password to someone else's server. New `settings.json` key
+  `allowedServiceInfoUrls`: when set, only those platforms and the default
+  `serviceInfoUrl` are served, and any other is refused before a password can be
+  typed. Opt-in (unset keeps today's behaviour); recommended for every
+  deployment that serves a single platform.
+- The README now states that the app must be served from its own origin (the
+  session, stored in `localStorage`, holds the user's personal token and is
+  readable by every page of that origin), and marks the copy published under
+  `pryv.github.io` as a demo.
+
 ## 0.4.0 — 2026-09-24
 
 ### Added
