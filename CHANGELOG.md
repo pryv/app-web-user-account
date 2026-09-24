@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Re-approving an app whose access has changed now updates that access in
+  place.** When an app asks for permissions that differ from the access it
+  already holds, `/auth` used to delete that access and create a new one, which
+  rotated its token and could leave other holders of the old token (another
+  device, a cached session) with a dead credential. Approving now updates the
+  existing access (`accesses.update`): same access, same token, new
+  permissions. If the register then refuses the grant, the updated access is
+  left in place (it predates the request) instead of being deleted. The
+  consent screen says "Approving will update it." Apps that proposed their own
+  token in the access request are unaffected: their prior access is still
+  replaced (delete + create) so they get the token they asked for.
+
 ## 0.2.4 — 2026-09-24
 
 ### Security

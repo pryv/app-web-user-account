@@ -39,6 +39,7 @@ import {
   checkAppAccess,
   createAppAccess,
   deleteAppAccess,
+  updateAppAccess,
   closeOrRedirect,
   deriveServiceInfoUrlFromPollUrl,
   buildAcceptedState,
@@ -46,6 +47,7 @@ import {
   type AccessState,
   type AccessStateUpdateResult,
   type Permission,
+  type AppAccess,
   type AppCheck,
 } from "../lib/accessFlow";
 
@@ -80,7 +82,7 @@ function parseAuthQuery(search: string): AuthQuery {
  * `register.access`. The query carries `poll=<pollUrl>` — the GET of that
  * URL returns the access state (status, requested permissions, returnURL,
  * etc). After the user signs in + accepts, we POST a new app access
- * (deleting any mismatching prior access first) and POST the result back
+ * (or update a mismatching prior one in place) and POST the result back
  * to `pollUrl`; finally we either close the popup or redirect to
  * `returnURL` with the legacy `prYv*` params the lib-js consumer reads.
  *
@@ -502,31 +504,50 @@ export default function Auth() {
         setFinishing(null);
         return;
       }
-      if (check.mismatchingAccess) {
-        await deleteAppAccess(apiEndpoint, personalToken, check.mismatchingAccess.id);
+      // A diverged access is updated in place, so it keeps its token and
+      // whoever holds that token keeps a working credential. When the app
+      // proposed its own token, it asked for THAT token: replace the access
+      // (delete + create) as before.
+      const mismatching = check.mismatchingAccess;
+      const updateInPlace = mismatching != null && accessState.token == null;
+      let access: AppAccess;
+      if (mismatching != null && updateInPlace) {
+        access = await updateAppAccess(apiEndpoint, personalToken, mismatching.id, {
+          permissions,
+          ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
+          ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
+          ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
+        });
+      } else {
+        if (mismatching != null) {
+          await deleteAppAccess(apiEndpoint, personalToken, mismatching.id);
+        }
+        access = await createAppAccess(apiEndpoint, personalToken, {
+          permissions,
+          name: accessState.requestingAppId || APP_ID,
+          type: "app",
+          ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
+          ...(accessState.token != null ? { token: accessState.token } : {}),
+          ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
+          ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
+        });
       }
-      const created = await createAppAccess(apiEndpoint, personalToken, {
-        permissions,
-        name: accessState.requestingAppId || APP_ID,
-        type: "app",
-        ...(accessState.deviceName != null ? { deviceName: accessState.deviceName } : {}),
-        ...(accessState.token != null ? { token: accessState.token } : {}),
-        ...(accessState.expireAfter != null ? { expireAfter: accessState.expireAfter } : {}),
-        ...(accessState.clientData != null ? { clientData: accessState.clientData } : {}),
-      });
-      // A fresh access minted with the delegate token carries the lineage
-      // marker, so the hint is true for it.
+      // An access written with the delegate token carries the lineage
+      // marker, so the hint is read from the access the server returned.
       // `personalToken` (guarded above) creates the hand-off secret on the
       // signed-in account; skipped for a delegated grant by the hint gate.
-      const refusal = await finalizeAccepted(created.token, apiEndpoint, undefined, grantFor ?? hintForAccess(created, username), personalToken);
+      const refusal = await finalizeAccepted(access.token, apiEndpoint, undefined, grantFor ?? hintForAccess(access, username), personalToken);
       if (refusal != null) {
-        // The access was minted before the register was told, so a refusal
-        // leaves one the app will never receive. Remove it rather than
-        // leave an orphan in the account's connected apps.
-        try {
-          await deleteAppAccess(apiEndpoint, personalToken, created.id);
-        } catch {
-          /* the account can still revoke it from Connected apps */
+        // A freshly created access was minted before the register was told,
+        // so a refusal leaves one the app will never receive: remove it
+        // rather than leave an orphan in the account's connected apps. An
+        // updated access predates this request and is not ours to remove.
+        if (!updateInPlace) {
+          try {
+            await deleteAppAccess(apiEndpoint, personalToken, access.id);
+          } catch {
+            /* the account can still revoke it from Connected apps */
+          }
         }
         setError(consentRefusalMessage(refusal));
       }
@@ -678,7 +699,8 @@ export default function Auth() {
         )}
         {check.mismatchingAccess && (
           <Alert tone="info">
-            A different access was already given to this app. Approving will replace it.
+            A different access was already given to this app.{" "}
+            {accessState.token == null ? "Approving will update it." : "Approving will replace it."}
           </Alert>
         )}
         {error && <Alert>{error}</Alert>}

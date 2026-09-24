@@ -11,8 +11,10 @@
  *                                                     a matching access exists +
  *                                                     fold defaultName/clientData
  *   3. POST {apiEndpoint}/accesses                  — create the app access
- *      (DELETE {apiEndpoint}/accesses/{id} when
- *      a `mismatchingAccess` must be replaced)
+ *      (PUT {apiEndpoint}/accesses/{id} updates a
+ *      `mismatchingAccess` in place instead; when the
+ *      app proposed its own token it is replaced with
+ *      DELETE {apiEndpoint}/accesses/{id} + create)
  *   4. POST pollUrl                                 — notify register of the
  *                                                     final state (ACCEPTED /
  *                                                     REFUSED)
@@ -244,6 +246,51 @@ export async function deleteAppAccess(
   if (!res.ok) {
     throw new Error("delete access failed (" + res.status + ")");
   }
+}
+
+/**
+ * Update an existing app access in place (`accesses.update`). Unlike a
+ * delete + create, the access keeps its id and its token, so whoever
+ * already holds that token keeps a working credential.
+ *
+ * `name` / `defaultName` are display extras that check-app folds into each
+ * permission; they are stripped before sending (older cores reject them on
+ * update, and they are never stored anyway).
+ */
+export async function updateAppAccess(
+  apiEndpoint: string,
+  personalToken: string,
+  accessId: string,
+  update: {
+    permissions: Permission[];
+    clientData?: Record<string, unknown>;
+    deviceName?: string;
+    expireAfter?: number;
+  },
+): Promise<AppAccess> {
+  const permissions = update.permissions.map((p) => {
+    const { name: _name, defaultName: _defaultName, ...rest } = p;
+    return rest;
+  });
+  const res = await fetch(
+    apiEndpoint.replace(/\/$/, "") + "/accesses/" + encodeURIComponent(accessId),
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: personalToken,
+      },
+      body: JSON.stringify({ ...update, permissions }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error("update access failed (" + res.status + "): " + body.slice(0, 200));
+  }
+  const body = (await res.json()) as { access?: AppAccess };
+  if (!body.access) throw new Error("update access: server returned no access");
+  return body.access;
 }
 
 /**
