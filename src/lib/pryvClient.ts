@@ -11,7 +11,12 @@ import attachSocketIO from "@pryv/socket.io";
 
 export { Pryv, attachSocketIO };
 
-export * as cmc from "@pryv/cmc";
+// Imported, then exported: `@pryv/cmc` is CommonJS, and the Vite dev server
+// only applies its CommonJS interop to imports. A direct `export * as cmc`
+// left `cmc` holding just `default`, so every `cmc.<fn>` threw "is not a
+// function" under `npm run dev` (the production build was not affected).
+import * as cmcModule from "@pryv/cmc";
+export const cmc = cmcModule;
 export { errorIds as cmcErrorIds } from "@pryv/cmc";
 
 export {

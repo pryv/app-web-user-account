@@ -25,6 +25,20 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+describe("[PCLC] cmc export", () => {
+  it("[PCL3] exposes the functions the approval pages call", async () => {
+    const { cmc } = await import("./pryvClient");
+    for (const fn of ["readOffer", "acceptInvite", "refuseInvite", "acceptScopeUpdate", "refuseScopeUpdate"] as const) {
+      expect(typeof cmc[fn]).toBe("function");
+    }
+  });
+
+  it("[PCL4] is not re-exported with `export * as` (the dev server skips CommonJS interop there)", () => {
+    const source = readFileSync(join(__dirname, "pryvClient.ts"), "utf8");
+    expect(source).not.toMatch(/^\s*export\s+\*\s+as\s+\w+\s+from\s+["']@pryv\/cmc["']/m);
+  });
+});
+
 describe("[PCLI] single client import point", () => {
   it("[PCL1] no module other than pryvClient.ts imports pryv or @pryv/*", () => {
     const offenders = sourceFiles(SRC)

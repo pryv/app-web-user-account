@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The cross-account approval pages work on the development server.**
+  `@pryv/cmc` is CommonJS and was re-exported with `export * as cmc`, which the
+  Vite dev server does not pass through its CommonJS interop: `/cmc-accept` and
+  `/cmc-scope-update` failed with "cmc.readOffer is not a function" under
+  `npm run dev`. Production builds were not affected.
+
 ## 0.6.1 — 2026-09-25
 
 ### Fixed
