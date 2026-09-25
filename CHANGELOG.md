@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The reference copy moves to its own origin, `https://account.pryv.me/`.**
+  It was served from `https://pryv.github.io/app-web-user-account/`, an origin
+  shared with other project pages, any of which could read the signed-in
+  session (and its personal token) from `localStorage`. `npm run build:pages`
+  now builds for the root path and writes the `CNAME`; the old address
+  redirects to the new one. Users of the published copy sign in again once.
+  Self-hosted deployments are not affected.
+
 ## 0.6.1 — 2026-09-25
 
 ### Fixed

@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "webserver": "node scripts/spa-fallback.mjs && backloop.dev ./dist 4443",
     "prebuild:pages": "node scripts/check-lockfile-sync.mjs",
-    "build:pages": "tsc -b && vite build --base=/app-web-user-account/ && cp dist/index.html dist/404.html && touch dist/.nojekyll",
+    "build:pages": "tsc -b && vite build --base=/ && cp dist/index.html dist/404.html && touch dist/.nojekyll && echo account.pryv.me > dist/CNAME",
     "test": "vitest run",
     "e2e": "playwright test"
   },
