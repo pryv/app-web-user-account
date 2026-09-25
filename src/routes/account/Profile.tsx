@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert, SelectField } from "../../components/ui";
 import { useSession } from "../../lib/session";
@@ -228,7 +228,7 @@ export default function Profile() {
                         disabled={emailBusy}
                         onClick={() => void onResend(view.value)}
                       >
-                        {t("profile.emailSendLink")}
+                        <Send size={14} aria-hidden className="mr-1" /> {t("profile.emailSendLink")}
                       </Button>
                     )}
                     {view.primary && (
@@ -293,7 +293,7 @@ export default function Profile() {
                     setAddingEmail(true);
                   }}
                 >
-                  {t("profile.emailAddAnother")}
+                  <Plus size={14} aria-hidden className="mr-1" /> {t("profile.emailAddAnother")}
                 </Button>
               ))}
           </div>

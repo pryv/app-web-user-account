@@ -12,6 +12,14 @@
   always applies the operator default. The palette is driven by
   `<html data-theme="light|dark">`, so a rebrand can target either theme.
 
+### Changed
+
+- **Consistent action icons.** On the Profile page, "Send verification link"
+  and "Add an email" now carry an icon like their neighbour "Edit". The
+  Previous / Next buttons of the access log use icons instead of the text
+  arrows `←` / `→`, which screen readers announced as part of the button name.
+  The icon rule is documented in `src/components/ui.tsx` and the README.
+
 ## 0.6.1 — 2026-09-25
 
 ### Fixed

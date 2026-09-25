@@ -57,6 +57,11 @@ pick lasts for the page only. To change the dark palette, override the
 `prefers-color-scheme: dark` block in [`src/index.css`](src/index.css). There is
 no URL parameter for the theme.
 
+**Icons:** `lucide-react` icons, `aria-hidden` and always beside a text label,
+mark secondary and destructive actions and alert tones, while primary CTAs, the
+consent Accept/Refuse pair and tab navigation stay text-only; the full rule is in
+the header of [`src/components/ui.tsx`](src/components/ui.tsx).
+
 ## Localisation
 
 The UI text lives in `src/locales/en.json` (i18next). The language is chosen,
