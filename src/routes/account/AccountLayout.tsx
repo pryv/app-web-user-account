@@ -1,5 +1,6 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useSession, signinPath } from "../../lib/session";
 import { ACCOUNT_TABS } from "../../accountTabs";
 
@@ -9,6 +10,7 @@ import { ACCOUNT_TABS } from "../../accountTabs";
  * /account can rely on it being present without re-implementing it.
  */
 export default function AccountLayout() {
+  const { t } = useTranslation();
   const { connection, setConnection } = useSession();
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
@@ -37,23 +39,23 @@ export default function AccountLayout() {
   return (
     <div>
       <div className="mb-4 flex items-baseline justify-between gap-4">
-        <h1 className="text-2xl">Your account</h1>
+        <h1 className="text-2xl">{t("account.title")}</h1>
         <button
           type="button"
           onClick={signOut}
           className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          <LogOut size={14} aria-hidden /> Sign out
+          <LogOut size={14} aria-hidden /> {t("account.signOut")}
         </button>
       </div>
       <nav
-        aria-label="Account sections"
+        aria-label={t("account.navAriaLabel")}
         className="mb-6 flex flex-wrap gap-1 border-b border-divider"
       >
-        {ACCOUNT_TABS.map((t) => (
+        {ACCOUNT_TABS.map((tab) => (
           <NavLink
-            key={t.path}
-            to={`/account/${t.path}${search}`}
+            key={tab.path}
+            to={`/account/${tab.path}${search}`}
             className={({ isActive }) =>
               `-mb-px flex-1 border-b-2 px-3 py-2 text-center text-sm transition-colors sm:flex-none ${
                 isActive
@@ -62,7 +64,7 @@ export default function AccountLayout() {
               }`
             }
           >
-            {t.label}
+            {t(tab.label, { defaultValue: tab.label })}
           </NavLink>
         ))}
       </nav>

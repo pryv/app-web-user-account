@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
 import { useSession } from "../lib/session";
 
 /** The `delegation` field of `access-info` for an access acting on a controlled account. */
@@ -28,6 +29,7 @@ export default function DelegatedSessionBanner() {
   const { connection, actingAs, backToParent } = useSession();
   const { search } = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [server, setServer] = useState<AccessInfoDelegation | null>(null);
 
   useEffect(() => {
@@ -59,13 +61,11 @@ export default function DelegatedSessionBanner() {
       className="flex flex-wrap items-center justify-between gap-2 border-b border-warning bg-warning px-4 py-2 text-sm text-pryv-black"
     >
       <span>
-        Acting as <strong>{controlled ?? "another account"}</strong>
-        {delegate ? (
-          <>
-            {" "}via <strong>{delegate}</strong>
-          </>
-        ) : null}
-        .
+        <Trans
+          i18nKey={delegate ? "delegation.bannerActingVia" : "delegation.bannerActing"}
+          values={{ controlled: controlled ?? t("delegation.bannerAnotherAccount"), delegate }}
+          components={{ strong: <strong /> }}
+        />
       </span>
       {actingAs && (
         <button
@@ -76,7 +76,7 @@ export default function DelegatedSessionBanner() {
           }}
           className="rounded px-2 py-1 font-medium underline hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Back to {actingAs.parentUsername}
+          {t("delegation.bannerBackTo", { username: actingAs.parentUsername })}
         </button>
       )}
     </div>

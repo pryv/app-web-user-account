@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import Layout from "./components/Layout";
 import PagePlaceholder from "./components/PagePlaceholder";
 import SignIn from "./routes/SignIn";
@@ -32,6 +33,7 @@ function NavigatePreservingSearch({ to }: { to: string }) {
  * navigation.
  */
 export default function App() {
+  const { t } = useTranslation();
   return (
     <Layout>
       <Routes>
@@ -63,8 +65,8 @@ export default function App() {
             src/accountTabs.tsx; audit-access is reached from a tab, not the nav. */}
         <Route path="/account" element={<AccountLayout />}>
           <Route index element={<NavigatePreservingSearch to="/account/profile" />} />
-          {ACCOUNT_TABS.map((t) => (
-            <Route key={t.path} path={t.path} element={t.element} />
+          {ACCOUNT_TABS.map((tab) => (
+            <Route key={tab.path} path={tab.path} element={tab.element} />
           ))}
           <Route path="audit-access/:accessId" element={<AuditAccess />} />
         </Route>
@@ -76,7 +78,7 @@ export default function App() {
 
         {/* Landing + 404 */}
         <Route path="/" element={<NavigatePreservingSearch to="/signin" />} />
-        <Route path="*" element={<PagePlaceholder title="Not found" description="This page does not exist." />} />
+        <Route path="*" element={<PagePlaceholder title={t("common.notFoundTitle")} description={t("common.notFoundDescription")} />} />
       </Routes>
     </Layout>
   );

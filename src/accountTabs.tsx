@@ -9,6 +9,10 @@ import DelegationPage from "./routes/account/Delegation";
 export interface AccountTab {
   /** Path relative to /account, e.g. "profile". */
   path: string;
+  /**
+   * Nav label: a key of `src/locales/*.json` (e.g. "account.nav.profile"),
+   * or literal text when the catalog has no such key.
+   */
   label: string;
   element: ReactNode;
 }
@@ -18,11 +22,11 @@ export interface AccountTab {
  * `account` in `src/routes.json` (a test refuses drift between the two).
  */
 export const ACCOUNT_TABS: AccountTab[] = [
-  { path: "profile", label: "Profile", element: <Profile /> },
-  { path: "security", label: "Security", element: <Security /> },
-  { path: "apps", label: "Connected apps", element: <ConnectedApps /> },
-  { path: "delegation", label: "Delegation", element: <DelegationPage /> },
-  { path: "data", label: "Your data", element: <DataRights /> },
+  { path: "profile", label: "account.nav.profile", element: <Profile /> },
+  { path: "security", label: "account.nav.security", element: <Security /> },
+  { path: "apps", label: "account.nav.apps", element: <ConnectedApps /> },
+  { path: "delegation", label: "account.nav.delegation", element: <DelegationPage /> },
+  { path: "data", label: "account.nav.data", element: <DataRights /> },
 ];
 
 /**

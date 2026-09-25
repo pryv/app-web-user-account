@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
 import { RefreshCw, ScrollText } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
 import { useSession } from "../../lib/session";
@@ -25,6 +26,7 @@ interface Access {
  * delegation page.
  */
 export default function ConnectedApps() {
+  const { t } = useTranslation();
   const { connection } = useSession();
   // Carried on every in-app link so the platform choice (pryvServiceInfoUrl) survives.
   const { search } = useLocation();
@@ -42,9 +44,9 @@ export default function ConnectedApps() {
       if (res?.error) throw new Error(res.error.message);
       setAccesses(res?.accesses ?? []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not load connected apps.");
+      setError(err instanceof Error ? err.message : t("apps.errLoad"));
     }
-  }, [connection]);
+  }, [connection, t]);
 
   // Note which access ID belongs to the current session so we can warn the
   // subject before they revoke themselves and clean up the local session
@@ -94,11 +96,11 @@ export default function ConnectedApps() {
   return (
     <section>
       <p className="mb-4 text-sm text-muted">
-        Apps and services with access to your account. Revoke any you no longer use.
+        {t("apps.intro")}
       </p>
       {error && <Alert>{error}</Alert>}
-      {accesses === null && !error && <p className="text-sm text-muted">Loading…</p>}
-      {apps?.length === 0 && <p className="text-sm text-muted">No connected apps.</p>}
+      {accesses === null && !error && <p className="text-sm text-muted">{t("common.loading")}</p>}
+      {apps?.length === 0 && <p className="text-sm text-muted">{t("apps.empty")}</p>}
       <div className="space-y-3">
         {apps?.map((a) => (
           <AccessRow key={a.id} access={a} isSelf={a.id === selfAccessId} search={search} />
@@ -107,15 +109,15 @@ export default function ConnectedApps() {
       {managed != null && managed.length > 0 && (
         <section className="mt-6" aria-labelledby="managed-by-delegation">
           <h2 id="managed-by-delegation" className="mb-1 text-xs uppercase tracking-wide text-muted">
-            Managed by account delegation
+            {t("apps.managedHeading")}
           </h2>
           <p className="mb-3 text-sm text-muted">
-            These accesses keep an account delegation working and cannot be revoked here. They are
-            removed when the delegation ends:{" "}
-            <Link to={"/account/delegation" + search} className="text-primary hover:underline">
-              manage account delegation
-            </Link>
-            .
+            <Trans
+              i18nKey="apps.managedIntro"
+              components={{
+                manage: <Link to={"/account/delegation" + search} className="text-primary hover:underline" />,
+              }}
+            />
           </p>
           <div className="space-y-3">
             {managed.map(({ access, kind }) => (
@@ -132,11 +134,11 @@ export default function ConnectedApps() {
       )}
       <div className="mt-4 flex items-center gap-3">
         <Button variant="ghost" type="button" onClick={() => void load()} className="w-auto">
-          <RefreshCw size={14} aria-hidden className="mr-1" /> Refresh
+          <RefreshCw size={14} aria-hidden className="mr-1" /> {t("common.refresh")}
         </Button>
         {live && (
-          <span className="text-xs text-muted" title="Connected via Socket.IO — this list updates automatically">
-            ● live updates on
+          <span className="text-xs text-muted" title={t("apps.liveTitle")}>
+            {t("apps.liveOn")}
           </span>
         )}
       </div>
@@ -146,6 +148,7 @@ export default function ConnectedApps() {
 
 /** One access: name, type, and the link to its details and audit trail. */
 function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; isSelf: boolean; kindLabel?: string; search: string }) {
+  const { t } = useTranslation();
   return (
     <Card>
       <div className="flex items-center justify-between gap-4">
@@ -154,12 +157,15 @@ function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; i
             {a.name}
             {isSelf && (
               <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                this session
+                {t("apps.thisSession")}
               </span>
             )}
           </div>
           <div className="text-xs text-muted">
-            {kindLabel ?? a.type ?? "app"} · {a.permissions?.length ?? 0} permission(s)
+            {t("apps.meta", {
+              type: kindLabel ?? a.type ?? t("apps.typeApp"),
+              count: a.permissions?.length ?? 0,
+            })}
           </div>
         </div>
         <Link
@@ -167,7 +173,7 @@ function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; i
           className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ScrollText size={14} aria-hidden />
-          Details
+          {t("apps.details")}
         </Link>
       </div>
     </Card>

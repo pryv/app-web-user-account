@@ -50,7 +50,8 @@
     "errorLoginFailed": "Login failed.",
     "errorMfaFailed": "MFA verification failed.",
     "mfaCodeLabelTotp": "Authenticator code",
-    "noPlatformConfigured": "No platform configured: set serviceInfoUrl in settings.json or open this page with pryvServiceInfoUrl."
+    "noPlatformConfigured": "No platform configured: set serviceInfoUrl in settings.json or open this page with pryvServiceInfoUrl.",
+    "notImplemented": "Not implemented yet."
   },
   "errors": {
     "noPlatformConfigured": "No Pryv platform configured for this deployment (settings.json missing or empty).",
@@ -199,7 +200,11 @@
     "emailAddAnother": "Add an email",
     "emailAddedNotice": "Added. A verification link was sent.",
     "errSendVerification": "Could not send the verification link.",
-    "errAddEmail": "Could not add the email address."
+    "errAddEmail": "Could not add the email address.",
+    "errLoadProfile": "Could not load profile.",
+    "errRetryAfter": "Please wait {{seconds}} seconds.",
+    "errUpdateLanguage": "Could not update language.",
+    "emailVerificationUnavailable": "Email verification is not available on this platform."
   },
   "apps": {
     "errLoad": "Could not load connected apps.",
@@ -210,7 +215,9 @@
     "typeApp": "app",
     "details": "Details",
     "liveTitle": "Connected via Socket.IO — this list updates automatically",
-    "liveOn": "● live updates on"
+    "liveOn": "● live updates on",
+    "managedHeading": "Managed by account delegation",
+    "managedIntro": "These accesses keep an account delegation working and cannot be revoked here. They are removed when the delegation ends: <manage>manage account delegation</manage>."
   },
   "data": {
     "backLabel": "Account",
@@ -223,7 +230,8 @@
     "confirmPrompt": "Type <strong>{{username}}</strong> below to confirm.",
     "yourUsername": "your username",
     "confirmUsernameLabel": "Confirm username",
-    "deleteButton": "Delete my account"
+    "deleteButton": "Delete my account",
+    "deleteFailed": "Delete failed ({{status}}): {{body}}"
   },
   "security": {
     "errorLoadSessions": "Could not load sessions.",
@@ -266,7 +274,11 @@
     "copyKey": "Copy key",
     "codeFromAppLabel": "Code from your app",
     "errorStartSetup": "Could not start setup.",
-    "errorUnreadableEnrollResponse": "Could not read the enrolment response from the server."
+    "errorUnreadableEnrollResponse": "Could not read the enrolment response from the server.",
+    "disable": "Disable",
+    "preparingTotpSecret": "Preparing your secret…",
+    "cannotScanManual": "Can't scan? Enter this key manually:",
+    "smsIntro": "We'll send a code to your phone to verify."
   },
   "audit": {
     "confirmRevokeSelf": "This is the access you used to sign in. Revoking it will sign you out immediately. Continue?",
@@ -317,7 +329,11 @@
     "colRelation": "Relation",
     "colContent": "Content",
     "trashedSuffix": " (trashed)",
-    "eventCount": "{{count}} event(s)"
+    "eventCount": "{{count}} event(s)",
+    "managedByDelegation": "This access is managed by account delegation and cannot be revoked here. It is removed when the delegation ends: <manage>manage account delegation</manage>.",
+    "relationCreated": "created",
+    "relationModified": "modified",
+    "relationCreatedModified": "created + modified"
   },
   "consent": {
     "title": "Authorize access",
@@ -561,6 +577,15 @@
     "managedKindNotify": "delegation notifications",
     "managedHeading": "Delegation accesses",
     "managedIntro": "These accesses run an account delegation. They cannot be revoked one by one — detach the delegation instead.",
-    "errGrantRequiresOwner": "Only the account owner can answer this request. You are acting for this account through a delegation: ask its owner to answer it."
+    "errGrantRequiresOwner": "Only the account owner can answer this request. You are acting for this account through a delegation: ask its owner to answer it.",
+    "bannerActingVia": "Acting as <strong>{{controlled}}</strong> via <strong>{{delegate}}</strong>.",
+    "bannerActing": "Acting as <strong>{{controlled}}</strong>.",
+    "bannerAnotherAccount": "another account",
+    "bannerBackTo": "Back to {{username}}",
+    "warnPasswordLogin": "Because a delegate can set the account's password, a delegate can also log in to the account directly — including to remove other delegates.",
+    "errGenuineLoginToRemove": "Sign in to this account directly to remove a delegate — a delegated session cannot do this.",
+    "errInvalidUsernameRules": "Invalid username — {{rules}}",
+    "noticeAccountCreatedManaged": "Account {{username}} created — you now manage it.",
+    "createIntro": "Create a brand-new account that this account fully controls from the start — for example a child or a dependent adult you look after."
   }
 }
