@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Changed
+
+- **The cross-account approval page is covered end to end.** A hermetic
+  Playwright spec drives `/cmc-accept` against mocked cores, from reading the
+  offer to the result handed back: approve and decline in redirect mode, approve
+  and a consumed link in popup mode (the opener receives the result and the
+  popup closes), and the consumed-link notice shown as information. It checks
+  the triggers written on the account and that an untrusted `returnUrl` never
+  receives a data-grant endpoint. One case is marked as a known gap: the accept
+  result from `@pryv/cmc` does not carry `dataGrantApiEndpoint`, so an
+  allowlisted origin does not receive it either.
+
 ### Fixed
 
 - **The cross-account approval pages work on the development server.**
