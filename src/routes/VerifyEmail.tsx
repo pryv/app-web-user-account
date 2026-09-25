@@ -1,5 +1,6 @@
 import { useState, useEffect, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
@@ -14,6 +15,7 @@ import { verifyEmailToken, emailVerificationErrorMessage, ApiCallError } from ".
  * type it in here instead of following the link.
  */
 export default function VerifyEmail() {
+  const { t } = useTranslation();
   const { search } = useLocation();
   const params = new URLSearchParams(search);
   const usernameFromQuery = params.get("username") ?? "";
@@ -48,9 +50,7 @@ export default function VerifyEmail() {
       setDone(email);
     } catch (err: unknown) {
       if (err instanceof ApiCallError && err.id === "invalid-access-token") {
-        setError(
-          "This verification code is invalid or has expired. Request a new one from your account page.",
-        );
+        setError(t("emailVerification.errorLinkInvalid"));
       } else {
         setError(emailVerificationErrorMessage(err));
       }
@@ -68,14 +68,14 @@ export default function VerifyEmail() {
     const onwardSearch = onward.toString() ? `?${onward.toString()}` : "";
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Email verified</h1>
-        <Alert tone="success">{done} is now confirmed on your account.</Alert>
+        <h1 className="mb-2 text-2xl">{t("emailVerification.doneTitle")}</h1>
+        <Alert tone="success">{t("emailVerification.doneBody", { email: done })}</Alert>
         <div className="mt-4 flex flex-col gap-2 text-sm">
           <Link to={`/account/profile${onwardSearch}`} className="text-primary hover:underline">
-            Go to your account
+            {t("emailVerification.goToAccount")}
           </Link>
           <Link to={`/signin${onwardSearch}`} className="text-primary hover:underline">
-            Sign in
+            {t("emailVerification.goToSignIn")}
           </Link>
         </div>
       </Card>
@@ -84,21 +84,21 @@ export default function VerifyEmail() {
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">Verify your email address</h1>
+      <h1 className="mb-1 text-2xl">{t("emailVerification.pageTitle")}</h1>
       <p className="mb-6 text-sm text-muted">
-        Paste the code from the verification email, or open the link it contains.
+        {t("emailVerification.pageSubtitle")}
       </p>
       {error && <Alert>{error}</Alert>}
       <form onSubmit={onSubmit}>
         {usernameFromQuery ? (
           <div className="mb-4">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Username</div>
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("register.usernameLabel")}</div>
             <div className="text-sm">{usernameFromQuery}</div>
           </div>
         ) : (
           <Field
             id="username"
-            label="Username"
+            label={t("register.usernameLabel")}
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -107,14 +107,14 @@ export default function VerifyEmail() {
         )}
         <Field
           id="verifyToken"
-          label="Verification code"
+          label={t("emailVerification.codeLabel")}
           autoComplete="off"
           value={token}
           onChange={(e) => setToken(e.target.value)}
           required
         />
         <Button type="submit" disabled={busy}>
-          {busy ? "Verifying…" : "Verify email"}
+          {busy ? t("emailVerification.verifying") : t("emailVerification.verifySubmit")}
         </Button>
       </form>
     </Card>

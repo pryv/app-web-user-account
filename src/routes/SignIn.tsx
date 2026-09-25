@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
@@ -18,6 +19,7 @@ import { buildSsoReturn, stashSsoReturn } from "../lib/ssoReturn";
  * `/mfa-challenge` carrying the `mfaToken`; on success it completes the auth flow.
  */
 export default function SignIn() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { search } = useLocation();
   const { connection, setConnection } = useSession();
@@ -123,7 +125,7 @@ export default function SignIn() {
         });
         return;
       }
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      setError(err instanceof Error ? err.message : t("signin.failed"));
     } finally {
       setBusy(false);
     }
@@ -132,24 +134,24 @@ export default function SignIn() {
   if (connection) {
     return (
       <Card>
-        <h1 className="mb-1 text-2xl">Welcome back</h1>
+        <h1 className="mb-1 text-2xl">{t("signin.welcomeBack")}</h1>
         <p className="mb-6 text-sm text-muted">
-          You are already signed in{knownUsername ? (
+          {t("signin.alreadySignedIn")}{knownUsername ? (
             <>
-              {" "}as <strong>{knownUsername}</strong>
+              {" "}{t("signin.as")} <strong>{knownUsername}</strong>
             </>
           ) : null}
           .
         </p>
         <Button type="button" onClick={continueAs}>
-          Continue{knownUsername ? ` as ${knownUsername}` : ""}
+          {t("common.continue")}{knownUsername ? ` ${t("signin.as")} ${knownUsername}` : ""}
         </Button>
         <button
           type="button"
           onClick={() => setConnection(null)}
           className="mt-3 w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
-          Not me — use another account
+          {t("signin.notMe")}
         </button>
       </Card>
     );
@@ -157,15 +159,15 @@ export default function SignIn() {
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">Sign in</h1>
+      <h1 className="mb-1 text-2xl">{t("signin.title")}</h1>
       <p className="mb-6 text-sm text-muted">
-        Sign in to grant access to the requesting app.
+        {t("signin.subtitle")}
       </p>
       {error && <Alert>{error}</Alert>}
       <form onSubmit={onSubmit}>
         <Field
           id="username"
-          label="Username or email"
+          label={t("signin.usernameLabel")}
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -173,7 +175,7 @@ export default function SignIn() {
         />
         <Field
           id="password"
-          label="Password"
+          label={t("password.label")}
           type="password"
           autoComplete="current-password"
           value={password}
@@ -181,14 +183,14 @@ export default function SignIn() {
           required
         />
         <Button type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? t("signin.signingInButton") : t("signin.signInButton")}
         </Button>
       </form>
       {ssoOrigin && ssoProviders.length > 0 && (
         <div className="mt-6">
           <div className="mb-3 flex items-center gap-3 text-xs uppercase tracking-wide text-muted">
             <span className="h-px flex-1 bg-divider" />
-            or
+            {t("signin.or")}
             <span className="h-px flex-1 bg-divider" />
           </div>
           <div className="flex flex-col gap-2">
@@ -206,7 +208,7 @@ export default function SignIn() {
                 }}
                 className="w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                Sign in with {p.label ?? p.id}
+                {t("signin.withProvider", { provider: p.label ?? p.id })}
               </button>
             ))}
           </div>
@@ -214,10 +216,10 @@ export default function SignIn() {
       )}
       <div className="mt-4 flex justify-between text-sm">
         <Link to={`/reset-password${search}`} className="text-primary hover:underline">
-          Forgot password?
+          {t("signin.forgotPassword")}
         </Link>
         <Link to={`/register${search}`} className="text-primary hover:underline">
-          Create account
+          {t("signin.createAccount")}
         </Link>
       </div>
     </Card>
