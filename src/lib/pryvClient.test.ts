@@ -25,6 +25,25 @@ function sourceFiles(dir: string): string[] {
   return out;
 }
 
+describe("[PCLC] cmc export", () => {
+  // Guards the export surface only: vitest names CommonJS exports itself, so it
+  // passes even with the dev-server bug. [PCL4] and the e2e spec, which runs on
+  // the dev server, are the regression tests for that.
+  it("[PCL3] exposes the functions the approval pages call", async () => {
+    const { cmc } = await import("./pryvClient");
+    for (const fn of ["readOffer", "acceptInvite", "refuseInvite", "acceptScopeUpdate", "refuseScopeUpdate"] as const) {
+      expect(typeof cmc[fn]).toBe("function");
+    }
+  });
+
+  it("[PCL4] no package is re-exported with `export *` (the dev server skips CommonJS interop there)", () => {
+    // Several client packages are CommonJS (@pryv/cmc, @pryv/delegation,
+    // @pryv/socket.io): any bare-specifier `export *` would repeat the bug.
+    const source = readFileSync(join(__dirname, "pryvClient.ts"), "utf8");
+    expect(source).not.toMatch(/^\s*export\s+\*(\s+as\s+\w+)?\s+from\s+["'][^./]/m);
+  });
+});
+
 describe("[PCLI] single client import point", () => {
   it("[PCL1] no module other than pryvClient.ts imports pryv or @pryv/*", () => {
     const offenders = sourceFiles(SRC)

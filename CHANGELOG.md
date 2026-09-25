@@ -34,6 +34,27 @@
   Previous / Next buttons of the access log use icons instead of the text
   arrows `←` / `→`, which screen readers announced as part of the button name.
   The icon rule is documented in `src/components/ui.tsx` and the README.
+- **The cross-account approval page is covered end to end.** A hermetic
+  Playwright spec drives `/cmc-accept` against mocked cores, from reading the
+  offer to the result handed back: approve and decline in redirect mode, approve
+  and a consumed link in popup mode (the opener receives the result and the
+  popup closes), and the consumed-link notice shown as information. It checks
+  the triggers written on the account and the exact result handed back.
+- **The approval result is the outcome only, stated as such.** `/cmc-accept`
+  hands back `{ ok, acceptEventId }` (or `{ ok: false, reason }`) by redirect or
+  `postMessage`. It had a branch that sent a `dataGrantApiEndpoint` to
+  operator-trusted origins, but `@pryv/cmc` never returns one: the platform
+  records the data-grant access without its token. The dead branch and its
+  origin check are removed; the requesting app obtains its endpoint on its own
+  side with `@pryv/cmc` `waitForAccept` (`grantedAccessApiEndpoint`).
+
+### Fixed
+
+- **The cross-account approval pages work on the development server.**
+  `@pryv/cmc` is CommonJS and was re-exported with `export * as cmc`, which the
+  Vite dev server does not pass through its CommonJS interop: `/cmc-accept` and
+  `/cmc-scope-update` failed with "cmc.readOffer is not a function" under
+  `npm run dev`. Production builds were not affected.
 
 ## 0.6.1 — 2026-09-25
 

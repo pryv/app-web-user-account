@@ -41,9 +41,8 @@ export function httpUrlOrNull(raw: string | null | undefined): URL | null {
  * (the `referrer`, i.e. the page that actually opened this popup); falls back
  * to the caller-supplied `returnUrl` only when the referrer is unavailable
  * (e.g. a strict Referrer-Policy). `returnUrl` is caller-controlled, so it is
- * a last-resort PIN HINT, never a trust anchor — token-bearing payloads must
- * be gated separately by an allowlist (`isTrustedResultOrigin`), so a crafted
- * `returnUrl` can pin the message but never harvest the secret. Returns `null`
+ * a last-resort PIN HINT, never a trust anchor: only non-secret results may be
+ * sent through it (the hand-off results carry no credential). Returns `null`
  * when neither yields a valid http(s) origin.
  */
 export function trustedOpenerOrigin(
