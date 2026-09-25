@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { RefreshCw, UserPlus, LogIn, X, Trash2, Check } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Pryv } from "../../lib/pryvClient";
 import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
@@ -9,8 +10,8 @@ import { useSession, type PryvConnection } from "../../lib/session";
 import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {
   runFlow,
-  DELEGATE_WARNING_LEAD,
-  DELEGATE_WARNING_LINES,
+  delegateWarningLead,
+  delegateWarningLines,
   toDelegateRow,
   toControlledRow,
   coresFromServiceInfo,
@@ -35,6 +36,7 @@ import {
  * "Accounts I manage" list): a delegate cannot detach itself.
  */
 export default function DelegationPage() {
+  const { t } = useTranslation();
   const { connection, actingAs, actAs } = useSession();
   const { search } = useLocation();
   const navigate = useNavigate();
@@ -67,7 +69,7 @@ export default function DelegationPage() {
   }, [load]);
 
   if (!connection || !client) {
-    return <p className="text-sm text-muted">Loading…</p>;
+    return <p className="text-sm text-muted">{t("common.loading")}</p>;
   }
 
   return (
@@ -122,6 +124,7 @@ function MyDelegates({
   reload: () => Promise<void>;
   onNotice: (msg: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const [inviteUsername, setInviteUsername] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +135,7 @@ function MyDelegates({
     onNotice(null);
     const username = normalizeUsernameInput(inviteUsername);
     if (!isValidUsername(username)) {
-      setError("Invalid username — " + USERNAME_RULES);
+      setError(t("delegation.errInvalidUsernameRules", { rules: USERNAME_RULES }));
       return;
     }
     setBusy("request");
@@ -143,7 +146,7 @@ function MyDelegates({
       return;
     }
     setInviteUsername("");
-    onNotice("Invitation sent to " + username + ".");
+    onNotice(t("delegation.noticeInviteSent", { username }));
     await reload();
   }
 
@@ -159,7 +162,7 @@ function MyDelegates({
       setError(res.message);
       return;
     }
-    onNotice(action === "detach" ? "Delegate removed." : "Invitation cancelled.");
+    onNotice(action === "detach" ? t("delegation.noticeDelegateRemoved") : t("delegation.noticeInviteCancelled"));
     await reload();
   }
 
@@ -168,17 +171,16 @@ function MyDelegates({
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between gap-4">
-        <h2 className="text-lg">My delegates</h2>
+        <h2 className="text-lg">{t("delegation.myDelegatesTitle")}</h2>
         <RefreshButton onClick={reload} />
       </div>
       <p className="mb-4 text-sm text-muted">
-        Accounts that can act on behalf of this account. Removing a delegate
-        requires being signed in to this account directly.
+        {t("delegation.myDelegatesHint")}
       </p>
       {error && <Alert>{error}</Alert>}
-      {delegates === null && <p className="text-sm text-muted">Loading…</p>}
+      {delegates === null && <p className="text-sm text-muted">{t("common.loading")}</p>}
       {delegates !== null && rows.length === 0 && (
-        <p className="mb-4 text-sm text-muted">No delegates.</p>
+        <p className="mb-4 text-sm text-muted">{t("delegation.noDelegates")}</p>
       )}
       <div className="mb-6 space-y-3">
         {rows.map((r) => (
@@ -188,7 +190,7 @@ function MyDelegates({
                 <div className="font-medium">{r.username}</div>
                 <div className="text-xs text-muted">
                   {r.statusText}
-                  {r.sinceText && " · since " + r.sinceText}
+                  {r.sinceText && t("delegation.sinceSuffix", { date: r.sinceText })}
                 </div>
               </div>
               <button
@@ -198,7 +200,7 @@ function MyDelegates({
                 className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
               >
                 {r.action === "detach" ? <Trash2 size={14} aria-hidden /> : <X size={14} aria-hidden />}
-                {r.action === "detach" ? "Remove" : "Cancel"}
+                {r.action === "detach" ? t("delegation.remove") : t("common.cancel")}
               </button>
             </div>
           </Card>
@@ -206,16 +208,15 @@ function MyDelegates({
       </div>
 
       <Card>
-        <SectionLabel>Request a delegate</SectionLabel>
+        <SectionLabel>{t("delegation.requestTitle")}</SectionLabel>
         <p className="mb-3 text-sm text-muted">
-          Invite another account to become a delegate of this one. They must
-          accept before the delegation becomes active.
+          {t("delegation.requestHint")}
         </p>
         <form onSubmit={requestDelegate} className="flex flex-col gap-2 sm:flex-row sm:items-start">
           <div className="flex-1">
             <Field
               id="delegate-username"
-              label="Delegate username"
+              label={t("delegation.delegateUsernameLabel")}
               value={inviteUsername}
               hint={USERNAME_RULES}
               onChange={(e) => setInviteUsername(normalizeUsernameInput(e.target.value))}
@@ -223,7 +224,7 @@ function MyDelegates({
           </div>
           <Button type="submit" disabled={busy === "request"} className="sm:w-auto sm:self-start">
             <UserPlus size={14} aria-hidden className="mr-1" />
-            {busy === "request" ? "Sending…" : "Send invite"}
+            {busy === "request" ? t("delegation.sending") : t("delegation.sendInvite")}
           </Button>
         </form>
       </Card>
@@ -249,6 +250,7 @@ function AccountsIManage({
   /** Returns an error message, or null on success (after which it navigates). */
   onOpen: (username: string) => Promise<string | null>;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [acceptTarget, setAcceptTarget] = useState<string | null>(null);
@@ -263,7 +265,7 @@ function AccountsIManage({
       setError(res.message);
       return;
     }
-    onNotice("Invitation refused.");
+    onNotice(t("delegation.noticeInviteRefused"));
     await reload();
   }
 
@@ -278,7 +280,7 @@ function AccountsIManage({
       setError(res.message);
       return;
     }
-    onNotice("You now manage " + username + ".");
+    onNotice(t("delegation.noticeNowManaging", { username }));
     await reload();
   }
 
@@ -309,17 +311,16 @@ function AccountsIManage({
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between gap-4">
-        <h2 className="text-lg">Accounts I manage</h2>
+        <h2 className="text-lg">{t("delegation.managedTitle")}</h2>
         <RefreshButton onClick={reload} />
       </div>
       <p className="mb-4 text-sm text-muted">
-        Accounts you control as a delegate, and invitations awaiting your
-        response.
+        {t("delegation.managedHint")}
       </p>
       {error && <Alert>{error}</Alert>}
-      {controlled === null && <p className="text-sm text-muted">Loading…</p>}
+      {controlled === null && <p className="text-sm text-muted">{t("common.loading")}</p>}
       {controlled !== null && rows.length === 0 && (
-        <p className="text-sm text-muted">You do not manage any accounts.</p>
+        <p className="text-sm text-muted">{t("delegation.noManaged")}</p>
       )}
       <div className="space-y-3">
         {rows.map((r) => (
@@ -344,7 +345,7 @@ function AccountsIManage({
                       onClick={() => setAcceptTarget(r.username)}
                       className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                     >
-                      <Check size={14} aria-hidden /> Accept
+                      <Check size={14} aria-hidden /> {t("delegation.accept")}
                     </button>
                     <button
                       type="button"
@@ -352,7 +353,7 @@ function AccountsIManage({
                       onClick={() => void refuse(r.username)}
                       className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-muted hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                     >
-                      <X size={14} aria-hidden /> Refuse
+                      <X size={14} aria-hidden /> {t("delegation.refuse")}
                     </button>
                   </>
                 )}
@@ -363,7 +364,7 @@ function AccountsIManage({
                     onClick={() => void open(r.username)}
                     className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                   >
-                    <LogIn size={14} aria-hidden /> Open
+                    <LogIn size={14} aria-hidden /> {t("delegation.open")}
                   </button>
                 )}
                 {r.kind === "stale" && (
@@ -373,7 +374,7 @@ function AccountsIManage({
                     onClick={() => void dismiss(r.username)}
                     className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-muted hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
                   >
-                    <Trash2 size={14} aria-hidden /> Dismiss
+                    <Trash2 size={14} aria-hidden /> {t("delegation.dismiss")}
                   </button>
                 )}
               </div>
@@ -396,11 +397,13 @@ function AccountsIManage({
 
 /** Full-control warning shown before accepting an invite / creating an account. */
 function DelegateWarning() {
+  // Subscribes to language changes; the copy itself comes from the lib.
+  useTranslation();
   return (
     <div className="mb-4 rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
-      <p className="mb-2 font-medium">{DELEGATE_WARNING_LEAD}</p>
+      <p className="mb-2 font-medium">{delegateWarningLead()}</p>
       <ul className="list-disc space-y-1 pl-5">
-        {DELEGATE_WARNING_LINES.map((line) => (
+        {delegateWarningLines().map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
@@ -419,21 +422,21 @@ function AcceptDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-lg rounded-lg border border-divider bg-card p-6 shadow-lg">
-        <h3 className="mb-2 text-lg">Become a delegate of {username}?</h3>
+        <h3 className="mb-2 text-lg">{t("delegation.acceptDialogTitle", { username })}</h3>
         <p className="mb-3 text-sm text-muted">
-          Accepting this invitation gives this account full control of{" "}
-          <strong>{username}</strong>.
+          <Trans i18nKey="delegation.acceptDialogBody" values={{ username }} components={{ b: <strong /> }} />
         </p>
         <DelegateWarning />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" type="button" onClick={onCancel} className="w-auto">
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button type="button" onClick={onConfirm} disabled={busy} className="w-auto">
-            {busy ? "Accepting…" : "Accept and manage"}
+            {busy ? t("delegation.accepting") : t("delegation.acceptConfirm")}
           </Button>
         </div>
       </div>
@@ -456,6 +459,7 @@ function CreateManagedAccount({
   reload: () => Promise<void>;
   onNotice: (msg: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -487,7 +491,7 @@ function CreateManagedAccount({
     onNotice(null);
     const u = normalizeUsernameInput(username);
     if (!isValidUsername(u)) {
-      setError("Invalid username — " + USERNAME_RULES);
+      setError(t("delegation.errInvalidUsernameRules", { rules: USERNAME_RULES }));
       return;
     }
     setBusy(true);
@@ -507,16 +511,15 @@ function CreateManagedAccount({
     setUsername("");
     setEmail("");
     setPassword("");
-    onNotice("Account " + u + " created — you now manage it.");
+    onNotice(t("delegation.noticeAccountCreatedManaged", { username: u }));
     await reload();
   }
 
   return (
     <div>
-      <h2 className="mb-2 text-lg">Create a managed account</h2>
+      <h2 className="mb-2 text-lg">{t("delegation.createTitle")}</h2>
       <p className="mb-4 text-sm text-muted">
-        Create a brand-new account that this account fully controls from the
-        start — for example a child or a dependent adult you look after.
+        {t("delegation.createIntro")}
       </p>
       <Card>
         {error && <Alert>{error}</Alert>}
@@ -524,7 +527,7 @@ function CreateManagedAccount({
         <form onSubmit={onSubmit}>
           <Field
             id="managed-username"
-            label="Username"
+            label={t("profile.username")}
             hint={USERNAME_RULES}
             value={username}
             onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
@@ -532,25 +535,25 @@ function CreateManagedAccount({
           />
           <Field
             id="managed-email"
-            label="Email"
+            label={t("profile.email")}
             type="email"
-            hint="Optional. Add one so the account can recover its own password later and be handed over."
+            hint={t("delegation.managedEmailHint")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <Field
             id="managed-password"
-            label="Password"
+            label={t("profile.password")}
             type="password"
             autoComplete="new-password"
-            hint="Optional. Without a password this account can only be used through its delegates."
+            hint={t("delegation.managedPasswordHint")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
           {cores.length > 1 && (
             <div className="mb-4">
               <label htmlFor="managed-core" className="mb-1 block text-sm font-medium text-muted">
-                Core
+                {t("delegation.coreLabel")}
               </label>
               <select
                 id="managed-core"
@@ -558,7 +561,7 @@ function CreateManagedAccount({
                 onChange={(e) => setCore(e.target.value)}
                 className="w-full rounded border border-divider bg-card text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
               >
-                <option value="">Default (this account's core)</option>
+                <option value="">{t("delegation.coreDefault")}</option>
                 {cores.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
@@ -569,7 +572,7 @@ function CreateManagedAccount({
           )}
           <Button type="submit" disabled={busy}>
             <UserPlus size={14} aria-hidden className="mr-1" />
-            {busy ? "Creating…" : "Create managed account"}
+            {busy ? t("delegation.creating") : t("delegation.createSubmit")}
           </Button>
         </form>
       </Card>
@@ -580,13 +583,14 @@ function CreateManagedAccount({
 /* ------------------------------------------------------------------ */
 
 function RefreshButton({ onClick }: { onClick: () => Promise<void> | void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={() => void onClick()}
       className="inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
-      <RefreshCw size={14} aria-hidden /> Refresh
+      <RefreshCw size={14} aria-hidden /> {t("common.refresh")}
     </button>
   );
 }

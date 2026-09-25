@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "./ui";
 
 /**
@@ -6,7 +7,7 @@ import { Button } from "./ui";
  * the page and cannot follow the app's look or language).
  *
  *   const [confirm, dialog] = useConfirm();
- *   if (!(await confirm("Revoke this access?", { confirmLabel: "Revoke" }))) return;
+ *   if (!(await confirm(t("audit.confirmRevoke"), { confirmLabel: t("audit.revoke") }))) return;
  *   ...
  *   return <>{dialog}...</>;
  *
@@ -18,7 +19,7 @@ export function useConfirm(): [
   (message: ReactNode, opts?: { confirmLabel?: string; danger?: boolean }) => Promise<boolean>,
   ReactNode,
 ] {
-  const [pending, setPending] = useState<{ message: ReactNode; confirmLabel: string; danger: boolean } | null>(null);
+  const [pending, setPending] = useState<{ message: ReactNode; confirmLabel?: string; danger: boolean } | null>(null);
   const resolver = useRef<((ok: boolean) => void) | null>(null);
 
   const confirm = useCallback(
@@ -26,7 +27,7 @@ export function useConfirm(): [
       new Promise<boolean>((resolve) => {
         resolver.current?.(false);
         resolver.current = resolve;
-        setPending({ message, confirmLabel: opts?.confirmLabel ?? "Confirm", danger: opts?.danger ?? false });
+        setPending({ message, confirmLabel: opts?.confirmLabel, danger: opts?.danger ?? false });
       }),
     [],
   );
@@ -57,10 +58,11 @@ function ConfirmDialog({
   onAnswer,
 }: {
   message: ReactNode;
-  confirmLabel: string;
+  confirmLabel?: string;
   danger: boolean;
   onAnswer: (ok: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const confirmRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   // Whether the current press started on the overlay itself.
@@ -110,10 +112,10 @@ function ConfirmDialog({
         </p>
         <div className="flex gap-2">
           <Button ref={cancelRef} variant="ghost" type="button" onClick={() => onAnswer(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button ref={confirmRef} variant={danger ? "danger" : "primary"} type="button" onClick={() => onAnswer(true)}>
-            {confirmLabel}
+            {confirmLabel ?? t("common.confirm")}
           </Button>
         </div>
       </div>

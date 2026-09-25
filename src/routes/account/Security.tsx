@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession } from "../../lib/session";
@@ -31,6 +32,7 @@ interface Access {
 type EnrollMethod = "totp" | "sms";
 
 export default function Security() {
+  const { t } = useTranslation();
   const { connection } = useSession();
   const [confirm, confirmDialog] = useConfirm();
 
@@ -91,12 +93,12 @@ export default function Security() {
       const personal = (res?.accesses ?? []).filter((a) => a.type === "personal");
       setSessions(personal);
     } catch (err: unknown) {
-      setSessionsError(err instanceof Error ? err.message : "Could not load sessions.");
+      setSessionsError(err instanceof Error ? err.message : t("security.errorLoadSessions"));
     }
   }
 
   function rest() {
-    if (!connection) throw new Error("not signed in");
+    if (!connection) throw new Error(t("common.notSignedIn"));
     const c = connection as unknown as { endpoint: string; token: string };
     return c;
   }
@@ -125,12 +127,12 @@ export default function Security() {
     });
     const text = await res.text().catch(() => "");
     if (res.status >= 400) {
-      throw new Error("activate failed (" + res.status + "): " + text.slice(0, 200));
+      throw new Error(t("security.activateFailed", { status: res.status, body: text.slice(0, 200) }));
     }
     try {
       return text ? JSON.parse(text) : {};
     } catch {
-      throw new Error("Could not read the enrolment response from the server.");
+      throw new Error(t("security.errorUnreadableEnrollResponse"));
     }
   }
 
@@ -144,7 +146,7 @@ export default function Security() {
       setOtpauthUri(body.otpauthUri ?? null);
       setTotpSecret(body.secret ?? null);
     } catch (err: unknown) {
-      setEnrollError(err instanceof Error ? err.message : "Could not start setup.");
+      setEnrollError(err instanceof Error ? err.message : t("security.errorStartSetup"));
       // Return to the method chooser so a failed start is recoverable (the QR
       // section, which holds Cancel, never rendered). The error stays visible.
       setEnrollMethod(null);
@@ -161,7 +163,7 @@ export default function Security() {
       const body = await activate({ method: "sms", phone });
       setEnrollMfaToken(body.mfaToken ?? null);
     } catch (err: unknown) {
-      setEnrollError(err instanceof Error ? err.message : "Could not start enrolment.");
+      setEnrollError(err instanceof Error ? err.message : t("security.errorStartEnroll"));
     } finally {
       setEnrollBusy(false);
     }
@@ -170,9 +172,7 @@ export default function Security() {
   async function confirmEnroll(e: React.FormEvent) {
     e.preventDefault();
     if (!enrollMfaToken) {
-      setEnrollError(
-        "The server didn't return an enrolment token after sending the code. Disable + re-enable to retry.",
-      );
+      setEnrollError(t("security.errorNoEnrollToken"));
       return;
     }
     setEnrollBusy(true);
@@ -185,7 +185,7 @@ export default function Security() {
         body: JSON.stringify({ code: enrollCode }),
       });
       const body = await res.text();
-      if (!res.ok) throw new Error("confirm failed (" + res.status + "): " + body.slice(0, 200));
+      if (!res.ok) throw new Error(t("security.confirmFailed", { status: res.status, body: body.slice(0, 200) }));
       const parsed = body ? (JSON.parse(body) as { recoveryCodes?: string[] }) : {};
       setRecoveryCodes(parsed.recoveryCodes ?? []);
       setEnrollMfaToken(null);
@@ -195,7 +195,7 @@ export default function Security() {
       setOtpauthUri(null);
       setTotpSecret(null);
     } catch (err: unknown) {
-      setEnrollError(err instanceof Error ? err.message : "Could not confirm code.");
+      setEnrollError(err instanceof Error ? err.message : t("security.errorConfirmCode"));
     } finally {
       setEnrollBusy(false);
     }
@@ -203,7 +203,7 @@ export default function Security() {
 
   async function deactivate() {
     if (!connection) return;
-    if (!(await confirm("Disable multi-factor authentication on this account?", { confirmLabel: "Disable", danger: true }))) return;
+    if (!(await confirm(t("security.confirmDisable"), { confirmLabel: t("security.disable"), danger: true }))) return;
     setDisableBusy(true);
     setDisableError(null);
     setDisableNotice(null);
@@ -216,11 +216,11 @@ export default function Security() {
       });
       if (!res.ok) {
         const body = await res.text();
-        throw new Error("deactivate failed (" + res.status + "): " + body.slice(0, 200));
+        throw new Error(t("security.deactivateFailed", { status: res.status, body: body.slice(0, 200) }));
       }
-      setDisableNotice("Multi-factor authentication is now off.");
+      setDisableNotice(t("security.mfaNowOff"));
     } catch (err: unknown) {
-      setDisableError(err instanceof Error ? err.message : "Could not disable MFA.");
+      setDisableError(err instanceof Error ? err.message : t("security.errorDisableMfa"));
     } finally {
       setDisableBusy(false);
     }
@@ -232,15 +232,15 @@ export default function Security() {
       {confirmDialog}
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
-          Multi-factor authentication
+          {t("security.mfaHeading")}
         </div>
         {recoveryCodes && (
           <Alert tone="success">
             <div className="mb-1 flex items-center justify-between gap-2 font-medium">
-              <span>MFA enabled — save these recovery codes:</span>
+              <span>{t("security.recoveryCodesSave")}</span>
               <button
                 type="button"
-                title="Copy to clipboard"
+                title={t("common.copyToClipboard")}
                 onClick={() => {
                   if (navigator.clipboard) {
                     void navigator.clipboard.writeText(recoveryCodes.join("\n"));
@@ -248,7 +248,7 @@ export default function Security() {
                 }}
                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-success/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
               >
-                <Copy size={14} aria-hidden /> Copy
+                <Copy size={14} aria-hidden /> {t("common.copy")}
               </button>
             </div>
             <ul className="font-mono text-xs">
@@ -262,19 +262,19 @@ export default function Security() {
         {disableError && <Alert>{disableError}</Alert>}
         {enrollError && <Alert>{enrollError}</Alert>}
         {!recoveryCodes && !enrollMethod && mfaMethods === null && (
-          <p className="mb-3 text-sm text-muted">Loading…</p>
+          <p className="mb-3 text-sm text-muted">{t("common.loading")}</p>
         )}
         {!recoveryCodes && !enrollMethod && mfaMethods !== null && mfaMethods.length === 0 && (
           <p className="mb-3 text-sm text-muted">
-            Multi-factor authentication is not enabled on this server.
+            {t("security.mfaNotAvailable")}
           </p>
         )}
         {!recoveryCodes && !enrollMethod && mfaMethods !== null && mfaMethods.length > 0 && (
           <div className="mb-3">
             <p className="mb-3 text-sm text-muted">
               {mfaMethods.length > 1
-                ? "Add a second step at sign-in. Choose a method:"
-                : "Add a second step at sign-in:"}
+                ? t("security.chooseMethod")
+                : t("security.addSecondStep")}
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {/* Only methods the operator has actually configured are offered. */}
@@ -287,9 +287,9 @@ export default function Security() {
                 >
                   <Smartphone size={18} className="mt-0.5 text-primary" aria-hidden />
                   <span>
-                    <span className="block text-sm font-medium">Authenticator app</span>
+                    <span className="block text-sm font-medium">{t("security.methodTotpTitle")}</span>
                     <span className="block text-xs text-muted">
-                      Recommended. Google Authenticator, 1Password, etc.
+                      {t("security.methodTotpHint")}
                     </span>
                   </span>
                 </button>
@@ -303,8 +303,8 @@ export default function Security() {
                 >
                   <MessageSquare size={18} className="mt-0.5 text-primary" aria-hidden />
                   <span>
-                    <span className="block text-sm font-medium">Text message (SMS)</span>
-                    <span className="block text-xs text-muted">Receive a code on your phone.</span>
+                    <span className="block text-sm font-medium">{t("security.methodSmsTitle")}</span>
+                    <span className="block text-xs text-muted">{t("security.methodSmsHint")}</span>
                   </span>
                 </button>
               )}
@@ -316,33 +316,32 @@ export default function Security() {
         {!recoveryCodes && enrollMethod === "totp" && (
           <div className="mb-3">
             {enrollBusy && !otpauthUri && (
-              <p className="text-sm text-muted">Preparing your secret…</p>
+              <p className="text-sm text-muted">{t("security.preparingTotpSecret")}</p>
             )}
             {otpauthUri && (
               <>
                 <p className="mb-2 text-sm text-muted">
-                  Scan this QR code with your authenticator app, then enter the 6-digit
-                  code it shows.
+                  {t("security.scanQr")}
                 </p>
                 <div className="mb-3 inline-block rounded bg-white p-3">
                   <QRCodeSVG value={otpauthUri} size={160} />
                 </div>
                 {totpSecret && (
                   <div className="mb-3 text-xs text-muted">
-                    Can't scan? Enter this key manually:
+                    {t("security.cannotScanManual")}
                     <div className="mt-1 flex items-center gap-2">
                       <code className="rounded border border-divider px-2 py-1 font-mono text-sm tracking-wider">
                         {totpSecret}
                       </code>
                       <button
                         type="button"
-                        title="Copy key"
+                        title={t("security.copyKey")}
                         onClick={() => {
                           if (navigator.clipboard) void navigator.clipboard.writeText(totpSecret);
                         }}
                         className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
-                        <Copy size={14} aria-hidden /> Copy
+                        <Copy size={14} aria-hidden /> {t("common.copy")}
                       </button>
                     </div>
                   </div>
@@ -350,7 +349,7 @@ export default function Security() {
                 <form onSubmit={confirmEnroll}>
                   <Field
                     id="mfa-code"
-                    label="Code from your app"
+                    label={t("security.codeFromAppLabel")}
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     value={enrollCode}
@@ -359,10 +358,10 @@ export default function Security() {
                   />
                   <div className="flex gap-2">
                     <Button type="submit" disabled={enrollBusy || !enrollCode} className="w-auto">
-                      {enrollBusy ? "Confirming…" : "Confirm"}
+                      {enrollBusy ? t("common.confirming") : t("common.confirm")}
                     </Button>
                     <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
-                      Cancel
+                      {t("common.cancel")}
                     </Button>
                   </div>
                 </form>
@@ -375,11 +374,11 @@ export default function Security() {
         {!recoveryCodes && enrollMethod === "sms" && !enrollMfaToken && (
           <form onSubmit={startSms} className="mb-3">
             <p className="mb-2 text-sm text-muted">
-              We'll send a code to your phone to verify.
+              {t("security.smsIntro")}
             </p>
             <Field
               id="mfa-phone"
-              label="Mobile phone (international format, e.g. +41…)"
+              label={t("security.phoneLabel")}
               type="tel"
               autoComplete="tel"
               value={phone}
@@ -388,10 +387,10 @@ export default function Security() {
             />
             <div className="flex gap-2">
               <Button type="submit" disabled={enrollBusy || !phone} className="w-auto">
-                {enrollBusy ? "Sending code…" : "Send code"}
+                {enrollBusy ? t("security.sendingCode") : t("security.sendCode")}
               </Button>
               <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </form>
@@ -399,11 +398,11 @@ export default function Security() {
         {!recoveryCodes && enrollMethod === "sms" && enrollMfaToken && (
           <form onSubmit={confirmEnroll} className="mb-3">
             <p className="mb-2 text-sm text-muted">
-              We sent a code to <strong>{phone}</strong>. Enter it below to confirm.
+              {t("security.codeSentTo")} <strong>{phone}</strong>. {t("security.codeSentToConfirm")}
             </p>
             <Field
               id="mfa-code"
-              label="Verification code"
+              label={t("security.verificationCodeLabel")}
               inputMode="numeric"
               autoComplete="one-time-code"
               value={enrollCode}
@@ -412,17 +411,17 @@ export default function Security() {
             />
             <div className="flex gap-2">
               <Button type="submit" disabled={enrollBusy || !enrollCode} className="w-auto">
-                {enrollBusy ? "Confirming…" : "Confirm"}
+                {enrollBusy ? t("common.confirming") : t("common.confirm")}
               </Button>
               <Button variant="ghost" type="button" onClick={resetEnroll} className="w-auto">
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </form>
         )}
         <div className="mt-3 border-t border-divider pt-3">
           <p className="mb-2 text-xs text-muted">
-            Already enrolled? Disable it here:
+            {t("security.alreadyEnrolled")}
           </p>
           <button
             type="button"
@@ -431,21 +430,21 @@ export default function Security() {
             className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
           >
             <ShieldOff size={14} aria-hidden />
-            {disableBusy ? "Disabling…" : "Disable MFA"}
+            {disableBusy ? t("security.disabling") : t("security.disableMfa")}
           </button>
         </div>
       </Card>
 
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
-          Active sessions
+          {t("security.activeSessions")}
         </div>
         <p className="mb-3 text-sm text-muted">
-          Personal access tokens minted by sign-ins. Revoke any you don't recognise.
+          {t("security.sessionsIntro")}
         </p>
         {sessionsError && <Alert>{sessionsError}</Alert>}
-        {sessions === null && !sessionsError && <p className="text-sm text-muted">Loading…</p>}
-        {sessions?.length === 0 && <p className="text-sm text-muted">No active sessions.</p>}
+        {sessions === null && !sessionsError && <p className="text-sm text-muted">{t("common.loading")}</p>}
+        {sessions?.length === 0 && <p className="text-sm text-muted">{t("security.noSessions")}</p>}
         <div className="space-y-2">
           {sessions?.map((s) => (
             <div
@@ -457,14 +456,14 @@ export default function Security() {
                   {s.name}
                   {s.id === selfId && (
                     <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                      this session
+                      {t("common.thisSession")}
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-muted">
                   {s.lastUsed
-                    ? "Last used: " + new Date(s.lastUsed * 1000).toLocaleString()
-                    : "Never used"}
+                    ? t("security.lastUsedLabel") + new Date(s.lastUsed * 1000).toLocaleString()
+                    : t("security.neverUsed")}
                 </div>
               </div>
               <Link
@@ -472,7 +471,7 @@ export default function Security() {
                 className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <ScrollText size={12} aria-hidden />
-                Details
+                {t("common.details")}
               </Link>
             </div>
           ))}

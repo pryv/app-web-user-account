@@ -1,5 +1,6 @@
 import { useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { parseBackTo } from "../lib/backTo";
 import { Logo } from "../brand";
 import DelegatedSessionBanner from "./DelegatedSessionBanner";
@@ -14,6 +15,7 @@ import DelegatedSessionBanner from "./DelegatedSessionBanner";
  */
 export default function Layout({ children }: { children: ReactNode }) {
   const { search } = useLocation();
+  const { t } = useTranslation();
   const backTo = parseBackTo(search);
 
   return (
@@ -22,7 +24,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <Logo className="h-7 w-auto text-ink" />
         {backTo.url && (
           <a href={backTo.url} className="text-sm text-primary hover:underline">
-            ← Back{backTo.label ? ` to ${backTo.label}` : ""}
+            {backTo.label ? t("common.backTo", { label: backTo.label }) : t("common.back")}
             {backTo.host && <span className="text-muted"> ({backTo.host})</span>}
           </a>
         )}
