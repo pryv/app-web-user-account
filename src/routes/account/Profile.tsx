@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Pencil } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert, SelectField } from "../../components/ui";
 import { useSession } from "../../lib/session";
 import { emailBadge, verificationOnAccount, type EmailView } from "../../lib/emailVerification";
 import { LANGUAGE_OPTIONS } from "../../lib/languages";
 import ProfileExtensions from "../../extensions/ProfileExtensions";
+import i18n, { syncLocaleFromAccount } from "../../i18n";
 
 interface AccountInfo {
   username?: string;
@@ -21,14 +23,9 @@ const BADGE_STYLE: Record<string, string> = {
   unconfirmed: "bg-body text-muted",
 };
 
-const BADGE_LABEL: Record<string, string> = {
-  verified: "Verified",
-  pending: "Not verified",
-  unconfirmed: "Unconfirmed",
-};
-
 /** Profile overview: username, email (editable), language, storage usage. */
 export default function Profile() {
+  const { t } = useTranslation();
   const { connection } = useSession();
   const [info, setInfo] = useState<AccountInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +48,9 @@ export default function Profile() {
       ])) as Array<{ account?: AccountInfo; error?: { message: string } }>;
       if (res?.error) throw new Error(res.error.message);
       setInfo(res?.account ?? null);
+      syncLocaleFromAccount(res?.account?.language);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not load profile.");
+      setError(err instanceof Error ? err.message : t("profile.errLoadProfile"));
     }
   }
 
@@ -107,12 +105,12 @@ export default function Profile() {
       if (res?.error) {
         const wait = res.error.data?.retryAfterSeconds;
         throw new Error(
-          typeof wait === "number" ? `Please wait ${wait} seconds.` : res.error.message,
+          typeof wait === "number" ? t("profile.errRetryAfter", { seconds: wait }) : res.error.message,
         );
       }
-      setEmailNotice(`Verification link sent to ${value}. Open it to confirm this address.`);
+      setEmailNotice(t("profile.emailLinkSent", { email: value }));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not send the verification link.");
+      setError(err instanceof Error ? err.message : t("profile.errSendVerification"));
     } finally {
       setEmailBusy(false);
     }
@@ -132,9 +130,9 @@ export default function Profile() {
       setSecondaryEmail("");
       setAddingEmail(false);
       await load();
-      setEmailNotice("Added. A verification link was sent.");
+      setEmailNotice(t("profile.emailAddedNotice"));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not add the email address.");
+      setError(err instanceof Error ? err.message : t("profile.errAddEmail"));
     } finally {
       setEmailBusy(false);
     }
@@ -155,9 +153,9 @@ export default function Profile() {
       if (res?.error) throw new Error(res.error.message);
       setInfo(res?.account ?? null);
       setEditingEmail(false);
-      setEmailNotice("Email updated.");
+      setEmailNotice(t("profile.emailUpdatedNotice"));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not update email.");
+      setError(err instanceof Error ? err.message : t("profile.errUpdateEmail"));
     } finally {
       setSavingEmail(false);
     }
@@ -173,8 +171,9 @@ export default function Profile() {
       ])) as Array<{ account?: AccountInfo; error?: { message: string } }>;
       if (res?.error) throw new Error(res.error.message);
       setInfo(res?.account ?? null);
+      void i18n.changeLanguage(language);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not update language.");
+      setError(err instanceof Error ? err.message : t("profile.errUpdateLanguage"));
     } finally {
       setSavingLanguage(false);
     }
@@ -184,14 +183,14 @@ export default function Profile() {
     <section className="space-y-4">
       {error && <Alert>{error}</Alert>}
       <Card>
-        <div className="text-xs uppercase tracking-wide text-muted">Username</div>
+        <div className="text-xs uppercase tracking-wide text-muted">{t("profile.username")}</div>
         <div className="text-lg">{info?.username ?? "…"}</div>
       </Card>
       {connection && info?.username && (
         <ProfileExtensions connection={connection} username={info.username} />
       )}
       <Card>
-        <div className="mb-1 text-xs uppercase tracking-wide text-muted">Email</div>
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("profile.email")}</div>
         {emailNotice && <Alert tone="success">{emailNotice}</Alert>}
         {!editingEmail ? (
           <div className="space-y-3">
@@ -203,17 +202,17 @@ export default function Profile() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm">{view.value}</span>
                     {view.primary && (
-                      <span className="rounded px-2 py-0.5 text-xs bg-body text-muted">Primary</span>
+                      <span className="rounded px-2 py-0.5 text-xs bg-body text-muted">{t("profile.emailPrimary")}</span>
                     )}
                     <span
                       className={`rounded px-2 py-0.5 text-xs ${BADGE_STYLE[badge]}`}
                       title={
                         badge === "unconfirmed"
-                          ? "Confirm this address to prove you own it"
+                          ? t("profile.emailUnconfirmedHint")
                           : undefined
                       }
                     >
-                      {BADGE_LABEL[badge]}
+                      {t(`profile.emailBadge.${badge}`)}
                     </span>
                   </div>
                   {/* Unshrinkable group with no-wrap labels: Button's base is
@@ -229,7 +228,7 @@ export default function Profile() {
                         disabled={emailBusy}
                         onClick={() => void onResend(view.value)}
                       >
-                        Send verification link
+                        {t("profile.emailSendLink")}
                       </Button>
                     )}
                     {view.primary && (
@@ -243,7 +242,7 @@ export default function Profile() {
                           setEditingEmail(true);
                         }}
                       >
-                        <Pencil size={14} aria-hidden className="mr-1" /> Edit
+                        <Pencil size={14} aria-hidden className="mr-1" /> {t("common.edit")}
                       </Button>
                     )}
                   </div>
@@ -252,7 +251,7 @@ export default function Profile() {
             })}
             {!onAccount && (
               <p className="text-xs text-muted">
-                Email verification is not available on this platform.
+                {t("profile.emailVerificationUnavailable")}
               </p>
             )}
             {onAccount &&
@@ -260,7 +259,7 @@ export default function Profile() {
                 <form onSubmit={onAddEmail}>
                   <Field
                     id="newSecondaryEmail"
-                    label="New email address"
+                    label={t("profile.emailAddLabel")}
                     type="email"
                     value={secondaryEmail}
                     onChange={(e) => setSecondaryEmail(e.target.value)}
@@ -268,7 +267,7 @@ export default function Profile() {
                   />
                   <div className="flex gap-2">
                     <Button type="submit" className="w-auto" disabled={emailBusy}>
-                      {emailBusy ? "Adding…" : "Add"}
+                      {emailBusy ? t("profile.emailAdding") : t("profile.emailAdd")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -280,7 +279,7 @@ export default function Profile() {
                         setSecondaryEmail("");
                       }}
                     >
-                      Cancel
+                      {t("common.cancel")}
                     </Button>
                   </div>
                 </form>
@@ -294,7 +293,7 @@ export default function Profile() {
                     setAddingEmail(true);
                   }}
                 >
-                  Add an email
+                  {t("profile.emailAddAnother")}
                 </Button>
               ))}
           </div>
@@ -302,7 +301,7 @@ export default function Profile() {
           <form onSubmit={onSubmitEmail}>
             <Field
               id="email"
-              label="Email"
+              label={t("profile.email")}
               type="email"
               autoComplete="email"
               value={newEmail}
@@ -311,7 +310,7 @@ export default function Profile() {
             />
             <div className="flex gap-2">
               <Button type="submit" disabled={savingEmail} className="w-auto">
-                {savingEmail ? "Saving…" : "Save"}
+                {savingEmail ? t("common.saving") : t("common.save")}
               </Button>
               <Button
                 variant="ghost"
@@ -320,7 +319,7 @@ export default function Profile() {
                 onClick={() => setEditingEmail(false)}
                 disabled={savingEmail}
               >
-                Cancel
+                {t("common.cancel")}
               </Button>
             </div>
           </form>
@@ -331,7 +330,7 @@ export default function Profile() {
         <Card>
           <SelectField
             id="language"
-            label="Language"
+            label={t("profile.language")}
             value={info.language ?? LANGUAGE_OPTIONS[0].value}
             options={LANGUAGE_OPTIONS}
             disabled={savingLanguage}
@@ -341,23 +340,26 @@ export default function Profile() {
       ) : (
         info?.language && (
           <Card>
-            <div className="text-xs uppercase tracking-wide text-muted">Language</div>
+            <div className="text-xs uppercase tracking-wide text-muted">{t("profile.language")}</div>
             <div className="text-sm">{info.language}</div>
           </Card>
         )
       )}
       {info?.storageUsed && (
         <Card>
-          <div className="mb-1 text-xs uppercase tracking-wide text-muted">Storage</div>
+          <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("profile.storage")}</div>
           <div className="text-sm text-muted">
-            {info.storageUsed.dbDocuments ?? 0} events · {info.storageUsed.attachedFiles ?? 0} bytes attached
+            {t("profile.storageDetail", {
+              documents: info.storageUsed.dbDocuments ?? 0,
+              bytes: info.storageUsed.attachedFiles ?? 0,
+            })}
           </div>
         </Card>
       )}
       <Card>
-        <div className="mb-1 text-xs uppercase tracking-wide text-muted">Password</div>
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("profile.password")}</div>
         <Link to="/change-password" className="text-sm text-primary hover:underline">
-          Change your password
+          {t("profile.changePassword")}
         </Link>
       </Card>
     </section>

@@ -9,6 +9,8 @@
  * `SsoLanding` route and `SignIn`.
  */
 
+import i18n from "../i18n";
+
 export type SsoOutcome =
   | { kind: "login"; user: string; key: string }
   | { kind: "mfa"; user: string; mfaToken: string; mfaMethod: string | null }
@@ -44,12 +46,12 @@ export function parseSsoHash(hash: string): SsoOutcome {
 export function ssoErrorMessage(code: string): string {
   switch (code) {
     case "no-account":
-      return "No account is linked to this sign-in yet. Sign in with your password first, or create an account.";
+      return i18n.t("sso.errorNoAccount");
     case "email-not-verified":
-      return "Verify this email address in your account before signing in this way.";
+      return i18n.t("sso.errorEmailNotVerified");
     case "sso-failed":
     default:
-      return "Sign-in could not be completed. Please try again.";
+      return i18n.t("sso.errorFailed");
   }
 }
 

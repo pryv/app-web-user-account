@@ -14,6 +14,7 @@
  */
 
 import { DelegationError, delegationErrorIds as errorIds, delegationStatus as STATUS } from "./pryvClient";
+import i18n from "../i18n";
 import type {
   DelegateRecord,
   ControlledRecord,
@@ -29,17 +30,26 @@ import type {
  * can log in directly and thereby remove other delegates too. The copy must
  * state this plainly; it must NOT claim co-delegate removal is impossible.
  */
-export const DELEGATE_WARNING_LINES: readonly string[] = Object.freeze([
-  "They can read and change everything in the account.",
-  "They can change its password, email and multi-factor authentication.",
-  "They can add more delegates and delete the account entirely.",
-  "Because a delegate can set the account's password, a delegate can also log in to the account directly — including to remove other delegates.",
-  "Removing a delegate requires logging in to the account itself. Every credential change, login and removal is recorded in the account's audit trail.",
-]);
+export function delegateWarningLines(): readonly string[] {
+  return [
+    i18n.t("delegation.warnReadWrite"),
+    i18n.t("delegation.warnCredentials"),
+    i18n.t("delegation.warnAddDelete"),
+    i18n.t("delegation.warnPasswordLogin"),
+    i18n.t("delegation.warnRemovalAndAudit"),
+  ];
+}
 
-/** One-line lead-in that precedes {@link DELEGATE_WARNING_LINES}. */
-export const DELEGATE_WARNING_LEAD =
-  "A delegate has full control of this account:";
+/** One-line lead-in that precedes {@link delegateWarningLines}. */
+export function delegateWarningLead(): string {
+  return i18n.t("delegation.warnLead");
+}
+
+/** {@link delegateWarningLines} in the language active when this module loaded. */
+export const DELEGATE_WARNING_LINES: readonly string[] = Object.freeze([...delegateWarningLines()]);
+
+/** {@link delegateWarningLead} in the language active when this module loaded. */
+export const DELEGATE_WARNING_LEAD = delegateWarningLead();
 
 /**
  * Map a thrown error to a user-facing message. A typed {@link DelegationError}
@@ -49,38 +59,38 @@ export function delegationErrorMessage(err: unknown): string {
   const id = delegationErrorId(err);
   switch (id) {
     case errorIds.GENUINE_LOGIN_REQUIRED:
-      return "Sign in to this account directly to remove a delegate — a delegated session cannot do this.";
+      return i18n.t("delegation.errGenuineLoginToRemove");
     case errorIds.ALREADY_EXISTS:
-      return "There is already a pending or active delegation to this account.";
+      return i18n.t("delegation.errAlreadyExists");
     case errorIds.UNKNOWN_USERNAME:
-      return "No account was found with that username.";
+      return i18n.t("delegation.errUnknownUsername");
     case errorIds.SELF_NOT_ALLOWED:
-      return "An account cannot be delegated to itself.";
+      return i18n.t("delegation.errSelfNotAllowed");
     case errorIds.USERNAME_TAKEN:
-      return "That username is already taken.";
+      return i18n.t("delegation.errUsernameTaken");
     case errorIds.UNKNOWN_CORE:
-      return "The selected core is not part of this platform.";
+      return i18n.t("delegation.errUnknownCore");
     case errorIds.INVITE_EXPIRED:
-      return "This invitation has expired.";
+      return i18n.t("delegation.errInviteExpired");
     case errorIds.NOT_ACTIVE:
-      return "This delegation is no longer active.";
+      return i18n.t("delegation.errNotActive");
     case errorIds.NOT_FOUND:
-      return "This delegation could not be found.";
+      return i18n.t("delegation.errNotFound");
     case errorIds.DELIVERY_FAILED:
-      return "Could not reach the other account's server. Please try again.";
+      return i18n.t("delegation.errDeliveryFailed");
     case errorIds.CREATION_FAILED:
-      return "The account could not be created. Please try again.";
+      return i18n.t("delegation.errCreationFailed");
     case errorIds.PERSONAL_TOKEN_REQUIRED:
-      return "Sign in to this account directly to do this.";
+      return i18n.t("delegation.errPersonalTokenRequired");
     case errorIds.MIRROR_NOT_STALE:
-      return "This account is still active and cannot be dismissed.";
+      return i18n.t("delegation.errMirrorNotStale");
     case errorIds.DELEGATE_MISMATCH:
-      return "This invitation does not match the invited account.";
+      return i18n.t("delegation.errDelegateMismatch");
     case errorIds.GRANT_REQUIRES_OWNER:
-      return GRANT_REQUIRES_OWNER_MESSAGE;
+      return grantRequiresOwnerMessage();
     default:
       if (err instanceof Error && err.message) return err.message;
-      return "Something went wrong. Please try again.";
+      return i18n.t("delegation.errGeneric");
   }
 }
 
@@ -115,8 +125,12 @@ export function isGenuineLoginRequired(err: unknown): boolean {
  * made with a token obtained through account delegation: only the account
  * owner can answer those.
  */
-export const GRANT_REQUIRES_OWNER_MESSAGE =
-  "Only the account owner can answer this request. You are acting for this account through a delegation: ask its owner to answer it.";
+export function grantRequiresOwnerMessage(): string {
+  return i18n.t("delegation.errGrantRequiresOwner");
+}
+
+/** {@link grantRequiresOwnerMessage} in the language active when this module loaded. */
+export const GRANT_REQUIRES_OWNER_MESSAGE = grantRequiresOwnerMessage();
 
 /** True when the platform refused a grant because the token came through a delegation. */
 export function isGrantRequiresOwner(err: unknown): boolean {
@@ -149,11 +163,11 @@ export async function runFlow<T>(fn: () => Promise<T>): Promise<FlowResult<T>> {
 export function statusLabel(status: RelationshipStatus | string): string {
   switch (status) {
     case STATUS.INVITE:
-      return "Invitation pending";
+      return i18n.t("delegation.statusInvite");
     case STATUS.ACTIVE:
-      return "Active";
+      return i18n.t("delegation.statusActive");
     case STATUS.STALE:
-      return "Unavailable";
+      return i18n.t("delegation.statusStale");
     default:
       return String(status);
   }
@@ -269,11 +283,11 @@ export function coresFromServiceInfo(info: unknown): CoreOption[] {
  * the delegation is detached. `delegated-child` is deliberately absent: an
  * app access granted through a delegation is an ordinary, revocable app.
  */
-const MANAGED_KIND_LABELS: Readonly<Record<string, string>> = Object.freeze({
-  control: "delegation control",
-  "delegate-pat": "delegate session",
-  "invite-capability": "delegation invitation",
-  notify: "delegation notifications",
+const MANAGED_KIND_LABEL_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  control: "delegation.managedKindControl",
+  "delegate-pat": "delegation.managedKindDelegatePat",
+  "invite-capability": "delegation.managedKindInviteCapability",
+  notify: "delegation.managedKindNotify",
 });
 
 /**
@@ -284,10 +298,11 @@ export function delegationManagedKind(
   access: { clientData?: Record<string, unknown> | null } | null | undefined,
 ): string | null {
   const kind = (access?.clientData?.delegation as { kind?: unknown } | null | undefined)?.kind;
-  return typeof kind === "string" && Object.hasOwn(MANAGED_KIND_LABELS, kind) ? kind : null;
+  return typeof kind === "string" && Object.hasOwn(MANAGED_KIND_LABEL_KEYS, kind) ? kind : null;
 }
 
 /** Short label for a managed kind (see {@link delegationManagedKind}). */
 export function managedKindLabel(kind: string): string {
-  return MANAGED_KIND_LABELS[kind] ?? kind;
+  const key = Object.hasOwn(MANAGED_KIND_LABEL_KEYS, kind) ? MANAGED_KIND_LABEL_KEYS[kind] : null;
+  return key ? i18n.t(key) : kind;
 }

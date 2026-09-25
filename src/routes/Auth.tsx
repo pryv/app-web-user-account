@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTranslation, Trans } from "react-i18next";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
+import { tNodes } from "../components/consent/tNodes";
 import {
   consentEntries,
   grantedPermissions,
@@ -13,7 +15,7 @@ import {
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch } from "../lib/authParams";
-import { isAllowedServiceInfoUrl, PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
+import { isAllowedServiceInfoUrl, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
@@ -143,6 +145,7 @@ function parseAuthQuery(search: string): AuthQuery {
  * mfa_verify}` — same wire shape, same outcomes.
  */
 export default function Auth() {
+  const { t } = useTranslation();
   const { search } = useLocation();
   const query = parseAuthQuery(search);
   const { connection: sessionConnection, setConnection, actingAs } = useSession();
@@ -289,11 +292,11 @@ export default function Auth() {
         // Stored token no longer valid (revoked/expired): drop it and let the
         // user sign in normally.
         setConnection(null);
-        setError("Your previous session is no longer valid — please sign in.");
+        setError(t("consent.errorSessionInvalid"));
       } else {
         // Network error or server failure: says nothing about the token.
         // Keep the session (and the account pages' state) so the user can retry.
-        setError("Could not reach the server, please try again.");
+        setError(t("consent.errorUnreachable"));
       }
     } finally {
       setBusy(false);
@@ -303,14 +306,12 @@ export default function Auth() {
   // Initial load: pull access state + service-info.
   useEffect(() => {
     if (!query.pollUrl) {
-      setInitError(
-        "Missing the `poll` query parameter — open this page through your application's `Service.setupAuth(...)` call rather than directly.",
-      );
+      setInitError(t("consent.errorMissingPoll"));
       return;
     }
     // Checked before anything is fetched from the link.
     if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) {
-      setInitError(PLATFORM_NOT_ALLOWED);
+      setInitError(platformNotAllowedMessage());
       return;
     }
     let cancelled = false;
@@ -344,7 +345,7 @@ export default function Auth() {
           setRequestDone(true);
           return;
         }
-        setInitError(err instanceof Error ? err.message : "Failed to load access state.");
+        setInitError(err instanceof Error ? err.message : t("consent.errorLoadState"));
       }
     })();
     return () => {
@@ -356,7 +357,7 @@ export default function Auth() {
   function makeService() {
     const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
     // The password goes to this platform: refuse one this deployment does not serve.
-    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) throw new Error(PLATFORM_NOT_ALLOWED);
+    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) throw new PlatformNotAllowedError();
     return new Pryv.Service(svcInfoUrl ?? "");
   }
 
@@ -395,7 +396,7 @@ export default function Auth() {
   /** Continue with the account picked in the selector. */
   async function continueWithTarget() {
     if (!owner || !targets) return;
-    const target = targets.find((t) => t.username === selectedTarget) ?? targets[0];
+    const target = targets.find((c) => c.username === selectedTarget) ?? targets[0];
     setBusy(true);
     setError(null);
     try {
@@ -536,17 +537,17 @@ export default function Auth() {
   /** What to tell the user when the register refused the grant. */
   function consentRefusalMessage(result: AccessStateUpdateResult): string {
     if (result.errorId === "consent-check-unavailable") {
-      return "This access could not be verified right now. Nothing was granted, please try again in a moment.";
+      return t("consent.refusalUnverified");
     }
     switch (result.reason) {
       case "mandatory-refused":
-        return "Some permissions this app requires were not granted. Tick the required entries, or refuse the request.";
+        return t("consent.refusalMandatory");
       case "choice-not-allowed":
-        return "This request must be accepted in full or refused.";
+        return t("consent.refusalChoiceNotAllowed");
       case "empty-grant":
-        return "Nothing was granted. Tick at least one permission, or refuse the request.";
+        return t("consent.refusalEmptyGrant");
       default:
-        return "The access that was created does not match what this app requested. Please try again.";
+        return t("consent.refusalMismatch");
     }
   }
 
@@ -565,7 +566,7 @@ export default function Auth() {
       ) as Permission[];
       if (consentForm != null && permissions.length === 0) {
         // Granting nothing is a refusal; the server would say so anyway.
-        setError("Tick at least one permission, or refuse the request.");
+        setError(t("consent.errorTickOne"));
         setFinishing(null);
         return;
       }
@@ -613,7 +614,7 @@ export default function Auth() {
         setError(consentRefusalMessage(refusal));
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not accept.");
+      setError(err instanceof Error ? err.message : t("consent.errorCouldNotAccept"));
     } finally {
       setFinishing(null);
     }
@@ -644,7 +645,7 @@ export default function Auth() {
   if (initError) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Authorize access</h1>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
         <Alert>{initError}</Alert>
       </Card>
     );
@@ -653,8 +654,8 @@ export default function Auth() {
   if (requestDone) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Authorize access</h1>
-        <p className="text-sm">This request is complete. You can close this window.</p>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="text-sm">{t("consent.requestComplete")}</p>
       </Card>
     );
   }
@@ -662,48 +663,48 @@ export default function Auth() {
   if (!accessState) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Authorize access</h1>
-        <p className="text-sm text-muted">Loading access request…</p>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="text-sm text-muted">{t("consent.loading")}</p>
       </Card>
     );
   }
 
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
-    const appName = requestingApp?.name ?? (accessState.requestingAppId || "the requesting app");
+    const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
     const unavailable = unavailableActAs(targets, accessState.actAs);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
-          Grant <strong>{appName}</strong> access to:
+          {tNodes("consent.grantHeading", { app: <strong>{appName}</strong> })}
         </h1>
         {unavailable != null && (
           <Alert tone="info">
-            <strong>{unavailable}</strong> is not an account you can act for; choose below.
+            {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>
         )}
         <fieldset className="mb-4 space-y-2">
-          <legend className="sr-only">Account to grant access to</legend>
-          {targets.map((t) => (
-            <label key={t.username} className="flex items-center gap-2 text-sm">
+          <legend className="sr-only">{t("consent.grantLegend")}</legend>
+          {targets.map((choice) => (
+            <label key={choice.username} className="flex items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="grant-target"
-                value={t.username}
-                checked={selectedTarget === t.username}
-                onChange={() => setSelectedTarget(t.username)}
+                value={choice.username}
+                checked={selectedTarget === choice.username}
+                onChange={() => setSelectedTarget(choice.username)}
               />
-              <strong>{t.username}</strong>
-              <span className="text-muted">{t.self ? "(me)" : `(via ${owner.username})`}</span>
+              <strong>{choice.username}</strong>
+              <span className="text-muted">{choice.self ? t("consent.grantTargetSelf") : t("consent.grantTargetVia", { username: owner.username })}</span>
             </label>
           ))}
         </fieldset>
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
-          {busy ? "Checking…" : `Continue for ${selectedTarget ?? owner.username}`}
+          {busy ? t("consent.checking") : t("consent.continueFor", { username: selectedTarget ?? owner.username })}
         </Button>
         <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
-          Cancel
+          {t("common.cancel")}
         </Button>
       </Card>
     );
@@ -732,7 +733,7 @@ export default function Auth() {
               // Untrusted text: MarkdownLite builds React elements, never innerHTML.
               // Framed and captioned so the app's words never read as the platform's.
               <div className="mb-3">
-                <div className="mb-1 text-xs uppercase tracking-wide text-muted">Message from the app</div>
+                <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("consent.appMessageCaption")}</div>
                 <div
                   data-testid="consent-message"
                   className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
@@ -752,20 +753,16 @@ export default function Auth() {
           choiceHint={
             allowsChoice && (
               <p className="mb-2 text-sm text-muted">
-                Untick anything you would rather not share. Entries marked as required cannot be
-                unticked.
+                {t("consent.choiceHint")}
               </p>
             )
           }
           expireAfterSeconds={accessState.expireAfter ?? null}
           mismatchWarning={
             check.mismatchingAccess ? (
-              <>
-                A different access was already given to this app.{" "}
-                {updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
-                  ? "Approving will update it."
-                  : "Approving will replace it."}
-              </>
+              updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
+                ? t("consent.mismatchWillUpdate")
+                : t("consent.mismatchWillReplace")
             ) : undefined
           }
           busy={finishing}
@@ -784,19 +781,20 @@ export default function Auth() {
   if (storedUsable && !personalToken) {
     return (
       <Card>
-        <h1 className="mb-1 text-2xl">Welcome back</h1>
+        <h1 className="mb-1 text-2xl">{t("consent.welcomeBack")}</h1>
         <p className="mb-6 text-sm text-muted">
-          You are signed in{knownUsername ? (
-            <>
-              {" "}as <strong>{knownUsername}</strong>
-            </>
-          ) : null}
-          . Continue to review the access requested by{" "}
-          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>?
+          {tNodes(knownUsername ? "consent.signedInAsReview" : "consent.signedInReview", {
+            username: <strong>{knownUsername}</strong>,
+            app: <strong>{requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"))}</strong>,
+          })}
         </p>
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
-          {busy ? "Checking…" : `Continue${knownUsername ? ` as ${knownUsername}` : ""}`}
+          {busy
+            ? t("consent.checking")
+            : knownUsername
+              ? t("consent.continueAs", { username: knownUsername })
+              : t("consent.continue")}
         </Button>
         <button
           type="button"
@@ -804,10 +802,10 @@ export default function Auth() {
           disabled={busy}
           className="mt-3 w-full rounded border border-divider px-4 py-2 text-sm hover:bg-body focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
         >
-          Not me — use another account
+          {t("consent.notMe")}
         </button>
         <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
-          Cancel
+          {t("common.cancel")}
         </Button>
       </Card>
     );
@@ -838,8 +836,9 @@ export default function Auth() {
       externalError={error}
       prompt={
         <>
-          Sign in to grant access to{" "}
-          <strong>{requestingApp?.name ?? (accessState.requestingAppId || "the requesting app")}</strong>.
+          {tNodes("consent.signinPromptApp", {
+            app: <strong>{requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"))}</strong>,
+          })}
         </>
       }
       onSignedIn={async (s) => {
@@ -869,23 +868,28 @@ export default function Auth() {
               target="_blank"
               className="text-primary hover:underline"
             >
-              Forgot password?
+              {t("consent.forgotPassword")}
             </Link>
             <Link
               to={`/register${linksSearch}`}
               target="_blank"
               className="text-primary hover:underline"
             >
-              Create account
+              {t("consent.createAccount")}
             </Link>
           </div>
           {serviceInfo?.support && (
             <p className="mt-6 text-sm text-muted">
-              Questions? Visit our{" "}
-              <a href={serviceInfo.support} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                helpdesk
-              </a>
-              .
+              {/* Markup comes from the catalog; the link target is the platform's
+                  service info, passed as a prop, never parsed from the text. */}
+              <Trans
+                i18nKey="consent.helpdesk"
+                components={{
+                  helpdeskLink: (
+                    <a href={serviceInfo.support} target="_blank" rel="noreferrer" className="text-primary hover:underline" />
+                  ),
+                }}
+              />
             </p>
           )}
         </>

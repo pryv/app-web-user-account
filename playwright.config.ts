@@ -18,6 +18,8 @@ export default defineConfig({
   use: {
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
+    // The specs assert English copy: pin the browser language.
+    locale: "en-US",
   },
   projects: [
     {

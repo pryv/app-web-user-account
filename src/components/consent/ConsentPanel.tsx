@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Alert } from "../ui";
 import { AppIcon } from "../AppIcon";
 import type { CatalogIcon } from "../../lib/appCatalog";
@@ -13,7 +14,7 @@ export interface ConsentPanelProps {
   appNameId?: string;
   /** Extra heading under the app (e.g. an OAuth2 offer title and description). */
   title?: ReactNode;
-  /** Line introducing the list. */
+  /** Line introducing the list (default: the catalog's "is requesting permission:"). */
   requesting?: ReactNode;
   /** Rendered before the permission rows (e.g. the app's own consent message). */
   consentText?: ReactNode;
@@ -34,6 +35,7 @@ export interface ConsentPanelProps {
   /** Receives the tick state at the moment of Accept (undefined when all-or-nothing). */
   onAccept: (flags?: boolean[]) => void;
   onRefuse: () => void;
+  /** Overrides of the catalog's Accept, Reject and "Expires after:" texts. */
   labels?: Partial<{ accept: string; refuse: string; expiresAfter: string }>;
   acceptId?: string;
   refuseId?: string;
@@ -51,7 +53,7 @@ export function ConsentPanel({
   app,
   appNameId,
   title,
-  requesting = "is requesting permission:",
+  requesting,
   consentText,
   entries,
   flags,
@@ -70,6 +72,7 @@ export function ConsentPanel({
   refuseId,
   children,
 }: ConsentPanelProps) {
+  const { t } = useTranslation();
   return (
     <>
       <h1 className="mb-2 flex items-center gap-2 text-2xl">
@@ -78,14 +81,15 @@ export function ConsentPanel({
       </h1>
       {app.description != null && <p className="mb-2 text-sm text-muted">{app.description}</p>}
       {title}
-      <p className="mb-2 text-sm">{requesting}</p>
+      <p className="mb-2 text-sm">{requesting ?? t("common.requestingPermission")}</p>
       {consentText}
       <PermissionList entries={entries} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />
       {afterList}
       {choiceHint}
       {expireAfterSeconds != null && (
         <p className="mb-2 text-sm">
-          <strong>{labels?.expiresAfter ?? "Expires after:"}</strong> {expireAfterSeconds}s
+          <strong>{labels?.expiresAfter ?? t("consent.expiresAfterLabel")}</strong>{" "}
+          {t("consent.expiresAfterSeconds", { seconds: expireAfterSeconds })}
         </p>
       )}
       {mismatchWarning != null && <Alert tone="info">{mismatchWarning}</Alert>}

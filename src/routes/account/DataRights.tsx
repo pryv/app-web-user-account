@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { tNodes } from "../../components/consent/tNodes";
 import { Card, Field, Alert } from "../../components/ui";
 import { Trash2, Download } from "lucide-react";
 import { useSession, signinPath, storedServiceInfoUrl } from "../../lib/session";
@@ -25,6 +27,7 @@ const BACKUP_WEBAPP_URL =
   "https://pryv.github.io/pryv-account-backup-webapp/";
 
 export default function DataRights() {
+  const { t } = useTranslation();
   const { connection, setConnection } = useSession();
   const navigate = useNavigate();
   const { search } = useLocation();
@@ -47,7 +50,7 @@ export default function DataRights() {
     const u = new URL(BACKUP_WEBAPP_URL);
     if (svc) u.searchParams.set("pryvServiceInfoUrl", svc);
     u.searchParams.set("backUrl", window.location.href);
-    u.searchParams.set("backLabel", "Account");
+    u.searchParams.set("backLabel", t("data.backLabel"));
     return u.toString();
   }
 
@@ -63,7 +66,7 @@ export default function DataRights() {
       });
       if (!res.ok) {
         const body = await res.text();
-        throw new Error("Delete failed (" + res.status + "): " + body.slice(0, 200));
+        throw new Error(t("data.deleteFailed", { status: res.status, body: body.slice(0, 200) }));
       }
       // Server confirmed deletion — wipe local session and bounce home.
       // Navigate FIRST — see AccountLayout signOut for the same race fix.
@@ -71,7 +74,7 @@ export default function DataRights() {
       navigate(target, { replace: true });
       setConnection(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not delete account.");
+      setError(err instanceof Error ? err.message : t("data.errDelete"));
     } finally {
       setDeleting(false);
     }
@@ -81,12 +84,10 @@ export default function DataRights() {
     <section className="space-y-4">
       <Card>
         <div className="mb-1 text-xs uppercase tracking-wide text-muted">
-          Export your data
+          {t("data.exportTitle")}
         </div>
         <p className="mb-3 text-sm text-muted">
-          Download a portable copy of all the data in your account, as a series
-          of ZIP files. This opens the account-backup app, where you sign in and
-          run the export.
+          {t("data.exportIntro")}
         </p>
         <a
           href={exportUrl()}
@@ -95,23 +96,23 @@ export default function DataRights() {
           className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <Download size={14} aria-hidden />
-          Start export
+          {t("data.startExport")}
         </a>
       </Card>
       <Card>
         <div className="mb-1 text-xs uppercase tracking-wide text-danger">
-          Delete account
+          {t("data.deleteTitle")}
         </div>
         <p className="mb-3 text-sm text-muted">
-          Permanently delete your account and all of its data. This cannot be undone.
+          {t("data.deleteIntro")}
         </p>
         {error && <Alert>{error}</Alert>}
         <p className="mb-2 text-sm">
-          Type <strong>{username ?? "your username"}</strong> below to confirm.
+          {tNodes("data.confirmPrompt", { username: <strong>{username ?? t("data.yourUsername")}</strong> })}
         </p>
         <Field
           id="confirm-username"
-          label="Confirm username"
+          label={t("data.confirmUsernameLabel")}
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
@@ -122,7 +123,7 @@ export default function DataRights() {
           className="inline-flex items-center gap-2 rounded border border-danger px-4 py-2 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
         >
           <Trash2 size={14} aria-hidden />
-          {deleting ? "Deleting…" : "Delete my account"}
+          {deleting ? t("common.deleting") : t("data.deleteButton")}
         </button>
       </Card>
     </section>

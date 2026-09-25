@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
+import { PlatformNotAllowedError } from "../lib/deployedSettings";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
@@ -34,6 +35,7 @@ const sharedSecrets = (Pryv as unknown as {
  * it on `sso.landingPageURL`), so `getService` can resolve the core.
  */
 export default function SsoLanding() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { search } = useLocation();
   const { setConnection } = useSession();
@@ -110,39 +112,38 @@ export default function SsoLanding() {
         }
       } catch (err: unknown) {
         const id = err != null && typeof err === "object" ? (err as { id?: string }).id : undefined;
-        const message = err instanceof Error ? err.message : "";
         setError(
           id === "shared-secret-unavailable"
-            ? "This sign-in link has expired. Please start over from sign-in."
-            : message === PLATFORM_NOT_ALLOWED
-              ? PLATFORM_NOT_ALLOWED
+            ? t("sso.linkExpired")
+            : err instanceof PlatformNotAllowedError
+              ? err.message
               : ssoErrorMessage("sso-failed"),
         );
       }
     })();
-  }, [navigate, search, setConnection]);
+  }, [navigate, search, setConnection, t]);
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">Signing you in…</h1>
+      <h1 className="mb-1 text-2xl">{t("sso.signingIn")}</h1>
       {error ? (
         <>
           <Alert>{error}</Alert>
           <Button type="button" onClick={() => navigate(`/signin${restored}`)} className="mt-4">
-            Back to sign-in
+            {t("sso.backToSignIn")}
           </Button>
         </>
       ) : standalone ? (
         <>
           <p className="mb-4 text-sm text-muted">
-            Open this page from the sign-in screen to continue.
+            {t("sso.openFromSignIn")}
           </p>
           <Button type="button" onClick={() => navigate(`/signin${restored}`)}>
-            Go to sign-in
+            {t("sso.goToSignIn")}
           </Button>
         </>
       ) : (
-        <p className="text-sm text-muted">Completing your third-party sign-in.</p>
+        <p className="text-sm text-muted">{t("sso.completing")}</p>
       )}
     </Card>
   );

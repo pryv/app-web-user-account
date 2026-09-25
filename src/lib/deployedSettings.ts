@@ -20,6 +20,7 @@
 
 import { httpUrlOrNull } from "./safeRedirect";
 import { parseLegalSettings, type LegalSettings } from "./legal";
+import i18n from "../i18n";
 
 export interface DeployedSettings {
   serviceInfoUrl?: string;
@@ -149,8 +150,17 @@ export function isAllowedServiceInfoUrl(serviceInfoUrl: string): boolean {
 }
 
 /** Message shown when a link names a platform this deployment does not serve. */
-export const PLATFORM_NOT_ALLOWED =
-  "This page does not serve the platform named in the link. Open it from your platform's own link.";
+export function platformNotAllowedMessage(): string {
+  return i18n.t("errors.platformNotAllowed");
+}
+
+/** Thrown when a link names a platform this deployment does not serve. */
+export class PlatformNotAllowedError extends Error {
+  constructor() {
+    super(platformNotAllowedMessage());
+    this.name = "PlatformNotAllowedError";
+  }
+}
 
 /** Extra trusted core origins from settings.json ([] when unset). */
 export function getTrustedApiOrigins(): string[] {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, XCircle } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession, signinPath } from "../../lib/session";
@@ -40,6 +41,12 @@ interface AccessDetails {
 
 const PAGE_SIZE = 15;
 
+const RELATION_KEYS: Record<ReturnType<typeof eventRelation>, string> = {
+  created: "audit.relationCreated",
+  modified: "audit.relationModified",
+  "created + modified": "audit.relationCreatedModified",
+};
+
 function fmtTime(t?: number | null): string {
   return t ? new Date(t * 1000).toLocaleString() : "—";
 }
@@ -50,6 +57,7 @@ function fmtTime(t?: number | null): string {
  * readable even after the access was revoked.
  */
 export default function AuditAccess() {
+  const { t } = useTranslation();
   const { accessId } = useParams<{ accessId: string }>();
   const { connection, setConnection } = useSession();
   const navigate = useNavigate();
@@ -128,9 +136,9 @@ export default function AuditAccess() {
     const isSelf = accessId === selfAccessId;
     const ok = await confirm(
       isSelf
-        ? "This is the access you used to sign in. Revoking it will sign you out immediately. Continue?"
-        : "Revoke this access? Apps using it will lose access immediately.",
-      { confirmLabel: "Revoke", danger: true },
+        ? t("audit.confirmRevokeSelf")
+        : t("audit.confirmRevoke"),
+      { confirmLabel: t("audit.revoke"), danger: true },
     );
     if (!ok) return;
     setRevoking(true);
@@ -149,7 +157,7 @@ export default function AuditAccess() {
       }
       navigate("/account/apps" + search);
     } catch (err: unknown) {
-      setRevokeError(err instanceof Error ? err.message : "Could not revoke access.");
+      setRevokeError(err instanceof Error ? err.message : t("audit.errorRevoke"));
       setRevoking(false);
     }
   }
@@ -174,14 +182,14 @@ export default function AuditAccess() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          setDetailsError(err instanceof Error ? err.message : "Could not load access details.");
+          setDetailsError(err instanceof Error ? err.message : t("audit.errorLoadDetails"));
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [connection, accessId]);
+  }, [connection, accessId, t]);
 
   const loadAudit = useCallback(async () => {
     if (!connection || !accessId) return;
@@ -206,12 +214,12 @@ export default function AuditAccess() {
       setHasNext(events.length > PAGE_SIZE);
       setRows(events.slice(0, PAGE_SIZE));
     } catch (err: unknown) {
-      setAuditError(err instanceof Error ? err.message : "Could not load the audit trail.");
+      setAuditError(err instanceof Error ? err.message : t("audit.errorLoadTrail"));
       setRows([]);
     } finally {
       setBusy(false);
     }
-  }, [connection, accessId, applied, page]);
+  }, [connection, accessId, applied, page, t]);
 
   useEffect(() => {
     void loadAudit();
@@ -242,12 +250,12 @@ export default function AuditAccess() {
       setDataTruncated(events.length >= DATA_BATCH_LIMIT);
       setDataRows(filterEventsByAccess(events, accessId));
     } catch (err: unknown) {
-      setDataError(err instanceof Error ? err.message : "Could not load the access's data.");
+      setDataError(err instanceof Error ? err.message : t("audit.errorLoadData"));
       setDataRows([]);
     } finally {
       setDataBusy(false);
     }
-  }, [connection, accessId, dataApplied]);
+  }, [connection, accessId, dataApplied, t]);
 
   useEffect(() => {
     void loadData();
@@ -280,16 +288,16 @@ export default function AuditAccess() {
         to={"/account/apps" + search}
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
-        <ArrowLeft size={14} aria-hidden /> Back to connected apps
+        <ArrowLeft size={14} aria-hidden /> {t("audit.backToApps")}
       </Link>
 
       <Card>
         <div className="mb-2 flex items-center justify-between gap-3">
           <span className="text-xs uppercase tracking-wide text-muted">
-            Access details
+            {t("audit.accessDetails")}
             {accessId === selfAccessId && (
               <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs normal-case tracking-normal text-primary">
-                this session
+                {t("common.thisSession")}
               </span>
             )}
           </span>
@@ -301,61 +309,58 @@ export default function AuditAccess() {
               className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
             >
               <XCircle size={14} aria-hidden />
-              {revoking ? "Revoking…" : "Revoke"}
+              {revoking ? t("audit.revoking") : t("audit.revoke")}
             </button>
           )}
         </div>
         {revokeError && <Alert>{revokeError}</Alert>}
         {details && delegationManagedKind(details) != null && (
           <Alert tone="info">
-            This access is managed by account delegation and cannot be revoked here. It is removed
-            when the delegation ends:{" "}
-            <Link to={"/account/delegation" + search} className="underline">
-              manage account delegation
-            </Link>
-            .
+            <Trans
+              i18nKey="audit.managedByDelegation"
+              components={{ manage: <Link to={"/account/delegation" + search} className="underline" /> }}
+            />
           </Alert>
         )}
         {detailsError && <Alert>{detailsError}</Alert>}
         {detailsMissing && (
           <Alert tone="info">
-            This access is not listed anymore (revoked or deleted). Its audit trail below remains
-            available.
+            {t("audit.accessMissing")}
           </Alert>
         )}
         {!details && !detailsMissing && !detailsError && (
-          <p className="text-sm text-muted">Loading…</p>
+          <p className="text-sm text-muted">{t("common.loading")}</p>
         )}
         {details && (
           <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-            <Detail label="Name" value={details.name} />
-            <Detail label="ID" value={details.id} mono />
-            <Detail label="Type" value={details.type} />
-            <Detail label="Device" value={details.deviceName} />
-            <Detail label="Created" value={fmtTime(details.created)} />
-            <Detail label="Created by" value={details.createdBy} mono />
-            <Detail label="Modified" value={fmtTime(details.modified)} />
-            <Detail label="Modified by" value={details.modifiedBy} mono />
-            <Detail label="Last used" value={fmtTime(details.lastUsed)} />
+            <Detail label={t("audit.labelName")} value={details.name} />
+            <Detail label={t("audit.labelId")} value={details.id} mono />
+            <Detail label={t("audit.labelType")} value={details.type} />
+            <Detail label={t("audit.labelDevice")} value={details.deviceName} />
+            <Detail label={t("audit.labelCreated")} value={fmtTime(details.created)} />
+            <Detail label={t("audit.labelCreatedBy")} value={details.createdBy} mono />
+            <Detail label={t("audit.labelModified")} value={fmtTime(details.modified)} />
+            <Detail label={t("audit.labelModifiedBy")} value={details.modifiedBy} mono />
+            <Detail label={t("audit.labelLastUsed")} value={fmtTime(details.lastUsed)} />
             <Detail
-              label="Expires"
+              label={t("audit.labelExpires")}
               value={
                 details.expires
-                  ? fmtTime(details.expires) + (details.expired ? " (expired)" : "")
-                  : "Never"
+                  ? fmtTime(details.expires) + (details.expired ? t("audit.expiredSuffix") : "")
+                  : t("audit.never")
               }
             />
           </dl>
         )}
         {details?.permissions && details.permissions.length > 0 && (
           <div className="mt-3">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Permissions</div>
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.permissions")}</div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-divider text-xs text-muted">
-                    <th className="py-1 pr-4 font-normal">Scope</th>
-                    <th className="py-1 font-normal">Level</th>
+                    <th className="py-1 pr-4 font-normal">{t("audit.colScope")}</th>
+                    <th className="py-1 font-normal">{t("audit.colLevel")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -374,7 +379,7 @@ export default function AuditAccess() {
         )}
         {details?.clientData && consentMessage(details.clientData) !== null && (
           <div className="mt-3">
-            <div className="mb-1 text-xs uppercase tracking-wide text-muted">Consent message</div>
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.consentMessage")}</div>
             <div className="rounded border border-divider p-3">
               <MarkdownLite text={consentMessage(details.clientData)!} />
             </div>
@@ -383,7 +388,7 @@ export default function AuditAccess() {
         {details?.clientData &&
           Object.keys(details.clientData).filter((k) => k !== CONSENT_KEY).length > 0 && (
             <div className="mt-3">
-              <div className="mb-1 text-xs uppercase tracking-wide text-muted">Client data</div>
+              <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.clientData")}</div>
               <pre className="overflow-x-auto rounded bg-body p-2 font-mono text-xs">
                 {JSON.stringify(
                   Object.fromEntries(
@@ -398,10 +403,10 @@ export default function AuditAccess() {
       </Card>
 
       <Card>
-        <div className="mb-2 text-xs uppercase tracking-wide text-muted">Audit trail</div>
+        <div className="mb-2 text-xs uppercase tracking-wide text-muted">{t("audit.auditTrail")}</div>
         <form onSubmit={applyFilters} className="mb-3 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">From</span>
+            <span className="text-xs text-muted">{t("common.from")}</span>
             <input
               type="datetime-local"
               value={fromInput}
@@ -410,7 +415,7 @@ export default function AuditAccess() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">To</span>
+            <span className="text-xs text-muted">{t("common.to")}</span>
             <input
               type="datetime-local"
               value={toInput}
@@ -419,13 +424,13 @@ export default function AuditAccess() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Action</span>
+            <span className="text-xs text-muted">{t("audit.action")}</span>
             <select
               value={actionInput}
               onChange={(e) => setActionInput(e.target.value)}
               className="rounded border border-divider bg-card px-2 py-1 text-ink outline-none focus:border-primary"
             >
-              <option value="">All actions</option>
+              <option value="">{t("audit.allActions")}</option>
               {actions.map((a) => (
                 <option key={a} value={a}>
                   {a}
@@ -439,10 +444,10 @@ export default function AuditAccess() {
               checked={errorsOnlyInput}
               onChange={(e) => setErrorsOnlyInput(e.target.checked)}
             />
-            <span className="text-xs">Errors only</span>
+            <span className="text-xs">{t("audit.errorsOnly")}</span>
           </label>
           <Button type="submit" disabled={busy} className="w-auto">
-            Apply
+            {t("common.apply")}
           </Button>
           <Button
             variant="ghost"
@@ -451,25 +456,25 @@ export default function AuditAccess() {
             onClick={() => void loadAudit()}
             className="w-auto"
           >
-            <RefreshCw size={14} aria-hidden className="mr-1" /> Refresh
+            <RefreshCw size={14} aria-hidden className="mr-1" /> {t("common.refresh")}
           </Button>
         </form>
 
         {auditError && <Alert>{auditError}</Alert>}
-        {rows === null && !auditError && <p className="text-sm text-muted">Loading…</p>}
+        {rows === null && !auditError && <p className="text-sm text-muted">{t("common.loading")}</p>}
         {rows?.length === 0 && !auditError && (
-          <p className="text-sm text-muted">No audit entries for this period.</p>
+          <p className="text-sm text-muted">{t("audit.noEntries")}</p>
         )}
         {rows && rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-divider text-xs text-muted">
-                  <th className="py-1 pr-4 font-normal">Time</th>
-                  <th className="py-1 pr-4 font-normal">Action</th>
-                  <th className="py-1 pr-4 font-normal">Status</th>
-                  <th className="py-1 pr-4 font-normal">Source</th>
-                  <th className="py-1 font-normal">Detail</th>
+                  <th className="py-1 pr-4 font-normal">{t("audit.colTime")}</th>
+                  <th className="py-1 pr-4 font-normal">{t("audit.colAction")}</th>
+                  <th className="py-1 pr-4 font-normal">{t("audit.colStatus")}</th>
+                  <th className="py-1 pr-4 font-normal">{t("audit.colSource")}</th>
+                  <th className="py-1 font-normal">{t("audit.colDetail")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -480,11 +485,11 @@ export default function AuditAccess() {
                     <td className="py-1 pr-4">
                       {isAuditError(e) ? (
                         <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">
-                          error
+                          {t("audit.statusError")}
                         </span>
                       ) : (
                         <span className="rounded bg-success/10 px-1.5 py-0.5 text-xs text-success">
-                          ok
+                          {t("audit.statusOk")}
                         </span>
                       )}
                     </td>
@@ -509,9 +514,9 @@ export default function AuditAccess() {
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             className="w-auto"
           >
-            ← Previous
+            ← {t("common.previous")}
           </Button>
-          <span className="text-xs text-muted">Page {page + 1}</span>
+          <span className="text-xs text-muted">{t("common.page", { page: page + 1 })}</span>
           <Button
             variant="ghost"
             type="button"
@@ -519,18 +524,18 @@ export default function AuditAccess() {
             onClick={() => setPage((p) => p + 1)}
             className="w-auto"
           >
-            Next →
+            {t("common.next")} →
           </Button>
         </div>
       </Card>
 
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
-          Data created / modified by this access
+          {t("audit.dataHeading")}
         </div>
         <form onSubmit={applyDataFilters} className="mb-3 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">From</span>
+            <span className="text-xs text-muted">{t("common.from")}</span>
             <input
               type="datetime-local"
               value={dataFromInput}
@@ -539,7 +544,7 @@ export default function AuditAccess() {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">To</span>
+            <span className="text-xs text-muted">{t("common.to")}</span>
             <input
               type="datetime-local"
               value={dataToInput}
@@ -548,7 +553,7 @@ export default function AuditAccess() {
             />
           </label>
           <Button type="submit" disabled={dataBusy} className="w-auto">
-            Apply
+            {t("common.apply")}
           </Button>
           <Button
             variant="ghost"
@@ -557,20 +562,19 @@ export default function AuditAccess() {
             onClick={() => void loadData()}
             className="w-auto"
           >
-            <RefreshCw size={14} aria-hidden className="mr-1" /> Refresh
+            <RefreshCw size={14} aria-hidden className="mr-1" /> {t("common.refresh")}
           </Button>
         </form>
 
         {dataError && <Alert>{dataError}</Alert>}
         {dataTruncated && (
           <Alert tone="info">
-            Only the {DATA_BATCH_LIMIT} most recent events of the period were scanned — narrow the
-            time range to see older matches.
+            {t("audit.dataTruncated", { limit: DATA_BATCH_LIMIT })}
           </Alert>
         )}
-        {dataRows === null && !dataError && <p className="text-sm text-muted">Loading…</p>}
+        {dataRows === null && !dataError && <p className="text-sm text-muted">{t("common.loading")}</p>}
         {dataRows?.length === 0 && !dataError && (
-          <p className="text-sm text-muted">No data created or modified by this access in this period.</p>
+          <p className="text-sm text-muted">{t("audit.noData")}</p>
         )}
         {dataRows && dataRows.length > 0 && (
           <>
@@ -578,11 +582,11 @@ export default function AuditAccess() {
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-divider text-xs text-muted">
-                    <th className="py-1 pr-4 font-normal">Time</th>
-                    <th className="py-1 pr-4 font-normal">Type</th>
-                    <th className="py-1 pr-4 font-normal">Streams</th>
-                    <th className="py-1 pr-4 font-normal">Relation</th>
-                    <th className="py-1 font-normal">Content</th>
+                    <th className="py-1 pr-4 font-normal">{t("audit.colTime")}</th>
+                    <th className="py-1 pr-4 font-normal">{t("audit.colType")}</th>
+                    <th className="py-1 pr-4 font-normal">{t("audit.colStreams")}</th>
+                    <th className="py-1 pr-4 font-normal">{t("audit.colRelation")}</th>
+                    <th className="py-1 font-normal">{t("audit.colContent")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -591,13 +595,13 @@ export default function AuditAccess() {
                       <td className="whitespace-nowrap py-1 pr-4 text-xs">{fmtTime(e.time)}</td>
                       <td className="py-1 pr-4 font-mono text-xs">
                         {e.type}
-                        {e.trashed ? " (trashed)" : ""}
+                        {e.trashed ? t("audit.trashedSuffix") : ""}
                       </td>
                       <td className="py-1 pr-4 font-mono text-xs">
                         {(e.streamIds ?? []).join(", ")}
                       </td>
                       <td className="whitespace-nowrap py-1 pr-4 text-xs">
-                        {eventRelation(e, accessId!)}
+                        {t(RELATION_KEYS[eventRelation(e, accessId!)])}
                       </td>
                       <td
                         className="max-w-[14rem] truncate py-1 font-mono text-xs"
@@ -618,12 +622,12 @@ export default function AuditAccess() {
                 onClick={() => setDataPage((p) => Math.max(0, p - 1))}
                 className="w-auto"
               >
-                ← Previous
+                ← {t("common.previous")}
               </Button>
               <span className="text-xs text-muted">
-                Page {dataPage + 1} / {Math.max(1, Math.ceil(dataRows.length / PAGE_SIZE))}
+                {t("common.pageOf", { page: dataPage + 1, total: Math.max(1, Math.ceil(dataRows.length / PAGE_SIZE)) })}
                 {" · "}
-                {dataRows.length} event(s)
+                {t("audit.eventCount", { count: dataRows.length })}
               </span>
               <Button
                 variant="ghost"
@@ -632,7 +636,7 @@ export default function AuditAccess() {
                 onClick={() => setDataPage((p) => p + 1)}
                 className="w-auto"
               >
-                Next →
+                {t("common.next")} →
               </Button>
             </div>
           </>

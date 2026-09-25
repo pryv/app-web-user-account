@@ -43,6 +43,22 @@ noun used in copy ("Register a new … account") and the header `Logo`;
 `brand.css` loads the fonts and is imported before the theme tokens, so the
 `--font-*` overrides can refer to them. The page title stays in `index.html`.
 
+## Localisation
+
+The UI text lives in `src/locales/en.json` (i18next). The language is chosen,
+in order: `?lang=` on the link, the account's language (after sign-in), the
+browser's, then English. Brand words are interpolated (`{{product}}`,
+`{{account}}`, from `src/brand.tsx`), so a catalog stays brand-neutral.
+
+To add a language:
+
+1. Copy `src/locales/en.json` to `src/locales/<code>.json` and translate the
+   values (keep the keys and the `{{...}}` placeholders).
+2. In `src/i18n.ts`, import it, add it to `resources`, and add `"<code>"` to
+   `SUPPORTED_LOCALES`.
+3. Run the tests: a parity test refuses a catalog with missing or extra keys.
+   The profile's language selector appears once more than one language ships.
+
 ## Extension points
 
 A fork adapts the app by replacing a few files rather than editing many. Each
@@ -83,6 +99,7 @@ Every route accepts these query parameters:
 | `pryvServiceInfoUrl` | Which Pryv platform to talk to. Optional when the deployment's `settings.json` names the platform (see [Deploy](#deploy-settingsjson)); when present it wins. |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
+| `lang` | UI language for this visit (e.g. `fr`, `fr-CH`), when the build ships it. It wins over the account's language and the browser's, and is not remembered after the visit. |
 | `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
 
 **Hand-off targets:**

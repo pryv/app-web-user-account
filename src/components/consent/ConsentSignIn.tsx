@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../ui";
 import { isMfaRequired, resolveUserId } from "../../lib/service";
 
@@ -44,7 +45,7 @@ export function ConsentSignIn({
   makeService,
   appId,
   usernameHint = "",
-  heading = "Sign in",
+  heading,
   prompt,
   onSignedIn,
   onCancel,
@@ -74,6 +75,7 @@ export function ConsentSignIn({
   /** Extra content under the form (register / password-reset links…). */
   footer?: ReactNode;
 }) {
+  const { t } = useTranslation();
   const [username, setUsername] = useState(usernameHint);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -86,7 +88,7 @@ export function ConsentSignIn({
 
   async function finish(userId: string, result: unknown) {
     const { token, endpoint } = extractSession(result);
-    if (!token) throw new Error("Sign-in did not return a session token.");
+    if (!token) throw new Error(t("consent.errorNoSessionToken"));
     await onSignedIn({ username: userId, personalToken: token, endpoint, connection: result });
   }
 
@@ -117,7 +119,7 @@ export function ConsentSignIn({
       }
       await finish(userId, result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      setError(err instanceof Error ? err.message : t("common.errorLoginFailed"));
     } finally {
       setBusy(false);
     }
@@ -136,7 +138,7 @@ export function ConsentSignIn({
       setMfaCode("");
       await finish(userId, result);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "MFA verification failed.");
+      setError(err instanceof Error ? err.message : t("common.errorMfaFailed"));
     } finally {
       setBusy(false);
     }
@@ -146,17 +148,17 @@ export function ConsentSignIn({
   if (mfaToken) {
     return (
       <Card>
-        <h1 className="mb-1 text-2xl">Verify it's you</h1>
+        <h1 className="mb-1 text-2xl">{t("common.mfaTitle")}</h1>
         <p className="mb-4 text-sm text-muted">
           {mfaMethod === "totp"
-            ? "Enter the 6-digit code from your authenticator app to confirm sign-in."
-            : "Enter the verification code we sent to confirm sign-in."}
+            ? t("consent.mfaPromptTotp")
+            : t("common.mfaPrompt")}
         </p>
         {error && <Alert>{error}</Alert>}
         <form onSubmit={submitMfa}>
           <Field
             id="mfaCode"
-            label="Verification code"
+            label={t("common.mfaCodeLabel")}
             inputMode="numeric"
             autoComplete="one-time-code"
             value={mfaCode}
@@ -165,7 +167,7 @@ export function ConsentSignIn({
           />
           <div className="flex gap-2">
             <Button type="submit" disabled={busy || !mfaCode}>
-              {busy ? "Verifying…" : "Verify"}
+              {busy ? t("common.verifying") : t("common.verify")}
             </Button>
             <Button
               variant="ghost"
@@ -175,7 +177,7 @@ export function ConsentSignIn({
                 setMfaCode("");
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
           </div>
         </form>
@@ -185,13 +187,13 @@ export function ConsentSignIn({
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">{heading}</h1>
+      <h1 className="mb-1 text-2xl">{heading ?? t("common.signInTitle")}</h1>
       {prompt && <p className="mb-6 text-sm text-muted">{prompt}</p>}
       {error && <Alert>{error}</Alert>}
       <form onSubmit={submitLogin}>
         <Field
           id="usernameOrEmail"
-          label="Username or email"
+          label={t("common.usernameOrEmail")}
           autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
@@ -199,7 +201,7 @@ export function ConsentSignIn({
         />
         <Field
           id="password"
-          label="Password"
+          label={t("common.password")}
           type="password"
           autoComplete="current-password"
           value={password}
@@ -208,7 +210,7 @@ export function ConsentSignIn({
         />
         <div className="flex gap-2">
           <Button type="submit" disabled={busy}>
-            {busy ? "Signing in…" : "Sign In"}
+            {busy ? t("common.signingIn") : t("common.signInButton")}
           </Button>
           {onCancel && (
             <Button
@@ -218,7 +220,7 @@ export function ConsentSignIn({
               onClick={onCancel}
               disabled={busy || cancelDisabled}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
         </div>

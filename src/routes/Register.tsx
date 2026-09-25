@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { getLegalSettings } from "../lib/deployedSettings";
@@ -8,7 +9,7 @@ import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from ".
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 import { brand } from "../brand";
-import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
+import { usernameRules, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {
   registrationRequiresVerifiedEmail,
   requestEmailChallenge,
@@ -29,6 +30,9 @@ interface FlatHosting {
 
 /** Account registration via `Service.createUser`. */
 export default function Register() {
+  const { t, i18n } = useTranslation();
+  // The UI language, reduced to its base code, is what the account is created with.
+  const language = i18n.language.split("-")[0];
   const { search } = useLocation();
   const navigate = useNavigate();
   const { setConnection } = useSession();
@@ -58,7 +62,7 @@ export default function Register() {
   // Terms come from settings.json `legal.terms`, else the service-info `terms`.
   const [serviceTerms, setServiceTerms] = useState<string | null>(null);
   const [accepted, setAccepted] = useState(false);
-  const lang = navigator.language || "en";
+  const lang = i18n.language;
   const legal = getLegalSettings();
   const termsUrl = resolveLocalizedUrl(legal?.terms, lang) ?? serviceTerms;
   const privacyUrl = resolveLocalizedUrl(legal?.privacy, lang);
@@ -96,32 +100,32 @@ export default function Register() {
         if (available.length > 0) setSelectedHosting(available[0].key);
       } catch (err: unknown) {
         if (cancelled) return;
-        setHostingsError(err instanceof Error ? err.message : "Could not load hostings.");
+        setHostingsError(err instanceof Error ? err.message : t("register.hostingsLoadError"));
         setHostings([]);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [search]);
+  }, [search, t]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     if (!isValidUsername(username)) {
-      setError("Invalid username — " + USERNAME_RULES);
+      setError(t("register.invalidUsername") + usernameRules());
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setError(t("register.passwordMismatch"));
       return;
     }
     if (termsRequired && !accepted) {
-      setError("Please accept the terms to create your account.");
+      setError(t("register.acceptTermsRequired"));
       return;
     }
     if (gateOn === true && emailProof == null) {
-      setError("Please verify your email address first.");
+      setError(t("emailVerification.errorVerifyFirst"));
       return;
     }
     setBusy(true);
@@ -137,8 +141,8 @@ export default function Register() {
           username,
           password,
           email,
-          hosting: selectedHosting || (await firstAvailableHosting(service)),
-          language: "en",
+          hosting: selectedHosting || (await firstAvailableHosting(service, t("register.noHostingAvailable"))),
+          language,
           invitationToken: "enjoy",
           emailProof,
         });
@@ -155,6 +159,7 @@ export default function Register() {
           // when no hostings list was available (Service lacks flatHostings or
           // call failed) fall back to the legacy `auto` sentinel.
           hosting: selectedHosting || "auto",
+          language,
         });
       }
       // Sign the fresh account in directly (same path as /signin) so the
@@ -181,7 +186,7 @@ export default function Register() {
     } catch (err: unknown) {
       // Route through the shared mapper so a verification-related refusal reads
       // as guidance rather than as the server's raw sentence.
-      setError(err instanceof Error ? emailVerificationErrorMessage(err) : "Registration failed.");
+      setError(err instanceof Error ? emailVerificationErrorMessage(err) : t("register.failed"));
     } finally {
       setBusy(false);
     }
@@ -194,9 +199,9 @@ export default function Register() {
     try {
       const service = getService(search);
       const info = (await service.info()) as unknown as { register: string };
-      await requestEmailChallenge(info.register, email, "en");
+      await requestEmailChallenge(info.register, email, language);
       setChallengeSent(true);
-      setChallengeNotice(`We sent a code to ${email}. Paste it below.`);
+      setChallengeNotice(t("emailVerification.codeSent", { email }));
     } catch (err: unknown) {
       setError(emailVerificationErrorMessage(err));
     } finally {
@@ -213,7 +218,7 @@ export default function Register() {
       const info = (await service.info()) as unknown as { register: string };
       const proof = await verifyEmailChallenge(info.register, email, normalizeCodeInput(code));
       setEmailProof(proof);
-      setChallengeNotice("Email verified. You can now create your account.");
+      setChallengeNotice(t("emailVerification.codeAccepted"));
     } catch (err: unknown) {
       // Keep the typed code so the holder can correct a single character.
       setError(emailVerificationErrorMessage(err));
@@ -231,10 +236,10 @@ export default function Register() {
   if (done) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Account created</h1>
-        <Alert tone="success">Your account is ready.</Alert>
+        <h1 className="mb-2 text-2xl">{t("register.createdTitle")}</h1>
+        <Alert tone="success">{t("register.accountReady")}</Alert>
         <Link to={signInPath} className="text-primary hover:underline">
-          Continue to sign in
+          {t("register.continueToSignIn")}
         </Link>
       </Card>
     );
@@ -242,16 +247,16 @@ export default function Register() {
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">Create account</h1>
-      <p className="mb-6 text-sm text-muted">Register a new {brand.accountNoun}.</p>
+      <h1 className="mb-1 text-2xl">{t("register.title")}</h1>
+      <p className="mb-6 text-sm text-muted">{t("register.subtitle", { account: brand.accountNoun })}</p>
       {error && <Alert>{error}</Alert>}
-      {hostingsError && <Alert tone="info">{hostingsError} Falling back to default hosting.</Alert>}
+      {hostingsError && <Alert tone="info">{hostingsError}{t("register.fallbackHosting")}</Alert>}
       <form onSubmit={onSubmit}>
         <Field
           id="username"
-          label="Username"
+          label={t("register.usernameLabel")}
           autoComplete="username"
-          hint={USERNAME_RULES}
+          hint={usernameRules()}
           value={username}
           onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
           required
@@ -260,10 +265,10 @@ export default function Register() {
           <>
             <Field
               id="email"
-              label="Email"
+              label={t("register.emailLabel")}
               type="email"
               autoComplete="email"
-              hint="Required. We will send you a verification code."
+              hint={t("register.emailHintRequired")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={emailProof != null}
@@ -279,13 +284,13 @@ export default function Register() {
                     onClick={() => void onSendCode()}
                     disabled={challengeBusy || !email}
                   >
-                    {challengeSent ? "Send a new code" : "Send verification code"}
+                    {challengeSent ? t("emailVerification.sendNewCode") : t("emailVerification.sendCode")}
                   </Button>
                   {challengeSent && (
                     <>
                       <Field
                         id="emailCode"
-                        label="Verification code"
+                        label={t("emailVerification.codeLabel")}
                         autoComplete="one-time-code"
                         inputMode="text"
                         placeholder="XXXX-XXXX"
@@ -297,7 +302,7 @@ export default function Register() {
                         onClick={() => void onVerifyCode()}
                         disabled={challengeBusy || code.length === 0}
                       >
-                        Verify code
+                        {t("emailVerification.verifyCode")}
                       </Button>
                     </>
                   )}
@@ -314,7 +319,7 @@ export default function Register() {
                       setChallengeNotice(null);
                     }}
                   >
-                    Change email
+                    {t("emailVerification.changeEmail")}
                   </Button>
                 </>
               )}
@@ -323,17 +328,17 @@ export default function Register() {
         ) : (
           <Field
             id="email"
-            label="Email"
+            label={t("register.emailLabel")}
             type="email"
             autoComplete="email"
-            hint="Optional, but required to reset your password."
+            hint={t("register.emailHint")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         )}
         <Field
           id="password"
-          label="Password"
+          label={t("password.label")}
           type="password"
           autoComplete="new-password"
           value={password}
@@ -342,7 +347,7 @@ export default function Register() {
         />
         <Field
           id="passwordConfirm"
-          label="Confirm password"
+          label={t("password.confirmationLabel")}
           type="password"
           autoComplete="new-password"
           value={confirm}
@@ -352,7 +357,7 @@ export default function Register() {
         {hostings && hostings.length > 0 && (
           <div className="mb-4">
             <label htmlFor="hosting" className="mb-1 block text-sm font-medium text-muted">
-              Hosting
+              {t("register.hostingLabel")}
             </label>
             <select
               id="hosting"
@@ -393,12 +398,12 @@ export default function Register() {
             busy || gateOn === null || (gateOn && emailProof == null) || (termsRequired && !accepted)
           }
         >
-          {busy ? "Creating…" : "Create account"}
+          {busy ? t("register.submitting") : t("register.submit")}
         </Button>
       </form>
       <div className="mt-4 text-sm">
         <Link to={signInPath} className="text-primary hover:underline">
-          Already have an account? Sign in
+          {t("register.alreadyHaveAccountSignIn")}
         </Link>
       </div>
     </Card>
@@ -407,20 +412,24 @@ export default function Register() {
 
 /** "I accept ..." naming only the documents the deployment links to. */
 function TermsLabel({ termsUrl, privacyUrl }: { termsUrl: string | null; privacyUrl: string | null }) {
-  const terms = termsUrl && <LegalLink href={termsUrl}>Terms of use</LegalLink>;
-  const privacy = privacyUrl && <LegalLink href={privacyUrl}>Privacy policy</LegalLink>;
-  if (terms && privacy) {
-    return (
-      <>
-        I accept the {terms} and have read the {privacy}
-      </>
-    );
-  }
-  if (terms) return <>I accept the {terms}</>;
-  return <>I have read the {privacy}</>;
+  const i18nKey =
+    termsUrl && privacyUrl
+      ? "register.acceptTermsAndPrivacy"
+      : termsUrl
+        ? "register.acceptTermsOnly"
+        : "register.acceptPrivacyOnly";
+  return (
+    <Trans
+      i18nKey={i18nKey}
+      components={{
+        terms: <LegalLink href={termsUrl ?? ""} />,
+        privacy: <LegalLink href={privacyUrl ?? ""} />,
+      }}
+    />
+  );
 }
 
-function LegalLink({ href, children }: { href: string; children: ReactNode }) {
+function LegalLink({ href, children }: { href: string; children?: ReactNode }) {
   return (
     <a href={href} target="_blank" rel="noreferrer" className="text-primary hover:underline">
       {children}
@@ -433,14 +442,14 @@ function LegalLink({ href, children }: { href: string; children: ReactNode }) {
  * `createUser({ hosting: 'auto' })` resolves internally. The gate path posts the
  * registration itself, so it has to pick the hosting the same way.
  */
-async function firstAvailableHosting(service: unknown): Promise<string> {
+async function firstAvailableHosting(service: unknown, noneMessage: string): Promise<string> {
   const svc = service as { flatHostings?: () => Promise<FlatHosting[]> };
   if (typeof svc.flatHostings === "function") {
     const list = await svc.flatHostings();
     const available = list.find((h) => h.available !== false);
     if (available) return available.key;
   }
-  throw new Error("No hosting is available.");
+  throw new Error(noneMessage);
 }
 
 function randomLocalPart(): string {
