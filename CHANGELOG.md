@@ -12,6 +12,24 @@
   always applies the operator default. The palette is driven by
   `<html data-theme="light|dark">`, so a rebrand can target either theme.
 
+### Changed
+
+- **Smaller font payload: only the weights and scripts the UI uses ship.**
+  `src/brand.css` imported seven full fontsource faces, each carrying every
+  script subset. It now imports the latin and latin-ext files of Roboto 400,
+  500 and 700 and Roboto Condensed 500 and 700. Roboto 300 and Roboto
+  Condensed 400 are dropped: no style uses them. The build output goes from
+  100 font files (1.5 MB, 796 KB of it woff2) to 20 (392 KB, 200 KB woff2).
+  A browser only ever downloaded the subsets a page displayed, so what changes
+  is mostly deploy size and build time. The latin files are declared last, so
+  a page in plain Latin text downloads only those.
+- **i18n trade-off:** Cyrillic, Greek, Vietnamese and the math and symbol
+  subsets no longer ship; latin-ext still covers Western and Central European
+  languages. An operator adding a language in another script adds the matching
+  subset imports to `src/brand.css` (README, Localisation, step 4); until then
+  that text renders in the fallback system font. A unit test (`[FNTS]`) keeps
+  full-weight imports from coming back by accident.
+
 ## 0.6.1 — 2026-09-25
 
 ### Fixed

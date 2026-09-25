@@ -244,3 +244,24 @@ test.describe("smoke — sign-in mocked happy path + sign-out URL preservation r
     await expect(page.getByLabel("Username or email")).toBeVisible();
   });
 });
+
+test.describe("smoke: brand fonts after subsetting", () => {
+  test("/signin heading uses Roboto Condensed 500", async ({ page }) => {
+    await page.goto("/signin");
+    const h1 = page.getByRole("heading", { name: "Sign in" });
+    await expect(h1).toBeVisible();
+    const style = await h1.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { family: cs.fontFamily, weight: cs.fontWeight };
+    });
+    expect(style.family.startsWith('"Roboto Condensed"')).toBe(true);
+    expect(style.weight).toBe("500");
+    // The cascade alone passes even when every font file 404s: load the face.
+    await page.evaluate(() => document.fonts.ready);
+    const faces = await h1.evaluate(async () =>
+      (await document.fonts.load('500 1em "Roboto Condensed"')).map((f) => f.status),
+    );
+    expect(faces.length).toBeGreaterThan(0);
+    expect(faces.every((s) => s === "loaded")).toBe(true);
+  });
+});
