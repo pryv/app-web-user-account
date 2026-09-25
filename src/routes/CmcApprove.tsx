@@ -162,10 +162,10 @@ export default function CmcApprove() {
     setWorking("accept");
     setError(null);
     try {
-      const res = (await cmc.acceptInvite(connection, params.capabilityUrl, {
+      const res = await cmc.acceptInvite(connection, params.capabilityUrl, {
         scopeStreamId: params.scopeStreamId,
         accessName: params.accessName ?? undefined,
-      })) as { acceptEventId: string };
+      });
       setDone("accepted");
       deliverResult({ ok: true, acceptEventId: res.acceptEventId }, params);
     } catch (err: unknown) {

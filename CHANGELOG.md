@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **`@pryv/cmc` 3.17.0.** The approval pages use the version whose accept result
+  no longer declares `dataGrantApiEndpoint` (matching what this app already hands
+  back), and whose popup helpers only trust the popup they opened. No behaviour
+  change in this app.
+
 ## 0.7.0 — 2026-09-25
 
 ### Added
