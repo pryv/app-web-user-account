@@ -66,6 +66,12 @@ per-subset fontsource files (`@fontsource/roboto/latin-400.css`, ...);
 script, comes back. If your rebrand uses another weight, import its latin and
 latin-ext files the same way.
 
+**Icons:** `lucide-react` icons, `aria-hidden` and always beside a text label,
+mark secondary and destructive actions and alert tones, while the primary CTAs of
+the auth and consent screens (the consent Accept/Refuse pair included) and tab
+navigation stay text-only; the full rule is in
+the header of [`src/components/ui.tsx`](src/components/ui.tsx).
+
 ## Localisation
 
 The UI text lives in `src/locales/en.json` (i18next). The language is chosen,

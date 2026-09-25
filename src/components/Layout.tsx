@@ -8,7 +8,7 @@ import ThemeToggle from "./ThemeToggle";
 
 /**
  * App shell. Renders the brand header with the theme toggle and, when the opener passed
- * `backUrl`/`backLabel`, a "← Back to {label}" affordance.
+ * `backUrl`/`backLabel`, a text-only "Back to {label}" link.
  *
  * Note: this back link is a user-initiated cancel/return — it is independent of
  * the auth-completion `returnURL` / OAuth2 `redirect_uri`, which the auth flow

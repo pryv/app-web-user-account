@@ -248,7 +248,7 @@ export default function Security() {
                 }}
                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-success/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success"
               >
-                <Copy size={14} aria-hidden /> {t("common.copy")}
+                <Copy size={12} aria-hidden /> {t("common.copy")}
               </button>
             </div>
             <ul className="font-mono text-xs">
@@ -341,7 +341,7 @@ export default function Security() {
                         }}
                         className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
-                        <Copy size={14} aria-hidden /> {t("common.copy")}
+                        <Copy size={12} aria-hidden /> {t("common.copy")}
                       </button>
                     </div>
                   </div>

@@ -29,6 +29,11 @@
   subset imports to `src/brand.css` (README, Localisation, step 4); until then
   that text renders in the fallback system font. A unit test (`[FNTS]`) keeps
   full-weight imports from coming back by accident.
+- **Consistent action icons.** On the Profile page, "Send verification link"
+  and "Add an email" now carry an icon like their neighbour "Edit". The
+  Previous / Next buttons of the access log use icons instead of the text
+  arrows `←` / `→`, which screen readers announced as part of the button name.
+  The icon rule is documented in `src/components/ui.tsx` and the README.
 
 ## 0.6.1 — 2026-09-25
 

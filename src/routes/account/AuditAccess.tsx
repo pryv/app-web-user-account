@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, RefreshCw, XCircle } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, XCircle } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -514,7 +514,7 @@ export default function AuditAccess() {
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             className="w-auto"
           >
-            ← {t("common.previous")}
+            <ChevronLeft size={14} aria-hidden className="mr-1" /> {t("common.previous")}
           </Button>
           <span className="text-xs text-muted">{t("common.page", { page: page + 1 })}</span>
           <Button
@@ -524,7 +524,7 @@ export default function AuditAccess() {
             onClick={() => setPage((p) => p + 1)}
             className="w-auto"
           >
-            {t("common.next")} →
+            {t("common.next")} <ChevronRight size={14} aria-hidden className="ml-1" />
           </Button>
         </div>
       </Card>
@@ -622,7 +622,7 @@ export default function AuditAccess() {
                 onClick={() => setDataPage((p) => Math.max(0, p - 1))}
                 className="w-auto"
               >
-                ← {t("common.previous")}
+                <ChevronLeft size={14} aria-hidden className="mr-1" /> {t("common.previous")}
               </Button>
               <span className="text-xs text-muted">
                 {t("common.pageOf", { page: dataPage + 1, total: Math.max(1, Math.ceil(dataRows.length / PAGE_SIZE)) })}
@@ -636,7 +636,7 @@ export default function AuditAccess() {
                 onClick={() => setDataPage((p) => p + 1)}
                 className="w-auto"
               >
-                {t("common.next")} →
+                {t("common.next")} <ChevronRight size={14} aria-hidden className="ml-1" />
               </Button>
             </div>
           </>

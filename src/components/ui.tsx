@@ -1,3 +1,27 @@
+/**
+ * Shared UI primitives: Card, Button, Alert, Field, SelectField, SectionLabel.
+ *
+ * Icon rule (applies to every screen; keep forks consistent with it):
+ * - Icons come from `lucide-react`, carry `aria-hidden`, and sit beside a text
+ *   label that names the action. Size them to the label: 14 px beside `text-sm`,
+ *   12 px beside `text-xs`, 16 px for alert tones.
+ * - Icons mark secondary and destructive actions (edit, add, send, copy,
+ *   refresh, open, details, back, previous/next, revoke, remove, delete, sign out)
+ *   and the tone of an `Alert`. When one action in a group carries an icon, its
+ *   siblings of the same kind carry one too.
+ * - Text-only: the primary CTAs of the sign-in, register, password and consent
+ *   screens (including the consent Accept/Refuse pair), a form's own
+ *   Save/Apply/Confirm/Cancel pair, confirm-dialog buttons, tab navigation,
+ *   links inside sentences, and the header's "Back to" link.
+ * - Icon-only controls are the exception, allowed only when the glyph is a
+ *   well-known symbol (for example the header theme toggle: system, light,
+ *   dark). Each button then needs an `aria-label` and a matching `title`
+ *   tooltip, and a group of them a labelled `role="group"`.
+ * - Choice cards (for example the MFA method picker) may carry a larger
+ *   illustrative icon, still `aria-hidden`, next to their title.
+ * - Never use text glyphs (arrows, crosses) as icons: they end up in the
+ *   accessible name.
+ */
 import type { ComponentProps, InputHTMLAttributes, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 
@@ -10,7 +34,12 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
-/** Primary/secondary button. */
+/**
+ * Primary/secondary button. The primary CTAs of the auth and consent screens
+ * stay text-only; secondary and
+ * destructive actions may lead with an `aria-hidden` icon per the icon rule at
+ * the top of this file.
+ */
 export function Button({
   variant = "primary",
   className = "",
