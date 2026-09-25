@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
@@ -19,6 +20,7 @@ interface MfaState {
  * `Service.mfaVerify`; supports resending via `Service.mfaChallenge`.
  */
 export default function MfaChallenge() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { setConnection } = useSession();
@@ -60,7 +62,7 @@ export default function MfaChallenge() {
         navigate(target.path);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Verification failed.");
+      setError(err instanceof Error ? err.message : t("mfa.verificationFailed"));
     } finally {
       setBusy(false);
     }
@@ -71,29 +73,29 @@ export default function MfaChallenge() {
     setNotice(null);
     try {
       await getService(search).mfaChallenge(userId, mfaToken);
-      setNotice("A new code has been sent.");
+      setNotice(t("mfa.codeSent"));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not resend the code.");
+      setError(err instanceof Error ? err.message : t("mfa.resendFailed"));
     }
   }
 
   return (
     <Card>
-      <h1 className="mb-1 text-2xl">Verify it's you</h1>
+      <h1 className="mb-1 text-2xl">{t("mfa.title")}</h1>
       <p className="mb-6 text-sm text-muted">
         {isTotp
-          ? "Enter the 6-digit code from your authenticator app to continue."
-          : "Enter the verification code to continue."}
+          ? t("mfa.subtitleTotp")
+          : t("mfa.subtitle")}
       </p>
       {!ready && (
-        <Alert>This challenge link is missing or expired. Start over from sign-in.</Alert>
+        <Alert>{t("mfa.linkInvalid")}</Alert>
       )}
       {error && <Alert>{error}</Alert>}
       {notice && <Alert tone="success">{notice}</Alert>}
       <form onSubmit={onSubmit}>
         <Field
           id="code"
-          label={isTotp ? "Authenticator code" : "Verification code"}
+          label={isTotp ? t("mfa.codeLabelTotp") : t("mfa.codeLabel")}
           inputMode="numeric"
           autoComplete="one-time-code"
           value={code}
@@ -102,14 +104,14 @@ export default function MfaChallenge() {
           required
         />
         <Button type="submit" disabled={!ready || busy}>
-          {busy ? "Verifying…" : "Verify"}
+          {busy ? t("mfa.verifyingButton") : t("mfa.submit")}
         </Button>
       </form>
       {/* TOTP codes are generated on the user's device — nothing to resend. */}
       {!isTotp && (
         <div className="mt-4 text-sm">
           <Button variant="ghost" type="button" onClick={resend} disabled={!ready}>
-            Resend code
+            {t("mfa.resend")}
           </Button>
         </div>
       )}

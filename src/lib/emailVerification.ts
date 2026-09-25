@@ -16,6 +16,8 @@
  * public, pre-account, and not part of the client's surface.
  */
 
+import i18n from "../i18n";
+
 export interface EmailView {
   value: string;
   primary: boolean;
@@ -113,7 +115,7 @@ async function postJson(url: string, body: unknown): Promise<Record<string, unkn
     parsed = null;
   }
   if (!res.ok) {
-    throw new ApiCallError(parsed?.error?.message ?? `Request failed (${res.status})`, {
+    throw new ApiCallError(parsed?.error?.message ?? i18n.t("emailVerification.errorRequestFailed", { status: res.status }), {
       id: parsed?.error?.id ?? null,
       status: res.status,
       data: parsed?.error?.data ?? null,
@@ -174,7 +176,7 @@ export async function verifyEmailToken(
 /** User-facing message for an ApiCallError from these calls. */
 export function emailVerificationErrorMessage(err: unknown): string {
   if (!(err instanceof ApiCallError)) {
-    return err instanceof Error ? err.message : "Something went wrong. Please try again.";
+    return err instanceof Error ? err.message : i18n.t("emailVerification.errorGeneric");
   }
   const data = (err.data ?? {}) as {
     retryAfterSeconds?: number;
@@ -183,19 +185,19 @@ export function emailVerificationErrorMessage(err: unknown): string {
     emailVerificationRequired?: boolean;
   };
   if (err.id === "too-many-attempts") {
-    if (data.reason === "exhausted") return "Too many wrong codes. Request a new code.";
+    if (data.reason === "exhausted") return i18n.t("emailVerification.errorCodesExhausted");
     if (typeof data.retryAfterSeconds === "number") {
-      return `Please wait ${data.retryAfterSeconds} seconds before requesting another code.`;
+      return i18n.t("emailVerification.errorRetryAfter", { seconds: data.retryAfterSeconds });
     }
   }
   if (err.id === "invalid-access-token" && typeof data.attemptsRemaining === "number") {
-    if (data.attemptsRemaining === 0) return "That code has expired. Request a new one.";
-    const tries = data.attemptsRemaining === 1 ? "attempt" : "attempts";
-    return `That code is not valid. ${data.attemptsRemaining} ${tries} left.`;
+    if (data.attemptsRemaining === 0) return i18n.t("emailVerification.errorCodeExpired");
+    if (data.attemptsRemaining === 1) return i18n.t("emailVerification.errorCodeInvalidOne");
+    return i18n.t("emailVerification.errorCodeInvalidMany", { count: data.attemptsRemaining });
   }
-  if (err.id === "item-already-exists") return "An account already uses this email address.";
+  if (err.id === "item-already-exists") return i18n.t("emailVerification.errorEmailTaken");
   if (err.id === "forbidden" && data.emailVerificationRequired === true) {
-    return "Please verify your email address first.";
+    return i18n.t("emailVerification.errorVerifyFirst");
   }
   return err.message;
 }

@@ -70,7 +70,9 @@
     "alreadySignedIn": "You are already signed in",
     "as": "as",
     "notMe": "Not me — use another account",
-    "failed": "Sign-in failed."
+    "failed": "Sign-in failed.",
+    "or": "or",
+    "withProvider": "Sign in with {{provider}}"
   },
   "password": {
     "label": "Password",
@@ -125,7 +127,12 @@
     "accountReady": "Your account is ready.",
     "continueToSignIn": "Continue to sign in",
     "alreadyHaveAccountSignIn": "Already have an account? Sign in",
-    "emailHintRequired": "Required. We will send you a verification code."
+    "emailHintRequired": "Required. We will send you a verification code.",
+    "acceptTermsRequired": "Please accept the terms to create your account.",
+    "acceptTermsAndPrivacy": "I accept the <terms>Terms of use</terms> and have read the <privacy>Privacy policy</privacy>",
+    "acceptTermsOnly": "I accept the <terms>Terms of use</terms>",
+    "acceptPrivacyOnly": "I have read the <privacy>Privacy policy</privacy>",
+    "noHostingAvailable": "No hosting is available."
   },
   "reset": {
     "requestTitle": "Reset password",
@@ -141,6 +148,17 @@
     "linkSentBody": "If the account exists, a reset link has been sent.",
     "backToSignIn": "Back to sign in",
     "failed": "Request failed."
+  },
+  "sso": {
+    "signingIn": "Signing you in…",
+    "completing": "Completing your third-party sign-in.",
+    "openFromSignIn": "Open this page from the sign-in screen to continue.",
+    "goToSignIn": "Go to sign-in",
+    "backToSignIn": "Back to sign-in",
+    "linkExpired": "This sign-in link has expired. Please start over from sign-in.",
+    "errorNoAccount": "No account is linked to this sign-in yet. Sign in with your password first, or create an account.",
+    "errorEmailNotVerified": "Verify this email address in your account before signing in this way.",
+    "errorFailed": "Sign-in could not be completed. Please try again."
   },
   "account": {
     "title": "Your account",
@@ -422,7 +440,8 @@
     "errorCodeInvalidMany": "That code is not valid. {{count}} attempts left.",
     "errorEmailTaken": "An account already uses this email address.",
     "errorVerifyFirst": "Please verify your email address first.",
-    "errorLinkInvalid": "This verification code is invalid or has expired. Request a new one from your account page."
+    "errorLinkInvalid": "This verification code is invalid or has expired. Request a new one from your account page.",
+    "errorRequestFailed": "Request failed ({{status}})"
   },
   "delegation": {
     "myDelegatesTitle": "My delegates",
