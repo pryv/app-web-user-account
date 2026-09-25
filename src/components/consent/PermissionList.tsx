@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { ConsentEntry } from "../../lib/consent";
 
 /**
@@ -22,6 +23,7 @@ export function PermissionList({
   onToggle?: (index: number, checked: boolean) => void;
   idPrefix?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <ul className="mb-2 space-y-1 text-sm">
       {entries.map((e, i) => (
@@ -37,7 +39,7 @@ export function PermissionList({
               />
               <span>{e.label}</span>
               {e.showRequiredHint && (
-                <span className="text-xs text-muted">(required by this app)</span>
+                <span className="text-xs text-muted">{t("consent.requiredByApp")}</span>
               )}
             </label>
           ) : (

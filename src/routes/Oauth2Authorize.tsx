@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { useLocation } from "react-router-dom";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
+import { tNodes } from "../components/consent/tNodes";
 import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
 import { assertHttpUrl } from "../lib/safeRedirect";
 import {
@@ -15,7 +18,6 @@ import {
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
-import { brand } from "../brand";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 
 interface InitResult {
@@ -34,7 +36,7 @@ function initFromQuery(search: string): InitResult {
       oauthState: null,
       signedState,
       pryvApi,
-      initError: "Missing required `state` query parameter.",
+      initError: i18n.t("oauth.errorMissingState"),
     };
   }
   if (!pryvApi) {
@@ -42,7 +44,7 @@ function initFromQuery(search: string): InitResult {
       oauthState: null,
       signedState,
       pryvApi,
-      initError: "Missing required `pryvApi` query parameter.",
+      initError: i18n.t("oauth.errorMissingPryvApi"),
     };
   }
   try {
@@ -61,8 +63,7 @@ function initFromQuery(search: string): InitResult {
         oauthState: null,
         signedState,
         pryvApi,
-        initError:
-          "This authorization request carries no consent offer — restart the flow from the app.",
+        initError: i18n.t("oauth.errorNoOffer"),
       };
     }
     return { oauthState, signedState, pryvApi, initError: null };
@@ -71,7 +72,7 @@ function initFromQuery(search: string): InitResult {
       oauthState: null,
       signedState,
       pryvApi,
-      initError: err instanceof Error ? err.message : "Invalid authorization request.",
+      initError: err instanceof Error ? err.message : i18n.t("oauth.invalidRequest"),
     };
   }
 }
@@ -89,6 +90,7 @@ function initFromQuery(search: string): InitResult {
  * persisted session is deliberately not reused on this security surface.
  */
 export default function Oauth2Authorize() {
+  const { t, i18n: i18nInstance } = useTranslation();
   const { search } = useLocation();
   const { oauthState, signedState, pryvApi, initError } = useMemo(
     () => initFromQuery(search),
@@ -137,7 +139,7 @@ export default function Oauth2Authorize() {
       // The consent-layer `mandatory` flag never travels in the grant.
       const granted = grantedPermissions(entries, grantedFlags);
       if (granted.length === 0) {
-        setError("Keep at least one permission ticked, or use Reject.");
+        setError(t("oauth.errorKeepOne"));
         setBusy(null);
         return;
       }
@@ -153,7 +155,7 @@ export default function Oauth2Authorize() {
       assertHttpUrl(redirectTo);
       window.location.assign(redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to accept authorization.");
+      setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
       setBusy(null);
     }
   }
@@ -166,7 +168,7 @@ export default function Oauth2Authorize() {
       assertHttpUrl(redirectTo);
       window.location.assign(redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to refuse authorization.");
+      setError(err instanceof Error ? err.message : t("oauth.errorRefuseFailed"));
       setBusy(null);
     }
   }
@@ -174,9 +176,9 @@ export default function Oauth2Authorize() {
   if (initError || !oauthState) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Invalid authorization request</h1>
+        <h1 className="mb-2 text-2xl">{t("oauth.invalidTitle")}</h1>
         <div id="oauthInitError">
-          <Alert>{initError ?? "Invalid authorization request."}</Alert>
+          <Alert>{initError ?? t("oauth.invalidRequest")}</Alert>
         </div>
       </Card>
     );
@@ -188,9 +190,11 @@ export default function Oauth2Authorize() {
   // receives only the ticked subset.
   if (personalToken && oauthState.offer) {
     const offer = oauthState.offer;
-    const title = pickText(offer.title);
-    const description = pickText(offer.description);
-    const consentText = pickText(offer.consent);
+    // The offer's texts in the UI language when the app supplied it.
+    const lang = (i18nInstance.language || "en").split("-")[0];
+    const title = pickText(offer.title, lang);
+    const description = pickText(offer.description, lang);
+    const consentText = pickText(offer.consent, lang);
     return (
       <Card>
         <ConsentPanel
@@ -222,8 +226,8 @@ export default function Oauth2Authorize() {
           choiceHint={
             <p className="mb-4 text-sm text-muted">
               {offer.allowUserChoice
-                ? "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject."
-                : "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none."}
+                ? t("oauth.untickHintRequired")
+                : t("oauth.allOrNothingHint")}
             </p>
           }
           busy={busy}
@@ -247,7 +251,9 @@ export default function Oauth2Authorize() {
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
-          <strong>{requestingApp?.name ?? oauthState.clientId}</strong> wants to access your {brand.accountNoun}.
+          {tNodes("oauth.appPromptLine", {
+            app: <strong>{requestingApp?.name ?? oauthState.clientId}</strong>,
+          })}
         </span>
       }
       onSignedIn={({ username: u, personalToken: token }) => {

@@ -10,6 +10,7 @@
  * `ConsentEntry[]` and hands it to the shared components.
  */
 
+import i18n from "../i18n";
 import type { StreamLabelResolver } from "./streamLabels";
 
 /** Localized text map: language code → string (e.g. `{ en: "…" }`). */
@@ -120,12 +121,13 @@ export function grantedPermissions(
     .map(({ permission: { mandatory: _m, optIn: _o, ...p } }) => p as OfferPermission);
 }
 
-const LEVEL_LABELS: Record<string, string> = {
-  read: "Read",
-  contribute: "Add and modify",
-  manage: "Fully manage",
-  "create-only": "Add (write-only)",
-  none: "No access to",
+/** Catalog key of each access level's verb (what the row lets the app do). */
+const LEVEL_LABEL_KEYS: Record<string, string> = {
+  read: "consent.permLevelRead",
+  contribute: "consent.permLevelContribute",
+  manage: "consent.permLevelManage",
+  "create-only": "consent.permLevelCreateOnly",
+  none: "consent.permLevelNone",
 };
 
 /**
@@ -135,15 +137,15 @@ const LEVEL_LABELS: Record<string, string> = {
  */
 export function permissionLabel(p: OfferPermission, labelFor?: StreamLabelResolver): string {
   if ("streamId" in p && typeof p.streamId === "string") {
-    const target =
-      p.streamId === "*"
-        ? "all your data"
-        : `“${resolvedLabel(labelFor, p.streamId) ?? p.name ?? p.defaultName ?? p.streamId}”`;
-    return `${LEVEL_LABELS[p.level] ?? p.level} ${target}`;
+    const levelKey = Object.hasOwn(LEVEL_LABEL_KEYS, p.level) ? LEVEL_LABEL_KEYS[p.level] : null;
+    const level = levelKey != null ? i18n.t(levelKey) : p.level;
+    if (p.streamId === "*") return i18n.t("consent.permissionOnAllData", { level });
+    const name = resolvedLabel(labelFor, p.streamId) ?? p.name ?? p.defaultName ?? p.streamId;
+    return i18n.t("consent.permissionOnStream", { level, name });
   }
   const f = p as { feature: string; setting: string };
   if (f.feature === "selfRevoke" && f.setting === "forbidden") {
-    return "The app cannot revoke its own access (only you can)";
+    return i18n.t("consent.featureSelfRevokeForbidden");
   }
   return `${f.feature}: ${f.setting}`;
 }

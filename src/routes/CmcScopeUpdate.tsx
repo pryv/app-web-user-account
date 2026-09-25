@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
@@ -73,6 +75,7 @@ function deliverResult(
  * rendered with the shared consent kit before the user decides.
  */
 export default function CmcScopeUpdate() {
+  const { t } = useTranslation();
   const { connection } = useSession();
   const labelFor = useStreamLabels(storedServiceInfoUrl());
   const { search } = useLocation();
@@ -106,14 +109,14 @@ export default function CmcScopeUpdate() {
         if (res?.error) throw Object.assign(new Error(res.error.message), { id: res.error.id });
         const content = res?.event?.content;
         if (!content || !Array.isArray(content.newPermissions)) {
-          throw new Error("The scope-update request carries no permission set.");
+          throw new Error(i18n.t("cmc.scopeNoPermissionSet"));
         }
         // `message` may be a plain string or a localized text map.
         const message =
           typeof content.message === "string"
             ? content.message
             : content.message != null && typeof content.message === "object"
-              ? pickText(content.message as LocalizableText)
+              ? pickText(content.message as LocalizableText, (i18n.language || "en").split("-")[0])
               : "";
         setProposal({
           newPermissions: content.newPermissions,
@@ -122,7 +125,7 @@ export default function CmcScopeUpdate() {
         });
       } catch (err: unknown) {
         if (cancelled) return;
-        setLoadError(scopeUpdateFailure(err, "Could not load the scope-update request.").message);
+        setLoadError(scopeUpdateFailure(err, i18n.t("cmc.scopeLoadFailed")).message);
       }
     })();
     return () => {
@@ -133,8 +136,8 @@ export default function CmcScopeUpdate() {
   if (!params.scopeRequestEventId) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Approve scope update</h1>
-        <Alert>This link is missing its scope-request reference.</Alert>
+        <h1 className="mb-2 text-2xl">{t("cmc.scopeUpdateTitle")}</h1>
+        <Alert>{t("cmc.missingScopeRequestRef")}</Alert>
       </Card>
     );
   }
@@ -142,15 +145,15 @@ export default function CmcScopeUpdate() {
   if (!connection) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Approve scope update</h1>
+        <h1 className="mb-2 text-2xl">{t("cmc.scopeUpdateTitle")}</h1>
         <p className="mb-4 text-sm text-muted">
-          Sign in to review and approve this scope-update request.
+          {t("cmc.scopeSigninPrompt")}
         </p>
         <Link
           to={signInLinkFor("/cmc-scope-update", search)}
           className="inline-flex w-full items-center justify-center rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:brightness-95"
         >
-          Sign in to continue
+          {t("cmc.signinContinue")}
         </Link>
       </Card>
     );
@@ -173,7 +176,7 @@ export default function CmcScopeUpdate() {
         params,
       );
     } catch (err: unknown) {
-      const failure = scopeUpdateFailure(err, "Could not approve.");
+      const failure = scopeUpdateFailure(err, t("cmc.errorCouldNotApprove"));
       setError(failure.message);
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
@@ -196,7 +199,7 @@ export default function CmcScopeUpdate() {
         params,
       );
     } catch (err: unknown) {
-      const failure = scopeUpdateFailure(err, "Could not decline.");
+      const failure = scopeUpdateFailure(err, t("cmc.errorCouldNotDecline"));
       setError(failure.message);
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
@@ -208,24 +211,24 @@ export default function CmcScopeUpdate() {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
-          {done === "accepted" ? "Scope update approved" : "Scope update declined"}
+          {done === "accepted" ? t("cmc.scopeApprovedTitle") : t("cmc.scopeDeclinedTitle")}
         </h1>
         <Alert tone={done === "accepted" ? "success" : "danger"}>
           {done === "accepted"
-            ? "The new permission set has been granted."
-            : "The scope-update request was declined."}
+            ? t("cmc.scopeApprovedBody")
+            : t("cmc.scopeDeclinedBody")}
         </Alert>
         {doneNote && <p className="mb-2 text-sm text-muted">{doneNote}</p>}
-        <p className="text-sm text-muted">You can close this window.</p>
+        <p className="text-sm text-muted">{t("cmc.closeWindow")}</p>
       </Card>
     );
   }
 
   return (
     <Card>
-      <h1 className="mb-2 text-2xl">Approve scope update</h1>
+      <h1 className="mb-2 text-2xl">{t("cmc.scopeUpdateTitle")}</h1>
       <p className="mb-4 text-sm text-muted">
-        The collector is requesting a change to the permissions you previously granted.
+        {t("cmc.scopeUpdateIntro")}
       </p>
       {loadError && <Alert>{loadError}</Alert>}
       {proposal?.answered && <Alert>{proposal.answered}</Alert>}
@@ -233,21 +236,21 @@ export default function CmcScopeUpdate() {
       {proposal && (
         <>
           {proposal.message && <p className="mb-4 text-sm text-muted">{proposal.message}</p>}
-          <p className="mb-2 text-sm">Proposed permissions:</p>
+          <p className="mb-2 text-sm">{t("cmc.scopeProposedLabel")}</p>
           <PermissionList entries={consentEntries(proposal.newPermissions, { labelFor })} />
         </>
       )}
       {!proposal && !loadError && (
-        <p className="mb-4 text-sm text-muted">Loading the proposed permissions…</p>
+        <p className="mb-4 text-sm text-muted">{t("cmc.scopeLoadingProposal")}</p>
       )}
       <div className="mb-4 rounded bg-body p-3 text-xs break-all text-muted">
-        Request id: {params.scopeRequestEventId}
+        {t("cmc.requestIdLabel")} {params.scopeRequestEventId}
       </div>
       <ConsentActions
         busy={working}
         disabled={!proposal || proposal.answered != null}
-        acceptLabel="Approve"
-        refuseLabel="Decline"
+        acceptLabel={t("cmc.approve")}
+        refuseLabel={t("cmc.decline")}
         onAccept={() => void accept()}
         onRefuse={() => void refuse()}
       />

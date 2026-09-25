@@ -3,18 +3,23 @@
  * wording and the id handed back to the calling app are unit-testable.
  */
 
+import i18n from "../i18n";
 import { platformError } from "./apiError";
 import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
 
+/*
+ * The functions below translate at call time. The `*_MESSAGE` constants are
+ * the same texts in the language active when this module loaded, kept for
+ * callers that compare against them.
+ */
+
 /** The platform could not find the request on the signed-in account. */
-export const REQUEST_NOT_FOUND_MESSAGE =
-  "This request could not be found on your account. The link may be stale, or it was built with the wrong request id.";
+export const REQUEST_NOT_FOUND_MESSAGE = i18n.t("cmc.scopeRequestNotFound");
 
 /** The wait ended before the platform recorded an outcome: not a failure. */
-export const OUTCOME_UNKNOWN_MESSAGE =
-  "The platform is still processing your answer. Check your connected apps in a moment; do not answer again.";
+export const OUTCOME_UNKNOWN_MESSAGE = i18n.t("cmc.scopeOutcomeUnknown");
 
-export const ALREADY_ANSWERED_MESSAGE = "You have already answered this request.";
+export const ALREADY_ANSWERED_MESSAGE = i18n.t("cmc.scopeAlreadyAnswered");
 
 const NOT_FOUND_IDS = new Set(["cmc-scope-request-not-found", "unknown-resource"]);
 // `cmc-capability-timeout` is what @pryv/cmc before 3.14 reports for the same situation.
@@ -25,8 +30,8 @@ const OUTCOME_UNKNOWN_IDS = new Set(["cmc-scope-update-outcome-unknown", "cmc-ca
  * as a message, or null while it is still open.
  */
 export function answeredRequestMessage(status: unknown): string | null {
-  if (status === "accepted") return `${ALREADY_ANSWERED_MESSAGE} It was approved.`;
-  if (status === "refused") return `${ALREADY_ANSWERED_MESSAGE} It was declined.`;
+  if (status === "accepted") return i18n.t("cmc.scopeAlreadyAnsweredApproved");
+  if (status === "refused") return i18n.t("cmc.scopeAlreadyAnsweredDeclined");
   return null;
 }
 
@@ -41,19 +46,19 @@ export interface ScopeUpdateFailure {
  * Map an error from `acceptScopeUpdate` / `refuseScopeUpdate` (or from loading
  * the request) to the id returned to the opener and the text shown.
  */
-export function scopeUpdateFailure(err: unknown, fallback = "Could not complete the request."): ScopeUpdateFailure {
+export function scopeUpdateFailure(err: unknown, fallback: string = i18n.t("cmc.scopeCouldNotComplete")): ScopeUpdateFailure {
   if (isGrantRequiresOwner(err)) {
     return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
   }
   const { id, message } = platformError(err, fallback);
   if (id != null && NOT_FOUND_IDS.has(id)) {
-    return { reason: id, message: REQUEST_NOT_FOUND_MESSAGE };
+    return { reason: id, message: i18n.t("cmc.scopeRequestNotFound") };
   }
   if (id != null && OUTCOME_UNKNOWN_IDS.has(id)) {
-    return { reason: id, message: OUTCOME_UNKNOWN_MESSAGE };
+    return { reason: id, message: i18n.t("cmc.scopeOutcomeUnknown") };
   }
   if (id === "cmc-scope-request-already-answered") {
-    return { reason: id, message: ALREADY_ANSWERED_MESSAGE };
+    return { reason: id, message: i18n.t("cmc.scopeAlreadyAnswered") };
   }
   return { reason: id ?? message, message };
 }
@@ -64,7 +69,7 @@ export function scopeUpdateFailure(err: unknown, fallback = "Could not complete 
  */
 export function scopeUpdateSuccessNote(result: { peerNotified?: boolean } | null | undefined): string | null {
   if (result?.peerNotified === false) {
-    return "The collector could not be notified yet; the platform will retry.";
+    return i18n.t("cmc.scopePeerNotNotified");
   }
   return null;
 }

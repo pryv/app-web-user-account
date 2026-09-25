@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
@@ -10,7 +12,7 @@ import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { isTrustedResultOrigin } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { signInLinkFor } from "../lib/handoffReturn";
-import { inviteFailure, OFFER_UNREADABLE_MESSAGE } from "../lib/cmcAccept";
+import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
 import { useStreamLabels } from "../lib/useConsentDisplay";
 
 /** Strip the token-bearing field, leaving only the non-sensitive outcome. */
@@ -103,6 +105,7 @@ function deliverResult(
  * subject, and the in-app approval UX relies on the session.
  */
 export default function CmcApprove() {
+  const { t } = useTranslation();
   const { connection } = useSession();
   const { search } = useLocation();
   const params = parseCmcParams(search);
@@ -123,7 +126,7 @@ export default function CmcApprove() {
       .then((o: unknown) => setOffer(o as OfferView))
       .catch((err: unknown) => {
         console.warn("cmc-accept: could not read the offer", err);
-        setError({ message: OFFER_UNREADABLE_MESSAGE, tone: "danger" });
+        setError({ message: i18n.t(OFFER_UNREADABLE_KEY), tone: "danger" });
       })
       .finally(() => setLoadingOffer(false));
   }, [params.capabilityUrl]);
@@ -131,8 +134,8 @@ export default function CmcApprove() {
   if (!params.capabilityUrl) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Approve request</h1>
-        <Alert>This approval link is missing its request reference.</Alert>
+        <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
+        <Alert>{t("cmc.missingRequestRef")}</Alert>
       </Card>
     );
   }
@@ -140,16 +143,17 @@ export default function CmcApprove() {
   if (!connection) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Approve request</h1>
+        <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
         <p className="mb-4 text-sm text-muted">
-          Sign in to review and approve this request
-          {offer?.requester?.username ? ` from ${offer.requester.username}@${offer.requester.host}` : ""}.
+          {offer?.requester?.username
+            ? t("cmc.signinPromptFrom", { requester: `${offer.requester.username}@${offer.requester.host}` })
+            : t("cmc.signinPrompt")}
         </p>
         <Link
           to={signInLinkFor("/cmc-accept", search)}
           className="inline-flex w-full items-center justify-center rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:brightness-95"
         >
-          Sign in to continue
+          {t("cmc.signinContinue")}
         </Link>
       </Card>
     );
@@ -158,8 +162,8 @@ export default function CmcApprove() {
   if (!params.scopeStreamId) {
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">Approve request</h1>
-        <Alert>This approval link is missing the destination scope (scopeStreamId).</Alert>
+        <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
+        <Alert>{t("cmc.missingScope")}</Alert>
       </Card>
     );
   }
@@ -183,7 +187,7 @@ export default function CmcApprove() {
         params,
       );
     } catch (err: unknown) {
-      const failure = inviteFailure(err, "Could not approve.");
+      const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
       setError({ message: failure.message, tone: failure.tone });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
@@ -202,7 +206,7 @@ export default function CmcApprove() {
       setDone("refused");
       deliverResult({ ok: false, reason: "declined-by-user" }, params);
     } catch (err: unknown) {
-      const failure = inviteFailure(err, "Could not decline.");
+      const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"));
       setError({ message: failure.message, tone: failure.tone });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
@@ -214,22 +218,22 @@ export default function CmcApprove() {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
-          {done === "accepted" ? "Request approved" : "Request declined"}
+          {done === "accepted" ? t("cmc.approvedTitle") : t("cmc.declinedTitle")}
         </h1>
         <Alert tone={done === "accepted" ? "success" : "danger"}>
           {done === "accepted"
-            ? "The requesting app has been granted the access you approved."
-            : "The request was declined."}
+            ? t("cmc.approvedBody")
+            : t("cmc.declinedBody")}
         </Alert>
-        <p className="text-sm text-muted">You can close this window.</p>
+        <p className="text-sm text-muted">{t("cmc.closeWindow")}</p>
       </Card>
     );
   }
 
   return (
     <Card>
-      <h1 className="mb-2 text-2xl">Approve request</h1>
-      {loadingOffer && <p className="mb-4 text-sm text-muted">Loading offer…</p>}
+      <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
+      {loadingOffer && <p className="mb-4 text-sm text-muted">{t("cmc.loadingOffer")}</p>}
       {error && <Alert tone={error.tone}>{error.message}</Alert>}
       {offer && (
         <>
@@ -240,12 +244,12 @@ export default function CmcApprove() {
             <strong data-testid="cmc-requester">
               {offer.requester.username
                 ? `${offer.requester.username}@${offer.requester.host}`
-                : "An unidentified requester"}
+                : t("cmc.unidentifiedRequester")}
             </strong>
             {offer.requester.displayName && (
-              <span className="text-muted"> (calls itself &ldquo;{offer.requester.displayName}&rdquo;)</span>
+              <span className="text-muted"> {t("cmc.callsItself", { name: offer.requester.displayName })}</span>
             )}{" "}
-            is requesting access:
+            {t("cmc.requestingAccess")}
           </p>
           {offer.consent && Object.values(offer.consent)[0] && (
             <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
@@ -256,8 +260,8 @@ export default function CmcApprove() {
       <ConsentActions
         busy={working}
         disabled={!offer}
-        acceptLabel="Approve"
-        refuseLabel="Decline"
+        acceptLabel={t("cmc.approve")}
+        refuseLabel={t("cmc.decline")}
         onAccept={() => void approve()}
         onRefuse={() => void decline()}
       />
