@@ -2,7 +2,7 @@
  * "Back to opening app" affordance.
  *
  * Pages accept `backUrl` + `backLabel` query parameters so the app can render a
- * "← Back to {label}" link and send the user back to the app that opened them.
+ * text-only "Back to {label}" link and send the user back to the app that opened them.
  *
  * IMPORTANT — this is deliberately NOT named `returnURL`. The auth flow already
  * has a `returnURL` (the completion redirect that carries `state`/`poll`/`code`,

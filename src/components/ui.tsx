@@ -35,7 +35,8 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 }
 
 /**
- * Primary/secondary button. Primary CTAs stay text-only; secondary and
+ * Primary/secondary button. The primary CTAs of the auth and consent screens
+ * stay text-only; secondary and
  * destructive actions may lead with an `aria-hidden` icon per the icon rule at
  * the top of this file.
  */

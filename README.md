@@ -58,8 +58,9 @@ pick lasts for the page only. To change the dark palette, override the
 no URL parameter for the theme.
 
 **Icons:** `lucide-react` icons, `aria-hidden` and always beside a text label,
-mark secondary and destructive actions and alert tones, while primary CTAs, the
-consent Accept/Refuse pair and tab navigation stay text-only; the full rule is in
+mark secondary and destructive actions and alert tones, while the primary CTAs of
+the auth and consent screens (the consent Accept/Refuse pair included) and tab
+navigation stay text-only; the full rule is in
 the header of [`src/components/ui.tsx`](src/components/ui.tsx).
 
 ## Localisation
