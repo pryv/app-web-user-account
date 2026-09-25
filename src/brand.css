@@ -1,11 +1,23 @@
 /*
  * Brand fonts. Replace this file (with `brand.tsx`) to rebrand the app.
  * Imported first from `index.css`.
+ *
+ * Only the faces the UI renders are shipped, in the latin and latin-ext
+ * subsets: Roboto 400 (body), 500 (labels, buttons), 700 (<strong>);
+ * Roboto Condensed 500 (headings) and 700 (<strong> inside a heading).
+ * The per-subset files declare no unicode-range, so the browser tries the
+ * last declared face first: latin comes after latin-ext, so plain Latin text
+ * only downloads the latin files. To support another script, add its subset
+ * per face, for example `@import "@fontsource/roboto/cyrillic-400.css";`
+ * (see README, Localisation).
  */
-@import "@fontsource/roboto/300.css";
-@import "@fontsource/roboto/400.css";
-@import "@fontsource/roboto/500.css";
-@import "@fontsource/roboto/700.css";
-@import "@fontsource/roboto-condensed/400.css";
-@import "@fontsource/roboto-condensed/500.css";
-@import "@fontsource/roboto-condensed/700.css";
+@import "@fontsource/roboto/latin-ext-400.css";
+@import "@fontsource/roboto/latin-400.css";
+@import "@fontsource/roboto/latin-ext-500.css";
+@import "@fontsource/roboto/latin-500.css";
+@import "@fontsource/roboto/latin-ext-700.css";
+@import "@fontsource/roboto/latin-700.css";
+@import "@fontsource/roboto-condensed/latin-ext-500.css";
+@import "@fontsource/roboto-condensed/latin-500.css";
+@import "@fontsource/roboto-condensed/latin-ext-700.css";
+@import "@fontsource/roboto-condensed/latin-700.css";

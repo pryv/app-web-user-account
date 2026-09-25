@@ -43,6 +43,15 @@ noun used in copy ("Register a new … account") and the header `Logo`;
 `brand.css` loads the fonts and is imported before the theme tokens, so the
 `--font-*` overrides can refer to them. The page title stays in `index.html`.
 
+**Fonts shipped:** Roboto 400 (body), 500 (labels, buttons) and 700 (`<strong>`),
+and Roboto Condensed 500 (headings) and 700 (`<strong>` inside a heading), in the
+latin and latin-ext subsets only (Western and Central European languages,
+including French, Polish, Czech, Turkish and Romanian). `brand.css` imports the
+per-subset fontsource files (`@fontsource/roboto/latin-400.css`, ...);
+`src/brand.test.ts` fails if a full `<weight>.css` import, which ships every
+script, comes back. If your rebrand uses another weight, import its latin and
+latin-ext files the same way.
+
 ## Localisation
 
 The UI text lives in `src/locales/en.json` (i18next). The language is chosen,
@@ -58,6 +67,13 @@ To add a language:
    `SUPPORTED_LOCALES`.
 3. Run the tests: a parity test refuses a catalog with missing or extra keys.
    The profile's language selector appears once more than one language ships.
+4. If the language uses a script outside latin and latin-ext (Cyrillic, Greek,
+   Vietnamese, ...), add its font subset for every face in `src/brand.css`, for
+   example `@import "@fontsource/roboto/cyrillic-400.css";` above the
+   `latin-ext-400.css` line (the latin files stay last, so Latin text keeps
+   using them), for each weight of both families, and allow that subset
+   in the `SUBSET_ENTRY` pattern of `src/brand.test.ts`. Without it the text
+   renders in the fallback system font.
 
 ## Extension points
 
