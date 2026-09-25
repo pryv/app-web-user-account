@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useTranslation, Trans } from "react-i18next";
+import { useTranslation } from "react-i18next";
+import { tNodes } from "../../components/consent/tNodes";
 import { Card, Field, Alert } from "../../components/ui";
 import { Trash2, Download } from "lucide-react";
 import { useSession, signinPath, storedServiceInfoUrl } from "../../lib/session";
@@ -107,11 +108,7 @@ export default function DataRights() {
         </p>
         {error && <Alert>{error}</Alert>}
         <p className="mb-2 text-sm">
-          <Trans
-            i18nKey="data.confirmPrompt"
-            values={{ username: username ?? t("data.yourUsername") }}
-            components={{ strong: <strong /> }}
-          />
+          {tNodes("data.confirmPrompt", { username: <strong>{username ?? t("data.yourUsername")}</strong> })}
         </p>
         <Field
           id="confirm-username"

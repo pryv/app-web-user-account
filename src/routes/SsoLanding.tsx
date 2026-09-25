@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { getService } from "../lib/service";
-import { PLATFORM_NOT_ALLOWED } from "../lib/deployedSettings";
+import { PlatformNotAllowedError } from "../lib/deployedSettings";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
@@ -112,12 +112,11 @@ export default function SsoLanding() {
         }
       } catch (err: unknown) {
         const id = err != null && typeof err === "object" ? (err as { id?: string }).id : undefined;
-        const message = err instanceof Error ? err.message : "";
         setError(
           id === "shared-secret-unavailable"
             ? t("sso.linkExpired")
-            : message === PLATFORM_NOT_ALLOWED
-              ? PLATFORM_NOT_ALLOWED
+            : err instanceof PlatformNotAllowedError
+              ? err.message
               : ssoErrorMessage("sso-failed"),
         );
       }

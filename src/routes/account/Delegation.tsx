@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { RefreshCw, UserPlus, LogIn, X, Trash2, Check } from "lucide-react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
+import { tNodes } from "../../components/consent/tNodes";
 import { Pryv } from "../../lib/pryvClient";
 import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
@@ -428,7 +429,7 @@ function AcceptDialog({
       <div className="w-full max-w-lg rounded-lg border border-divider bg-card p-6 shadow-lg">
         <h3 className="mb-2 text-lg">{t("delegation.acceptDialogTitle", { username })}</h3>
         <p className="mb-3 text-sm text-muted">
-          <Trans i18nKey="delegation.acceptDialogBody" values={{ username }} components={{ b: <strong /> }} />
+          {tNodes("delegation.acceptDialogBody", { username: <strong>{username}</strong> })}
         </p>
         <DelegateWarning />
         <div className="flex justify-end gap-2">

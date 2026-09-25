@@ -74,6 +74,18 @@ describe("[DSBN] delegated-session banner", () => {
     expect(await screen.findByRole("button", { name: "Back to parent" })).toBeTruthy();
   });
 
+  it("[DSB4] names are inserted as text, never parsed as markup", async () => {
+    signedIn();
+    accessInfo.mockResolvedValue({
+      delegation: { isDelegatedAccess: true, controlledUsername: "<b>kid</b>", delegate: { username: "<i>p</i>" } },
+    });
+    renderAt("/account/profile");
+    const banner = await screen.findByTestId("delegated-session-banner");
+    expect(banner.textContent).toContain("Acting as <b>kid</b> via <i>p</i>");
+    expect(banner.querySelector("b")).toBeNull();
+    expect(banner.querySelector("i")).toBeNull();
+  });
+
   it("[DSB3] shows nothing for an ordinary session", async () => {
     signedIn();
     accessInfo.mockResolvedValue({ type: "personal" });

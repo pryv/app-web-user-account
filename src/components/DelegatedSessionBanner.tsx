@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
+import { tNodes } from "./consent/tNodes";
 import { useSession } from "../lib/session";
 
 /** The `delegation` field of `access-info` for an access acting on a controlled account. */
@@ -61,11 +62,12 @@ export default function DelegatedSessionBanner() {
       className="flex flex-wrap items-center justify-between gap-2 border-b border-warning bg-warning px-4 py-2 text-sm text-pryv-black"
     >
       <span>
-        <Trans
-          i18nKey={delegate ? "delegation.bannerActingVia" : "delegation.bannerActing"}
-          values={{ controlled: controlled ?? t("delegation.bannerAnotherAccount"), delegate }}
-          components={{ strong: <strong /> }}
-        />
+        {/* Names come from the server or this browser's storage: inserted as
+            text nodes, never parsed as markup. */}
+        {tNodes(delegate ? "delegation.bannerActingVia" : "delegation.bannerActing", {
+          controlled: <strong>{controlled ?? t("delegation.bannerAnotherAccount")}</strong>,
+          delegate: <strong>{delegate}</strong>,
+        })}
       </span>
       {actingAs && (
         <button

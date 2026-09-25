@@ -3,8 +3,9 @@ import { parseAuthParams } from "./authParams";
 import {
   getDefaultServiceInfoUrl,
   isAllowedServiceInfoUrl,
-  PLATFORM_NOT_ALLOWED,
+  PlatformNotAllowedError,
 } from "./deployedSettings";
+import i18n from "../i18n";
 
 /**
  * Resolves the Pryv `Service` for the current page. Memoised per service-info URL.
@@ -19,12 +20,10 @@ export function getService(search: string = window.location.search) {
   const serviceInfoUrl = parseAuthParams(search).serviceInfoUrl ?? getDefaultServiceInfoUrl();
   if (!serviceInfoUrl) {
     // A deployment problem, not a user one: no param and no settings.json platform.
-    throw new Error(
-      "No platform configured: set serviceInfoUrl in settings.json or open this page with pryvServiceInfoUrl.",
-    );
+    throw new Error(i18n.t("common.noPlatformConfigured"));
   }
   // Before anything is sent there (a password, a registration).
-  if (!isAllowedServiceInfoUrl(serviceInfoUrl)) throw new Error(PLATFORM_NOT_ALLOWED);
+  if (!isAllowedServiceInfoUrl(serviceInfoUrl)) throw new PlatformNotAllowedError();
   if (cached?.url !== serviceInfoUrl) {
     cached = { url: serviceInfoUrl, service: new Pryv.Service(serviceInfoUrl) };
   }
@@ -47,13 +46,11 @@ export async function resolveUserId(
   const id = input.trim().toLowerCase();
   if (!id.includes("@")) return id;
   if (typeof service.userIdForEmail !== "function") {
-    throw new Error(
-      "This platform does not support email lookup — please use your username.",
-    );
+    throw new Error(i18n.t("errors.emailLookupUnsupported"));
   }
   const username = await service.userIdForEmail(id);
   if (!username) {
-    throw new Error("No account found for this email address.");
+    throw new Error(i18n.t("errors.noAccountForEmail"));
   }
   return username;
 }

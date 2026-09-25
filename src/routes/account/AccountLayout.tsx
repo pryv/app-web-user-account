@@ -1,6 +1,8 @@
 import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut } from "lucide-react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { syncLocaleFromAccount } from "../../i18n";
 import { useSession, signinPath } from "../../lib/session";
 import { ACCOUNT_TABS } from "../../accountTabs";
 
@@ -14,6 +16,25 @@ export default function AccountLayout() {
   const { connection, setConnection } = useSession();
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
+
+  // Adopt the account's language once per session, whichever account page
+  // the user lands on (a `?lang=` on the link still wins).
+  useEffect(() => {
+    if (!connection) return;
+    let cancelled = false;
+    Promise.resolve()
+      .then(() => connection.api([{ method: "account.get", params: {} }]))
+      .then((results) => {
+        const [res] = results as Array<{ account?: { language?: string } }>;
+        if (!cancelled) syncLocaleFromAccount(res?.account?.language);
+      })
+      .catch(() => {
+        // Keep the current language.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connection]);
 
   if (!connection) {
     // Come back to the page that was asked for once signed in.

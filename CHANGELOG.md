@@ -6,7 +6,7 @@
 
 - **The UI is translatable.** Every screen reads its text from
   `src/locales/en.json` (i18next); adding a language is one catalog file plus
-  two lines in `src/i18n.ts`, and a parity test keeps catalogs complete (see
+  three lines in `src/i18n.ts`, and a parity test keeps catalogs complete (see
   "Localisation" in the README). English only ships for now.
 - **Language choice:** `?lang=` on a link wins for that visit, then the
   account's language after sign-in, then the browser's, then English. The
