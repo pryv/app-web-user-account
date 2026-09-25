@@ -14,6 +14,7 @@ import {
   getAppCatalogUrl,
   isAllowedServiceInfoUrl,
   getAllowedPlatforms,
+  getThemeSettings,
   _setDeployedSettingsForTest,
   BOOT_FETCH_TIMEOUT_MS,
 } from "./deployedSettings";
@@ -150,5 +151,28 @@ describe("[DSET] deployed settings", () => {
     });
     expect(parseDeployedSettings([])).toEqual({});
     expect(parseDeployedSettings(null)).toEqual({});
+  });
+});
+
+describe("[THMS] theme settings", () => {
+  it("[THS1] unset means follow the system, user choice allowed", () => {
+    expect(getThemeSettings()).toEqual({ default: "system", userChoice: true });
+  });
+
+  it("[THS2] reads a valid default and userChoice", () => {
+    for (const d of ["light", "dark", "system"] as const) {
+      _setDeployedSettingsForTest(parseDeployedSettings({ theme: { default: d, userChoice: false } }));
+      expect(getThemeSettings()).toEqual({ default: d, userChoice: false });
+    }
+  });
+
+  it("[THS3] drops invalid values and keeps the valid ones", () => {
+    expect(parseDeployedSettings({ theme: { default: "blue", userChoice: "no" } })).toEqual({});
+    expect(parseDeployedSettings({ theme: "dark" })).toEqual({});
+    expect(parseDeployedSettings({ theme: ["dark"] })).toEqual({});
+    _setDeployedSettingsForTest(parseDeployedSettings({ theme: { default: "Dark", userChoice: false } }));
+    expect(getThemeSettings()).toEqual({ default: "system", userChoice: false });
+    _setDeployedSettingsForTest(parseDeployedSettings({ theme: { default: "dark", userChoice: 0 } }));
+    expect(getThemeSettings()).toEqual({ default: "dark", userChoice: true });
   });
 });
