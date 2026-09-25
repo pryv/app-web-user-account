@@ -34,17 +34,25 @@ vi.mock("../lib/accessFlow", async (importOriginal) => ({
 
 // Sign-in is a whole flow of its own (password, MFA); stand in for it with
 // a button that hands back a session, which is all this screen needs.
+// What the page would hand the sign-in form: the platform the password goes to.
+const signInSeam = vi.hoisted(() => ({
+  makeService: null as null | (() => unknown),
+  services: [] as string[],
+}));
+
 vi.mock("../components/consent/ConsentSignIn", () => ({
   ConsentSignIn: ({
     onSignedIn,
     externalError,
     footer,
+    makeService,
   }: {
     onSignedIn: (s: { username: string; personalToken: string; endpoint: string }) => void;
     externalError?: string | null;
     footer?: ReactNode;
+    makeService?: () => unknown;
   }) => (
-    <div>
+    <div ref={() => void (signInSeam.makeService = makeService ?? null)}>
       <button
         type="button"
         onClick={() =>
@@ -65,11 +73,29 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
   ),
 }));
 
-vi.mock("pryv", () => ({ default: { Service: class {} } }));
+vi.mock("pryv", () => ({
+  default: {
+    Service: class {
+      constructor(serviceInfoUrl: string) {
+        signInSeam.services.push(serviceInfoUrl);
+      }
+    },
+  },
+}));
 
 import Auth from "./Auth";
 import { SessionProvider } from "../lib/session";
 import { _setDeployedSettingsForTest } from "../lib/deployedSettings";
+import { _clearPlatformInfoCacheForTest } from "../lib/pollPlatform";
+
+/** A fetch answering the given service-info URLs, 404 for anything else. */
+function servingInfo(bodies: Record<string, unknown>) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (!(url in bodies)) return new Response("not found", { status: 404 });
+    return new Response(JSON.stringify(bodies[url]), { status: 200 });
+  });
+}
 
 const OFFER = [
   { streamId: "diary", level: "read", defaultName: "Journal" },
@@ -125,6 +151,9 @@ describe("[AUCP] /auth consent panel", () => {
     // tests and the previous render would still be in the document.
     cleanup();
     vi.unstubAllGlobals();
+    _clearPlatformInfoCacheForTest();
+    signInSeam.makeService = null;
+    signInSeam.services.length = 0;
   });
 
   it("[AUC1] opens an opt-in entry unticked and a required one locked, and mints only what is ticked", async () => {
@@ -434,8 +463,12 @@ describe("[AUCP] /auth consent panel", () => {
     expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual(OFFER);
   });
 
+  const OWN_INFO = { register: "https://own.test/reg/", api: "https://{username}.own.test/" };
+
   it("[AUPG] a restricted deployment refuses a request on another platform before fetching it", async () => {
     _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://own.test/reg/service/info"] });
+    const fetchStub = servingInfo({ "https://own.test/reg/service/info": OWN_INFO });
+    vi.stubGlobal("fetch", fetchStub);
     try {
       render(
         <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1"]}>
@@ -446,15 +479,18 @@ describe("[AUCP] /auth consent panel", () => {
       );
       expect(await screen.findByText(/does not serve the platform/)).toBeTruthy();
       expect(flow.loadAccessState).not.toHaveBeenCalled();
+      // Only the operator-configured service info was read, never the poll host.
+      expect(fetchStub.mock.calls.map((c) => String(c[0]))).toEqual(["https://own.test/reg/service/info"]);
     } finally {
       _setDeployedSettingsForTest(null);
     }
   });
 
   it("[AUPG2] an allowed serviceInfo next to someone else's poll URL is refused (the core's link shape)", async () => {
-    // The poll URL (mocked to derive https://core.test/service/info) is on a
-    // platform outside the list, while serviceInfo names an allowed one.
+    // The poll URL is on a platform outside the list, while serviceInfo names
+    // an allowed one.
     _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://own.test/reg/service/info"] });
+    vi.stubGlobal("fetch", servingInfo({ "https://own.test/reg/service/info": OWN_INFO }));
     try {
       render(
         <MemoryRouter
@@ -476,6 +512,10 @@ describe("[AUCP] /auth consent panel", () => {
 
   it("[AUPG3] both on an allowed platform: the request loads", async () => {
     _setDeployedSettingsForTest({ allowedServiceInfoUrls: ["https://core.test/service/info"] });
+    vi.stubGlobal(
+      "fetch",
+      servingInfo({ "https://core.test/service/info": { register: "https://core.test/", api: "https://{username}.core.test/" } }),
+    );
     try {
       flow.loadAccessState.mockResolvedValue(stateWithConsent());
       render(
@@ -491,6 +531,55 @@ describe("[AUCP] /auth consent panel", () => {
       );
       await waitFor(() => expect(flow.loadAccessState).toHaveBeenCalled());
       expect(screen.queryByText(/does not serve the platform/)).toBeNull();
+    } finally {
+      _setDeployedSettingsForTest(null);
+    }
+  });
+
+  it("[AUPG4] a DNS-based platform's core poll URL loads, and sign-in and links use the allowed platform", async () => {
+    // The shape pryv.me serves: the poll URL is on the core that took the
+    // request, the platform is named by its register's service info.
+    const REG = "https://reg.pryv.me/service/info";
+    _setDeployedSettingsForTest({ serviceInfoUrl: REG, allowedServiceInfoUrls: [] });
+    vi.stubGlobal(
+      "fetch",
+      servingInfo({
+        [REG]: {
+          register: "https://reg.pryv.me/",
+          access: "https://access.pryv.me/access/",
+          api: "https://{username}.pryv.me/",
+          support: "https://support.pryv.me/",
+        },
+      }),
+    );
+    try {
+      // The poll host echoes a service info of its own; it must not be what is shown.
+      flow.loadAccessState.mockResolvedValue({
+        ...stateWithConsent(),
+        serviceInfo: { api: "https://evil.example/", support: "https://evil.example/help" },
+      });
+      render(
+        <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore-euc1.pryv.me%2Freg%2Faccess%2Fk1"]}>
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      await screen.findByText("sign-in-stub");
+      expect(flow.loadAccessState).toHaveBeenCalledWith("https://core-euc1.pryv.me/reg/access/k1");
+      expect(screen.queryByText(/does not serve the platform/)).toBeNull();
+      // The path-derived guess (the core's own /reg/service/info) is not used.
+      expect(flow.deriveServiceInfoUrlFromPollUrl).not.toHaveBeenCalled();
+      // The password would go to the allowed platform.
+      signInSeam.makeService!();
+      expect(signInSeam.services).toEqual([REG]);
+      // The register / reset links carry it too.
+      const register = screen.getAllByRole("link").find((a) => a.getAttribute("href")?.startsWith("/register"));
+      expect(new URLSearchParams(register!.getAttribute("href")!.split("?")[1]).get("pryvServiceInfoUrl")).toBe(REG);
+      // The platform details shown come from the allowed platform's own service info.
+      const hrefs = () => screen.getAllByRole("link").map((a) => a.getAttribute("href"));
+      await waitFor(() => expect(hrefs()).toContain("https://support.pryv.me/"));
+      expect(hrefs()).not.toContain("https://evil.example/help");
     } finally {
       _setDeployedSettingsForTest(null);
     }

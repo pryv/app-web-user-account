@@ -29,6 +29,13 @@ export interface DeployedSettings {
    * `serviceInfoUrl`). A link naming another one is refused, so a crafted
    * link cannot send the user's password to a platform the operator never
    * chose. Unset: any platform, as before.
+   *
+   * An access request's poll URL is accepted when it is served from an origin
+   * the platform's service info declares (`register`, `access`, `api`; with an
+   * `https://{username}.example.com/` api, any host one label under
+   * `example.com`, which covers the cores of a DNS-based platform). Cores whose
+   * origin service info does not name (several cores behind a path-style api)
+   * must be listed in `trustedApiOrigins`.
    */
   allowedServiceInfoUrls?: string[];
   trustedApiOrigins?: string[];
@@ -129,7 +136,8 @@ export function getDefaultServiceInfoUrl(): string | null {
   return current.serviceInfoUrl ?? null;
 }
 
-function sameUrl(a: string, b: string): boolean {
+/** Whether two URL strings name the same URL once normalised. */
+export function sameUrl(a: string, b: string): boolean {
   try {
     return new URL(a).href === new URL(b).href;
   } catch {
@@ -147,6 +155,17 @@ export function isAllowedServiceInfoUrl(serviceInfoUrl: string): boolean {
   if (!allowed) return true;
   const candidates = current.serviceInfoUrl ? [...allowed, current.serviceInfoUrl] : allowed;
   return candidates.some((c) => sameUrl(c, serviceInfoUrl));
+}
+
+/**
+ * The platforms this deployment is restricted to (`allowedServiceInfoUrls` plus
+ * the default `serviceInfoUrl`), or null when it serves any platform.
+ */
+export function getAllowedPlatforms(): string[] | null {
+  const allowed = current.allowedServiceInfoUrls;
+  if (!allowed) return null;
+  const all = current.serviceInfoUrl ? [current.serviceInfoUrl, ...allowed] : [...allowed];
+  return all.filter((u, i) => all.findIndex((o) => sameUrl(o, u)) === i);
 }
 
 /** Message shown when a link names a platform this deployment does not serve. */

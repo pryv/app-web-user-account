@@ -13,6 +13,7 @@ import {
   getLegalSettings,
   getAppCatalogUrl,
   isAllowedServiceInfoUrl,
+  getAllowedPlatforms,
   _setDeployedSettingsForTest,
   BOOT_FETCH_TIMEOUT_MS,
 } from "./deployedSettings";
@@ -62,6 +63,15 @@ describe("[DSAL] allowed platforms", () => {
     }
     _setDeployedSettingsForTest(parseDeployedSettings({ allowedServiceInfoUrls: [] }));
     expect(isAllowedServiceInfoUrl(OWN)).toBe(false);
+  });
+
+  it("[DAL4] getAllowedPlatforms: null unrestricted, else the default first and no duplicates", () => {
+    _setDeployedSettingsForTest({ serviceInfoUrl: OWN });
+    expect(getAllowedPlatforms()).toBeNull();
+    _setDeployedSettingsForTest({ serviceInfoUrl: OWN, allowedServiceInfoUrls: [OTHER, OWN] });
+    expect(getAllowedPlatforms()).toEqual([OWN, OTHER]);
+    _setDeployedSettingsForTest({ allowedServiceInfoUrls: [] });
+    expect(getAllowedPlatforms()).toEqual([]);
   });
 });
 

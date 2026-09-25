@@ -15,7 +15,8 @@ import {
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch } from "../lib/authParams";
-import { isAllowedServiceInfoUrl, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
+import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
+import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
@@ -56,20 +57,6 @@ import {
 } from "../lib/accessFlow";
 
 const APP_ID = "pryv-app-web-user-account";
-
-/**
- * Whether this deployment may handle an access request: BOTH the platform the
- * poll URL belongs to and the one named by the link's service-info param must
- * be served. The poll URL matters on its own: the page loads the request from
- * it and posts the granted token back to it, so an allowed service-info next
- * to someone else's poll URL would hand them the token. An undeterminable poll
- * platform is refused when the deployment restricts platforms.
- */
-function requestPlatformAllowed(pollUrl: string | null, serviceInfoUrl: string | null): boolean {
-  const pollPlatform = pollUrl ? deriveServiceInfoUrlFromPollUrl(pollUrl) : null;
-  if (!isAllowedServiceInfoUrl(pollPlatform ?? "")) return false;
-  return serviceInfoUrl == null || isAllowedServiceInfoUrl(serviceInfoUrl);
-}
 
 /**
  * Whether a diverged access is updated in place (keeping its token, so
@@ -165,6 +152,20 @@ export default function Auth() {
   const [serviceInfo, setServiceInfo] = useState<{ register?: string; support?: string; api?: string } | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
 
+  // A deployment restricted to some platforms handles a request only when BOTH
+  // the poll URL and the link's service-info param belong to an allowed one.
+  // The poll URL matters on its own: the page loads the request from it and
+  // posts the granted token back to it, so an allowed service-info next to
+  // someone else's poll URL would hand them the token. `platform` is the
+  // allowed platform it resolved to (see lib/pollPlatform), null until then;
+  // nothing is loaded from the link, and no password sent, before it is set.
+  const restricted = getAllowedPlatforms() != null;
+  const [platform, setPlatform] = useState<{ serviceInfoUrl: string } | null>(null);
+  // The platform's service-info URL, for sign-in, links and display.
+  const svcInfoUrlForFlow = restricted
+    ? platform?.serviceInfoUrl ?? null
+    : query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
+
   const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,8 +201,7 @@ export default function Auth() {
   const consentForm = accessState?.consent;
   const allowsChoice = consentForm?.allowUserChoice === true;
 
-  const flowSvcInfoUrl =
-    query.serviceInfoUrl ?? (query.pollUrl ? deriveServiceInfoUrlFromPollUrl(query.pollUrl) : null);
+  const flowSvcInfoUrl = svcInfoUrlForFlow;
   // The operator's catalog is the only source of a display name for the app:
   // the request's own id is shown when the catalog does not know it, never a
   // name the app supplied about itself.
@@ -309,24 +309,34 @@ export default function Auth() {
       setInitError(t("consent.errorMissingPoll"));
       return;
     }
-    // Checked before anything is fetched from the link.
-    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) {
-      setInitError(platformNotAllowedMessage());
-      return;
-    }
     let cancelled = false;
     void (async () => {
       try {
+        // Checked before anything is fetched from the link.
+        let trustedInfo: { register?: string; support?: string; api?: string } | null = null;
+        if (restricted) {
+          const resolved = await resolvePollPlatform(query.pollUrl!, query.serviceInfoUrl);
+          if (cancelled) return;
+          if (!resolved) {
+            setInitError(platformNotAllowedMessage());
+            return;
+          }
+          setPlatform({ serviceInfoUrl: resolved.serviceInfoUrl });
+          trustedInfo = resolved.serviceInfo;
+        }
         const state = await loadAccessState(query.pollUrl!);
         if (cancelled) return;
         setAccessState(state);
-        // Service-info comes from (in order) the access-state, the pryvServiceInfoUrl
-        // query param, or a same-core derivation from the poll URL.
+        // Service-info comes from (in order) the allowed platform's own (restricted
+        // deployments), the access-state, the pryvServiceInfoUrl query param, or a
+        // same-core derivation from the poll URL.
         let svcInfoUrl = query.serviceInfoUrl;
         if (!svcInfoUrl && !state.serviceInfo) {
           svcInfoUrl = deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
         }
-        if (state.serviceInfo) {
+        if (trustedInfo) {
+          setServiceInfo(trustedInfo);
+        } else if (state.serviceInfo) {
           setServiceInfo(state.serviceInfo as { register?: string; support?: string; api?: string });
         } else if (svcInfoUrl) {
           const r = await fetch(svcInfoUrl, { headers: { Accept: "application/json" } });
@@ -355,10 +365,9 @@ export default function Auth() {
   }, []);
 
   function makeService() {
-    const svcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
     // The password goes to this platform: refuse one this deployment does not serve.
-    if (!requestPlatformAllowed(query.pollUrl, query.serviceInfoUrl)) throw new PlatformNotAllowedError();
-    return new Pryv.Service(svcInfoUrl ?? "");
+    if (restricted && platform == null) throw new PlatformNotAllowedError();
+    return new Pryv.Service(svcInfoUrlForFlow ?? "");
   }
 
   /**
@@ -818,7 +827,7 @@ export default function Auth() {
   // also carry that request, so a user who creates an account or resets a
   // password there comes back to this consent screen instead of landing on
   // the profile while the app keeps waiting.
-  const linksSvcInfoUrl = query.serviceInfoUrl ?? deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
+  const linksSvcInfoUrl = svcInfoUrlForFlow;
   const linksParams = new URLSearchParams(accessRequestSearch(search));
   if (linksSvcInfoUrl && !linksParams.has("pryvServiceInfoUrl")) {
     linksParams.set("pryvServiceInfoUrl", linksSvcInfoUrl);
