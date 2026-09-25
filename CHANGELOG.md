@@ -47,6 +47,13 @@
   records the data-grant access without its token. The dead branch and its
   origin check are removed; the requesting app obtains its endpoint on its own
   side with `@pryv/cmc` `waitForAccept` (`grantedAccessApiEndpoint`).
+- **The reference copy moves to its own origin, `https://account.pryv.me/`.**
+  It was served from `https://pryv.github.io/app-web-user-account/`, an origin
+  shared with other project pages, any of which could read the signed-in
+  session (and its personal token) from `localStorage`. `npm run build:pages`
+  now builds for the root path and writes the `CNAME`; the old address
+  redirects to the new one. Users of the published copy sign in again once.
+  Self-hosted deployments are not affected.
 
 ### Fixed
 

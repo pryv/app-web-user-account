@@ -20,9 +20,9 @@ forked, re-branded, and self-hosted by operators.
 > `localStorage`, which every page of the same origin (scheme + host + port)
 > can read, and it contains the user's personal token. Serve the app from a
 > dedicated origin (for example `https://account.example.com/`), never from a
-> path on a host that also serves other pages or apps. The copy published at
-> `https://pryv.github.io/app-web-user-account/` shares its origin with other
-> project pages and is a **demo only**: do not use it with a real account.
+> path on a host that also serves other pages or apps. The reference copy is
+> published on its own origin at `https://account.pryv.me/` (the former
+> `https://pryv.github.io/app-web-user-account/` address redirects there).
 
 ## Tech stack
 
