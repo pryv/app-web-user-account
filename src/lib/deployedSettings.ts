@@ -10,7 +10,8 @@
  *     "serviceInfoUrl": "https://reg.example.com/service/info",
  *     "trustedApiOrigins": ["https://core.example.com"],
  *     "legal": { "terms": { "en": "https://..." }, "privacy": "https://..." },
- *     "appCatalogUrl": "https://assets.example.com/apps/list.json"
+ *     "appCatalogUrl": "https://assets.example.com/apps/list.json",
+ *     "theme": { "default": "system", "userChoice": true }
  *   }
  *
  * Precedence for the same concern: URL parameter, then settings.json, then the
@@ -21,6 +22,7 @@
 import { httpUrlOrNull } from "./safeRedirect";
 import { parseLegalSettings, type LegalSettings } from "./legal";
 import i18n from "../i18n";
+import { isThemeChoice, type ThemeSettings } from "./theme";
 
 export interface DeployedSettings {
   serviceInfoUrl?: string;
@@ -41,6 +43,8 @@ export interface DeployedSettings {
   trustedApiOrigins?: string[];
   legal?: LegalSettings;
   appCatalogUrl?: string;
+  /** Only the keys the file sets validly; see getThemeSettings() for defaults. */
+  theme?: Partial<ThemeSettings>;
 }
 
 /**
@@ -77,6 +81,16 @@ function origins(raw: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/** `{ default, userChoice }`, keeping only valid values; undefined when none is. */
+function themeSettings(raw: unknown): Partial<ThemeSettings> | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const json = raw as Record<string, unknown>;
+  const out: Partial<ThemeSettings> = {};
+  if (isThemeChoice(json.default)) out.default = json.default;
+  if (typeof json.userChoice === "boolean") out.userChoice = json.userChoice;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** Narrow an untrusted settings.json body onto `DeployedSettings`. */
 export function parseDeployedSettings(raw: unknown): DeployedSettings {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
@@ -97,6 +111,8 @@ export function parseDeployedSettings(raw: unknown): DeployedSettings {
   if (legal) out.legal = legal;
   const appCatalogUrl = url(json.appCatalogUrl);
   if (appCatalogUrl) out.appCatalogUrl = appCatalogUrl;
+  const theme = themeSettings(json.theme);
+  if (theme) out.theme = theme;
   return out;
 }
 
@@ -194,6 +210,14 @@ export function getLegalSettings(): LegalSettings | null {
 /** Where the operator publishes its app catalog, or null. */
 export function getAppCatalogUrl(): string | null {
   return current.appCatalogUrl ?? null;
+}
+
+/** The operator's theme ruling: default `system`, user choice allowed unless set to false. */
+export function getThemeSettings(): ThemeSettings {
+  return {
+    default: current.theme?.default ?? "system",
+    userChoice: current.theme?.userChoice ?? true,
+  };
 }
 
 /** Test hook: set what loadDeployedSettings() would have parsed. */

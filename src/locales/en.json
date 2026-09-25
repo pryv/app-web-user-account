@@ -589,5 +589,11 @@
     "errInvalidUsernameRules": "Invalid username — {{rules}}",
     "noticeAccountCreatedManaged": "Account {{username}} created — you now manage it.",
     "createIntro": "Create a brand-new account that this account fully controls from the start — for example a child or a dependent adult you look after."
+  },
+  "theme": {
+    "label": "Theme",
+    "system": "Use system theme",
+    "light": "Light theme",
+    "dark": "Dark theme"
   }
 }

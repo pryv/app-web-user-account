@@ -16,8 +16,8 @@
  * for components added later.
  *
  * Semantic surface/text tokens (`--color-body`, `--color-ink`, `--color-muted`,
- * `--color-card`) are also mirrored here for the same reason — and to give
- * operators a single set of variables to override for dark-mode.
+ * `--color-card`) are also mirrored here for the same reason, and to give
+ * operators a single set of variables to override (the dark values follow).
  */
 :root {
   --color-pryv-red: #bd1026;
@@ -35,19 +35,37 @@
 }
 
 /*
- * Default dark-mode palette. Triggered only when the user's OS is in dark
- * mode AND the operator hasn't pinned the theme. To force light or dark
- * regardless of the OS, override these variables on `:root` (or
- * `[data-theme=light]`/`[data-theme=dark]` if you wire the attribute).
+ * Dark palette. `<html data-theme>` is set at boot from settings.json
+ * (`theme.default`) and the user's pick in the header toggle (see
+ * src/lib/theme.ts): `dark` forces it, `light` forces the light palette above,
+ * and no attribute follows the OS (`prefers-color-scheme`). Both blocks below
+ * carry the same values: an operator overriding the dark palette overrides
+ * both selectors.
  */
+:root {
+  color-scheme: light dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --color-body: #131516;
     --color-ink: #f0f0f0;
     --color-muted: #a8aaae;
     --color-card: #1d2022;
     --color-divider: #2c2f33;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-body: #131516;
+  --color-ink: #f0f0f0;
+  --color-muted: #a8aaae;
+  --color-card: #1d2022;
+  --color-divider: #2c2f33;
 }
 
 @theme {

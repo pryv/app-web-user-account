@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Light / dark theme choice.** The operator sets the default in `settings.json`
+  (`"theme": { "default": "system" | "light" | "dark" }`, `system` when unset,
+  which follows the OS as before). A toggle in the header lets the user pick
+  follow the system, light or dark; the pick is kept in `localStorage` under
+  `pryv.theme` and survives a reload. `"userChoice": false` hides the toggle and
+  always applies the operator default. The palette is driven by
+  `<html data-theme="light|dark">`, so a rebrand can target either theme.
+
 ## 0.6.1 — 2026-09-25
 
 ### Fixed

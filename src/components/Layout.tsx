@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import { parseBackTo } from "../lib/backTo";
 import { Logo } from "../brand";
 import DelegatedSessionBanner from "./DelegatedSessionBanner";
+import ThemeToggle from "./ThemeToggle";
 
 /**
- * App shell. Renders the brand header and, when the opener passed
+ * App shell. Renders the brand header with the theme toggle and, when the opener passed
  * `backUrl`/`backLabel`, a "← Back to {label}" affordance.
  *
  * Note: this back link is a user-initiated cancel/return — it is independent of
@@ -22,12 +23,15 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-body text-ink">
       <header className="flex items-center justify-between border-b border-divider bg-card px-4 py-3">
         <Logo className="h-7 w-auto text-ink" />
-        {backTo.url && (
-          <a href={backTo.url} className="text-sm text-primary hover:underline">
-            {backTo.label ? t("common.backTo", { label: backTo.label }) : t("common.back")}
-            {backTo.host && <span className="text-muted"> ({backTo.host})</span>}
-          </a>
-        )}
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          {backTo.url && (
+            <a href={backTo.url} className="text-sm text-primary hover:underline">
+              {backTo.label ? t("common.backTo", { label: backTo.label }) : t("common.back")}
+              {backTo.host && <span className="text-muted"> ({backTo.host})</span>}
+            </a>
+          )}
+        </div>
       </header>
       <DelegatedSessionBanner />
       <main className="mx-auto max-w-md px-4 py-8">{children}</main>

@@ -43,6 +43,20 @@ noun used in copy ("Register a new … account") and the header `Logo`;
 `brand.css` loads the fonts and is imported before the theme tokens, so the
 `--font-*` overrides can refer to them. The page title stays in `index.html`.
 
+**Light and dark:** the palette follows the `data-theme` attribute on `<html>`.
+`light` and `dark` pin it; with no attribute it follows the OS
+(`prefers-color-scheme`). The app sets the attribute at start from the
+operator's default (`settings.json` `theme.default`: `system`, `light` or
+`dark`; `system` when unset) and, unless the operator sets `theme.userChoice`
+to `false`, from the user's pick in the header toggle (follow the system,
+light, dark). The pick is kept in `localStorage` under `pryv.theme`; on a
+shared origin such as `pryv.github.io` that storage is shared with the other
+apps served there, hence the `pryv.` prefix. When storage is unavailable the
+pick lasts for the page only. To change the dark palette, override the
+`--color-*` surface tokens under both `:root[data-theme="dark"]` and the
+`prefers-color-scheme: dark` block in [`src/index.css`](src/index.css). There is
+no URL parameter for the theme.
+
 ## Localisation
 
 The UI text lives in `src/locales/en.json` (i18next). The language is chosen,
@@ -190,7 +204,8 @@ app without rebuilding. Every key is optional; the shipped file is `{}`.
     "terms": { "en": "https://example.com/terms", "fr": "https://example.com/fr/terms" },
     "privacy": "https://example.com/privacy"
   },
-  "appCatalogUrl": "https://assets.example.com/apps/list.json"
+  "appCatalogUrl": "https://assets.example.com/apps/list.json",
+  "theme": { "default": "system", "userChoice": true }
 }
 ```
 
@@ -201,6 +216,7 @@ app without rebuilding. Every key is optional; the shipped file is `{}`.
 | `trustedApiOrigins` | Core origins the OAuth2 consent page and CMC result delivery may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`. With `allowedServiceInfoUrls`, access-request poll URLs on these origins (from either list) are accepted too; on a deployment serving several platforms, links to such a core must name their platform with `pryvServiceInfoUrl` / `serviceInfo`, or sign-in goes to the first allowed platform. |
 | `legal.terms`, `legal.privacy` | Links shown at registration, each a URL or a `{ "<lang>": url }` map. When at least one resolves, registering requires ticking "I accept". The Terms fall back to the platform's service-info `terms`. |
 | `appCatalogUrl` | The operator's app list, used to name apps on the consent screens (`/auth`, `/oauth2-authorize`) by their id. Apps not listed show their raw id, never a name the app supplies about itself. See the format below. |
+| `theme.default`, `theme.userChoice` | The light / dark default: `"system"` (follow the OS, the default), `"light"` or `"dark"`. `userChoice` (default `true`) shows the theme toggle in the header and lets a user's stored pick override the default; `false` hides the toggle and always applies the default. Invalid values are ignored. See [Theming](#theming). |
 
 Only absolute `http(s)` URLs are accepted. For the same concern the order is:
 URL parameter, then `settings.json`, then the build-time setting. The trust list
