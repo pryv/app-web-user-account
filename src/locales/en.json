@@ -120,6 +120,7 @@
     "acceptLabel": "I accept the <terms>Terms & Conditions</terms> and I have read the <privacy>Privacy Policy</privacy>.",
     "acceptRequired": "Please accept the Terms & Conditions to create an account.",
     "invalidUsername": "Invalid username — ",
+    "usernameRules": "5–60 characters: lowercase letters, digits and dashes (must start and end with a letter or digit).",
     "passwordMismatch": "Passwords do not match.",
     "failed": "Registration failed.",
     "hostingsLoadError": "Could not load hostings.",

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The UI is translatable.** Every screen reads its text from
+  `src/locales/en.json` (i18next); adding a language is one catalog file plus
+  two lines in `src/i18n.ts`, and a parity test keeps catalogs complete (see
+  "Localisation" in the README). English only ships for now.
+- **Language choice:** `?lang=` on a link wins for that visit, then the
+  account's language after sign-in, then the browser's, then English. The
+  profile's language selector saves the account language and switches the UI
+  (shown once more than one language ships). Registration sends the current
+  language to the platform instead of always English.
+- Dependencies: `i18next`, `react-i18next`, `i18next-browser-languagedetector`
+  (no known vulnerabilities).
+
+### Changed
+
+- The English wording is unchanged; the brand words in copy come from
+  `src/brand.tsx` through the catalog.
+
 ## 0.5.0 — 2026-09-25
 
 ### Added

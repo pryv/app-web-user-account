@@ -6,7 +6,7 @@
 import i18n from "../i18n";
 import { cmcErrorIds as errorIds } from "./pryvClient";
 import { platformError } from "./apiError";
-import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
+import { GRANT_REQUIRES_OWNER_ID, grantRequiresOwnerMessage, isGrantRequiresOwner } from "./delegation";
 
 /** Catalog key of the text shown when the offer behind the link cannot be read (invalid or expired link, network). */
 export const OFFER_UNREADABLE_KEY = "cmc.acceptOfferUnreadable";
@@ -35,7 +35,7 @@ export interface InviteFailure {
 /** Map an error from `acceptInvite` / `refuseInvite` to the id returned to the opener and the text shown. */
 export function inviteFailure(err: unknown, fallback: string): InviteFailure {
   if (isGrantRequiresOwner(err)) {
-    return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE, tone: "danger" };
+    return { reason: GRANT_REQUIRES_OWNER_ID, message: grantRequiresOwnerMessage(), tone: "danger" };
   }
   const { id, message } = platformError(err, fallback);
   const known = id != null ? OUTCOMES[id] : undefined;

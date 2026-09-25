@@ -5,7 +5,7 @@
 
 import i18n from "../i18n";
 import { platformError } from "./apiError";
-import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE, isGrantRequiresOwner } from "./delegation";
+import { GRANT_REQUIRES_OWNER_ID, grantRequiresOwnerMessage, isGrantRequiresOwner } from "./delegation";
 
 /*
  * The functions below translate at call time. The `*_MESSAGE` constants are
@@ -48,7 +48,7 @@ export interface ScopeUpdateFailure {
  */
 export function scopeUpdateFailure(err: unknown, fallback: string = i18n.t("cmc.scopeCouldNotComplete")): ScopeUpdateFailure {
   if (isGrantRequiresOwner(err)) {
-    return { reason: GRANT_REQUIRES_OWNER_ID, message: GRANT_REQUIRES_OWNER_MESSAGE };
+    return { reason: GRANT_REQUIRES_OWNER_ID, message: grantRequiresOwnerMessage() };
   }
   const { id, message } = platformError(err, fallback);
   if (id != null && NOT_FOUND_IDS.has(id)) {

@@ -9,7 +9,7 @@ import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from ".
 import { signedInTarget } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 import { brand } from "../brand";
-import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../lib/username";
+import { usernameRules, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {
   registrationRequiresVerifiedEmail,
   requestEmailChallenge,
@@ -113,7 +113,7 @@ export default function Register() {
     e.preventDefault();
     setError(null);
     if (!isValidUsername(username)) {
-      setError(t("register.invalidUsername") + USERNAME_RULES);
+      setError(t("register.invalidUsername") + usernameRules());
       return;
     }
     if (password !== confirm) {
@@ -256,7 +256,7 @@ export default function Register() {
           id="username"
           label={t("register.usernameLabel")}
           autoComplete="username"
-          hint={USERNAME_RULES}
+          hint={usernameRules()}
           value={username}
           onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
           required

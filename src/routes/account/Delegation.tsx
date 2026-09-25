@@ -7,7 +7,7 @@ import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
 import { useSession, type PryvConnection } from "../../lib/session";
-import { USERNAME_RULES, isValidUsername, normalizeUsernameInput } from "../../lib/username";
+import { usernameRules, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {
   runFlow,
   delegateWarningLead,
@@ -135,7 +135,7 @@ function MyDelegates({
     onNotice(null);
     const username = normalizeUsernameInput(inviteUsername);
     if (!isValidUsername(username)) {
-      setError(t("delegation.errInvalidUsernameRules", { rules: USERNAME_RULES }));
+      setError(t("delegation.errInvalidUsernameRules", { rules: usernameRules() }));
       return;
     }
     setBusy("request");
@@ -218,7 +218,7 @@ function MyDelegates({
               id="delegate-username"
               label={t("delegation.delegateUsernameLabel")}
               value={inviteUsername}
-              hint={USERNAME_RULES}
+              hint={usernameRules()}
               onChange={(e) => setInviteUsername(normalizeUsernameInput(e.target.value))}
             />
           </div>
@@ -491,7 +491,7 @@ function CreateManagedAccount({
     onNotice(null);
     const u = normalizeUsernameInput(username);
     if (!isValidUsername(u)) {
-      setError(t("delegation.errInvalidUsernameRules", { rules: USERNAME_RULES }));
+      setError(t("delegation.errInvalidUsernameRules", { rules: usernameRules() }));
       return;
     }
     setBusy(true);
@@ -528,7 +528,7 @@ function CreateManagedAccount({
           <Field
             id="managed-username"
             label={t("profile.username")}
-            hint={USERNAME_RULES}
+            hint={usernameRules()}
             value={username}
             onChange={(e) => setUsername(normalizeUsernameInput(e.target.value))}
             required
