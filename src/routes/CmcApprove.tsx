@@ -9,15 +9,27 @@ import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, type OfferPermission } from "../lib/consent";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
-import { isTrustedResultOrigin } from "../lib/oauth2Flow";
-import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
 import { useStreamLabels } from "../lib/useConsentDisplay";
 
-/** Strip the token-bearing field, leaving only the non-sensitive outcome. */
-function outcomeOnly(res: { ok: boolean; acceptEventId?: string; reason?: string }) {
-  return { ok: res.ok, acceptEventId: res.acceptEventId, reason: res.reason };
+/**
+ * What the page hands back to the app that sent the invite: the outcome only.
+ * `acceptEventId` is an id on the ACCEPTING account; the requester obtains its
+ * data-grant endpoint on its own side (@pryv/cmc `waitForAccept`), never
+ * through this browser hand-off, so nothing here is a credential.
+ */
+interface AcceptOutcome {
+  ok: boolean;
+  acceptEventId?: string;
+  reason?: string;
+}
+
+function outcomePayload(res: AcceptOutcome): AcceptOutcome {
+  const out: AcceptOutcome = { ok: res.ok };
+  if (res.acceptEventId != null) out.acceptEventId = res.acceptEventId;
+  if (res.reason != null) out.reason = res.reason;
+  return out;
 }
 
 interface OfferView {
@@ -49,44 +61,21 @@ function parseCmcParams(search: string): AcceptParams {
   };
 }
 
-function deliverResult(
-  res: { ok: boolean; dataGrantApiEndpoint?: string; acceptEventId?: string; reason?: string },
-  params: AcceptParams,
-): void {
-  // `res` carries `dataGrantApiEndpoint`, a token-bearing (`https://<token>@…`)
-  // endpoint. `returnUrl` / the opener are caller-supplied and MUST NOT be
-  // trusted as the token's destination: the token leaves only for an operator-
-  // allowlisted origin (prod fails closed with no allowlist). Otherwise deliver
-  // the outcome only — the peer app can still read the endpoint from its
-  // authenticated CMC inbox. The trust decision is independent of how the
-  // target origin is chosen, so a crafted `returnUrl` can never harvest it.
-  const selfOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
-  const trustOpts = {
-    // Origins trusted to receive the token-bearing `dataGrantApiEndpoint`:
-    // the same operator allowlist as the OAuth `pryvApi` check.
-    trustedOrigins: trustedApiOrigins(),
-    selfOrigin,
-    requireAllowlist: import.meta.env.PROD,
-  };
-
+function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
+  const payload = outcomePayload(res);
   if (params.mode === "redirect" && params.returnUrl) {
-    // Only navigate back to an absolute http(s) returnUrl — a `javascript:`
+    // Only navigate back to an absolute http(s) returnUrl: a `javascript:`
     // or `data:` value would execute in this trusted origin.
     const target = httpUrlOrNull(params.returnUrl);
     if (!target) return;
-    const payload = isTrustedResultOrigin(target.origin, trustOpts) ? res : outcomeOnly(res);
     target.searchParams.set("cmcAcceptResult", JSON.stringify(payload));
     window.location.assign(target.toString());
     return;
   }
   if (window.opener) {
     // Pin to the REAL opener (referrer) first; `returnUrl` is only a fallback
-    // pin hint, never the trust anchor for the token.
+    // pin hint. With no derivable origin the outcome (no credential) goes to '*'.
     const pinOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
-    const payload =
-      pinOrigin && isTrustedResultOrigin(pinOrigin, trustOpts) ? res : outcomeOnly(res);
-    // Never broadcast the token: if no origin can be derived, only the
-    // (non-sensitive) outcome may go to '*'.
     window.opener.postMessage({ type: "cmc-accept-result", ...payload }, pinOrigin ?? "*");
     window.close();
   }
@@ -176,16 +165,9 @@ export default function CmcApprove() {
       const res = (await cmc.acceptInvite(connection, params.capabilityUrl, {
         scopeStreamId: params.scopeStreamId,
         accessName: params.accessName ?? undefined,
-      })) as { acceptEventId: string; dataGrantApiEndpoint?: string };
+      })) as { acceptEventId: string };
       setDone("accepted");
-      deliverResult(
-        {
-          ok: true,
-          acceptEventId: res.acceptEventId,
-          dataGrantApiEndpoint: res.dataGrantApiEndpoint,
-        },
-        params,
-      );
+      deliverResult({ ok: true, acceptEventId: res.acceptEventId }, params);
     } catch (err: unknown) {
       const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
       setError({ message: failure.message, tone: failure.tone });

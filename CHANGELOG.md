@@ -9,10 +9,14 @@
   offer to the result handed back: approve and decline in redirect mode, approve
   and a consumed link in popup mode (the opener receives the result and the
   popup closes), and the consumed-link notice shown as information. It checks
-  the triggers written on the account and that an untrusted `returnUrl` never
-  receives a data-grant endpoint. One case is marked as a known gap: the accept
-  result from `@pryv/cmc` does not carry `dataGrantApiEndpoint`, so an
-  allowlisted origin does not receive it either.
+  the triggers written on the account and the exact result handed back.
+- **The approval result is the outcome only, stated as such.** `/cmc-accept`
+  hands back `{ ok, acceptEventId }` (or `{ ok: false, reason }`) by redirect or
+  `postMessage`. It had a branch that sent a `dataGrantApiEndpoint` to
+  operator-trusted origins, but `@pryv/cmc` never returns one: the platform
+  records the data-grant access without its token. The dead branch and its
+  origin check are removed; the requesting app obtains its endpoint on its own
+  side with `@pryv/cmc` `waitForAccept` (`grantedAccessApiEndpoint`).
 
 ### Fixed
 

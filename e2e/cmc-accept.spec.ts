@@ -14,9 +14,10 @@ import { test, expect, type BrowserContext, type Page, type Route } from "@playw
  *     `events.getOne` is polled until the trigger reads `completed`.
  *
  * The result goes back by redirect (`?cmcAcceptResult=<json>` on `returnUrl`)
- * or by `postMessage` to the opener. The token-bearing `dataGrantApiEndpoint`
- * may only leave for a trusted origin; a caller-supplied `returnUrl` on an
- * origin the operator did not allowlist receives the outcome only.
+ * or by `postMessage` to the opener. The result is the outcome only (`ok`,
+ * `acceptEventId` or `reason`): it never carries a credential, whatever the
+ * target origin, because the requester obtains its data-grant endpoint on its
+ * own side (@pryv/cmc `waitForAccept`).
  *
  * Every mocked core response carries `meta` (see delegation.spec.ts: the
  * client rejects a response without it).
@@ -65,8 +66,6 @@ interface Mock {
 }
 
 interface MockOptions {
-  /** Trigger status `events.getOne` reports. Default: completed. */
-  completion?: "completed" | "pending";
   /** When set, `events.create` on the accepter's core fails with this plugin error id. */
   createErrorId?: string;
   /** settings.json served by the deployment. Default: none (404). */
@@ -148,7 +147,7 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
       }
       if (c.method === "events.getOne") {
         return {
-          event: completedTrigger(String(c.params.id), "consent/accept-cmc", opts.completion ?? "completed"),
+          event: completedTrigger(String(c.params.id), "consent/accept-cmc", "completed"),
         };
       }
       return { error: { id: "unknown-resource", message: `unmocked ${c.method}` } };
@@ -183,10 +182,7 @@ async function expectOfferShown(page: Page) {
 }
 
 test.describe("/cmc-accept redirect mode", () => {
-  test("[CMA1] approve: the outcome reaches an untrusted returnUrl WITHOUT the data-grant endpoint", async ({
-    page,
-    context,
-  }) => {
+  test("[CMA1] approve: the returnUrl receives the outcome, and no credential", async ({ page, context }) => {
     const mock = await mockCmcPlatform(context);
     await page.goto(acceptPath({ mode: "redirect", returnUrl: RETURN_URL }));
     await expectOfferShown(page);
@@ -196,9 +192,6 @@ test.describe("/cmc-accept redirect mode", () => {
 
     const result = landingResult(page);
     expect(result).toEqual({ ok: true, acceptEventId: ACCEPT_EVENT_ID });
-    // Holds today for any origin (see [CMA2]); it becomes the trust check
-    // proper once the accept result carries the endpoint.
-    expect(result).not.toHaveProperty("dataGrantApiEndpoint");
 
     const create = mock.accepterCalls.find((c) => c.method === "events.create");
     expect(create?.params).toMatchObject({
@@ -209,13 +202,9 @@ test.describe("/cmc-accept redirect mode", () => {
     expect(mock.accepterCalls.some((c) => c.method === "events.getOne")).toBe(true);
   });
 
-  // Known gap: the accept result from `@pryv/cmc` carries no
-  // `dataGrantApiEndpoint` (the platform records the data-grant endpoint
-  // without its token, and `acceptInvite` returns only `dataGrantAccessId`),
-  // so even an allowlisted returnUrl receives no endpoint today. Marked as an
-  // expected failure so it turns red, and must be flipped back, once the
-  // endpoint is delivered.
-  test.fail("[CMA2] approve: an allowlisted returnUrl receives the data-grant endpoint", async ({ page, context }) => {
+  // An operator-trusted origin gets exactly the same result: the hand-off never
+  // carries a credential, so trust does not change what is sent.
+  test("[CMA2] approve: an allowlisted returnUrl receives the same outcome", async ({ page, context }) => {
     await mockCmcPlatform(context, { settings: { trustedApiOrigins: ["https://app.example.test"] } });
     await page.goto(acceptPath({ mode: "redirect", returnUrl: RETURN_URL }));
     await expectOfferShown(page);
@@ -223,9 +212,7 @@ test.describe("/cmc-accept redirect mode", () => {
     await page.getByRole("button", { name: "Approve" }).click();
     await page.waitForURL("https://app.example.test/done?**");
 
-    const result = landingResult(page);
-    expect(result).toMatchObject({ ok: true, acceptEventId: ACCEPT_EVENT_ID });
-    expect(result.dataGrantApiEndpoint).toMatch(/^https:\/\/[^@/]+@alice\.example\.test\//);
+    expect(landingResult(page)).toEqual({ ok: true, acceptEventId: ACCEPT_EVENT_ID });
   });
 
   test("[CMA3] decline: writes the refuse trigger and reports declined-by-user", async ({ page, context }) => {
@@ -281,10 +268,7 @@ test.describe("/cmc-accept popup mode", () => {
     await expect.poll(() => received(page)).toHaveLength(1);
     const [msg] = (await received(page)) as Array<{ origin: string; data: Record<string, unknown> }>;
     expect(msg.origin).toBe(new URL(page.url()).origin);
-    expect(msg.data).toMatchObject({ type: "cmc-accept-result", ok: true, acceptEventId: ACCEPT_EVENT_ID });
-    // The same-origin opener is trusted in development, so it is sent the full
-    // result; the data-grant endpoint itself is absent (see [CMA2]).
-    expect(Object.keys(msg.data)).toContain("dataGrantApiEndpoint");
+    expect(msg.data).toEqual({ type: "cmc-accept-result", ok: true, acceptEventId: ACCEPT_EVENT_ID });
   });
 
   test("[CMA5] a consumed link: reports cmc-capability-consumed to the opener", async ({ page, context }) => {
