@@ -6,7 +6,8 @@
  * subsets: Roboto 400 (body), 500 (labels, buttons), 700 (<strong>);
  * Roboto Condensed 500 (headings) and 700 (<strong> inside a heading).
  * The per-subset files declare no unicode-range, so the browser tries the
- * last declared face first: latin comes after latin-ext, so plain Latin text
+ * last declared face first (CSS Fonts 4, composite faces: same family, weight
+ * and style form one face, later rules win): latin comes after latin-ext, so plain Latin text
  * only downloads the latin files. To support another script, add its subset
  * per face, for example `@import "@fontsource/roboto/cyrillic-400.css";`
  * (see README, Localisation).

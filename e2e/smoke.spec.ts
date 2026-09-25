@@ -256,5 +256,12 @@ test.describe("smoke: brand fonts after subsetting", () => {
     });
     expect(style.family.startsWith('"Roboto Condensed"')).toBe(true);
     expect(style.weight).toBe("500");
+    // The cascade alone passes even when every font file 404s: load the face.
+    await page.evaluate(() => document.fonts.ready);
+    const faces = await h1.evaluate(async () =>
+      (await document.fonts.load('500 1em "Roboto Condensed"')).map((f) => f.status),
+    );
+    expect(faces.length).toBeGreaterThan(0);
+    expect(faces.every((s) => s === "loaded")).toBe(true);
   });
 });

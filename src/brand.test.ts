@@ -10,7 +10,10 @@ import { join } from "node:path";
 
 // Comments are stripped so an example import in the file header is not counted.
 const css = readFileSync(join(__dirname, "brand.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-const imports = [...css.matchAll(/@import\s+"(@fontsource\/[^"]+)"/g)].map((m) => m[1]);
+// Any quoting or url() form, and the variable-font packages too.
+const imports = [
+  ...css.matchAll(/@import\s+(?:url\()?["']?(@fontsource(?:-variable)?\/[^"')\s;]+)/g),
+].map((m) => m[1]);
 const SUBSET_ENTRY = /\/(latin|latin-ext)-\d{3}\.css$/;
 
 describe("[FNTS] brand.css font imports", () => {
