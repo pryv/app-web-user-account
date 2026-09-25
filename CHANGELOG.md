@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`allowedServiceInfoUrls` no longer refuses every `/auth` request on real
+  platforms** ([#3](https://github.com/pryv/app-web-user-account/issues/3)).
+  The poll URL's platform was guessed from its path (`…/reg/access/<key>`), which
+  never matched: open-pryv.io serves poll URLs from the core that took the
+  request (`https://core-a.example.com/reg/access/<key>`) or from the register
+  (`https://reg.example.com/access/<key>`). The poll URL is now accepted when it
+  is served from an origin the allowed platform's own service info declares
+  (`register`, `access`, `api`, and the hosts one label under a
+  `https://{username}.example.com/` api, not the apex), plus the trusted API
+  origins (`trustedApiOrigins` and `VITE_OAUTH_TRUSTED_API_ORIGINS`). It must be
+  a bare https access-request URL. The allowed platform's service info is read
+  from the operator-configured URL only, never from the poll host; if it cannot
+  be read, the request is refused. Sign-in, the register / reset links and the
+  displayed platform details use that allowed platform.
+
 ## 0.6.0 — 2026-09-25
 
 ### Added
