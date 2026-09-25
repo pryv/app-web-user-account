@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getAppCatalog, resolveRequestingApp, type CatalogIcon } from "./appCatalog";
 import { getStreamLabels, NO_STREAM_LABELS, type StreamLabelResolver } from "./streamLabels";
 
@@ -17,10 +18,6 @@ export interface RequestingAppDisplay {
   name: string;
   description: string | null;
   icon: CatalogIcon | null;
-}
-
-function uiLanguage(): string {
-  return typeof navigator !== "undefined" && navigator.language ? navigator.language : "en";
 }
 
 /**
@@ -34,7 +31,10 @@ export function useRequestingApp(
   appId: string | null | undefined,
   serviceInfoUrl: string | null,
 ): RequestingAppDisplay | null {
-  const language = uiLanguage();
+  // The UI language (`?lang=`, the account's, the browser's, then English),
+  // so the app is named in the language the rest of the screen uses.
+  const { i18n } = useTranslation();
+  const language = i18n.language || "en";
   const [app, setApp] = useState<RequestingAppDisplay | null>(null);
 
   useEffect(() => {
