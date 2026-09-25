@@ -33,7 +33,11 @@ export default function ThemeToggle() {
   };
 
   return (
-    <div role="group" aria-label={t("theme.label")} className="flex items-center rounded border border-divider">
+    <div
+      role="group"
+      aria-label={t("theme.label")}
+      className="flex items-center overflow-hidden rounded border border-divider"
+    >
       {THEME_CHOICES.map((c) => {
         const Icon = ICONS[c];
         const active = c === choice;
@@ -46,7 +50,7 @@ export default function ThemeToggle() {
             title={t(`theme.${c}`)}
             onClick={() => pick(c)}
             className={`p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              active ? "bg-body text-ink" : "text-muted hover:text-ink"
+              active ? "bg-primary/15 text-primary" : "text-muted hover:text-ink"
             }`}
           >
             <Icon aria-hidden="true" className="h-4 w-4" />

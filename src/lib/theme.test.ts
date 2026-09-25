@@ -55,16 +55,15 @@ describe("[THMT] theme", () => {
     expect(resolveChoice(readStoredChoice(), "light", true)).toBe("light");
   });
 
-  it("[THT4] applyTheme sets data-theme and color-scheme, and system removes both", () => {
+  it("[THT4] applyTheme sets data-theme, system removes it, and no inline style is written", () => {
     const root = document.documentElement;
     applyTheme("dark");
     expect(root.dataset.theme).toBe("dark");
-    expect(root.style.getPropertyValue("color-scheme")).toBe("dark");
     applyTheme("light");
     expect(root.getAttribute("data-theme")).toBe("light");
-    expect(root.style.getPropertyValue("color-scheme")).toBe("light");
     applyTheme("system");
     expect(root.hasAttribute("data-theme")).toBe(false);
+    // The stylesheet owns color-scheme, so an operator stylesheet can override it.
     expect(root.style.getPropertyValue("color-scheme")).toBe("");
   });
 });

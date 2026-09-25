@@ -57,13 +57,15 @@ export function resolveChoice(
   return userChoiceAllowed && stored ? stored : operatorDefault;
 }
 
-/** Write the choice onto `<html>`: `data-theme` plus the matching `color-scheme`. */
+/**
+ * Write the choice onto `<html>` as `data-theme` (removed for `system`). The
+ * stylesheet derives the palette and `color-scheme` from the attribute, so a
+ * rebranding stylesheet can still override both.
+ */
 export function applyTheme(choice: ThemeChoice, root: HTMLElement = document.documentElement): void {
   if (choice === "system") {
     delete root.dataset.theme;
-    root.style.removeProperty("color-scheme");
   } else {
     root.dataset.theme = choice;
-    root.style.setProperty("color-scheme", choice);
   }
 }
