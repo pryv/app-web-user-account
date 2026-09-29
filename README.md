@@ -21,8 +21,9 @@ forked, re-branded, and self-hosted by operators.
 > can read, and it contains the user's personal token. Serve the app from a
 > dedicated origin (for example `https://account.example.com/`), never from a
 > path on a host that also serves other pages or apps. The reference copy is
-> published on its own origin at `https://account.pryv.me/` (the former
-> `https://pryv.github.io/app-web-user-account/` address redirects there).
+> served on its own origin at `https://account.pryv.me/`; the copy at
+> `https://pryv.github.io/app-web-user-account/` shares its origin with other
+> project pages and is kept as a fallback demo only.
 
 ## Tech stack
 
@@ -269,6 +270,18 @@ app id.
 
 `npm run build:pages` first checks that `node_modules` matches the lockfile and
 refuses to build otherwise (run `npm ci`).
+
+Two production builds exist:
+
+- `npm run build:root` builds for the root path of a dedicated origin (for
+  example `https://account.example.com/`), with `404.html` as the single-page
+  fallback. This is what an open-pryv.io platform serves as a hosted site
+  (`hostedSites: { account: { static: <folder> } }`), and what a release ships
+  as `app-web-user-account-<version>-root.tar.gz`, created with
+  `tar -czf app-web-user-account-<version>-root.tar.gz -C dist .` and attached
+  with `gh release upload v<version> app-web-user-account-<version>-root.tar.gz`.
+- `npm run build:pages` builds the GitHub Pages copy served under
+  `/app-web-user-account/` (adds `404.html` and `.nojekyll`).
 
 ## Replacing `app-web-auth3` on an operator platform
 
