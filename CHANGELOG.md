@@ -8,6 +8,13 @@
   no longer declares `dataGrantApiEndpoint` (matching what this app already hands
   back), and whose popup helpers only trust the popup they opened. No behaviour
   change in this app.
+- **Two production builds.** `npm run build:root` builds for the root of a
+  dedicated origin (what a platform serves as a hosted site, and what a release
+  ships as `app-web-user-account-<version>-root.tar.gz`); `npm run build:pages`
+  builds the GitHub Pages copy under `/app-web-user-account/` again and no longer
+  writes a `CNAME`. The reference copy moves to `https://account.pryv.me/`,
+  served by the pryv.me platform itself; the GitHub Pages copy stays as a
+  fallback demo on the shared `pryv.github.io` origin.
 
 ## 0.7.0 — 2026-09-25
 
