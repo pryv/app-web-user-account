@@ -141,7 +141,7 @@ function parseAuthQuery(search: string): AuthQuery {
 export default function Auth() {
   const { t } = useTranslation();
   const { search } = useLocation();
-  const query = parseAuthQuery(search);
+  const query = useMemo(() => parseAuthQuery(search), [search]);
   const { connection: sessionConnection, setConnection, actingAs } = useSession();
   // While the account pages act for a controlled account, grant from the
   // session of the account acting: the selector then offers the controlled
@@ -926,10 +926,11 @@ export default function Auth() {
       }}
       onCancel={() => void refuse()}
       cancelDisabled={finishing !== null || busy}
-      footer={
+      disabled={busy}
+      footer={(formBusy) => (
         <>
           {hintDiffers && storedUsable && knownUsername && (
-            <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy} className="mt-3">
+            <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy || formBusy} className="mt-3">
               {busy ? t("consent.checking") : t("consent.continueAsInstead", { username: knownUsername })}
             </Button>
           )}
@@ -962,7 +963,7 @@ export default function Auth() {
             </p>
           )}
         </>
-      }
+      )}
     />
   );
 }

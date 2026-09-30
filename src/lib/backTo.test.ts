@@ -1,5 +1,34 @@
-import { describe, it, expect } from "vitest";
-import { parseBackTo } from "./backTo";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { inPopupOrFrame, parseBackTo } from "./backTo";
+
+describe("[BTP] inPopupOrFrame", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("[BTP1] a plain tab: false", () => {
+    const win: Record<string, unknown> = { opener: null };
+    win.top = win;
+    win.self = win;
+    vi.stubGlobal("window", win);
+    expect(inPopupOrFrame()).toBe(false);
+  });
+
+  it("[BTP2] a pop-up an app opened (opener set): true", () => {
+    const win: Record<string, unknown> = { opener: {} };
+    win.top = win;
+    win.self = win;
+    vi.stubGlobal("window", win);
+    expect(inPopupOrFrame()).toBe(true);
+  });
+
+  it("[BTP3] a page in a frame: true", () => {
+    const win: Record<string, unknown> = { opener: null, top: {} };
+    win.self = win;
+    vi.stubGlobal("window", win);
+    expect(inPopupOrFrame()).toBe(true);
+  });
+});
 
 describe("parseBackTo", () => {
   it("accepts external https URLs and exposes the host for display", () => {

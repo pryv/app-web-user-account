@@ -105,6 +105,17 @@ test.describe("[AWN] /auth after the decision: close a pop-up, go back from a ta
     expect(posted.some((b) => (b as { status: string }).status === "REFUSED")).toBe(true);
   });
 
+  test("[AWN7] a pop-up does not show the header link back to the app", async ({ page, context }) => {
+    await mockPlatform(context, []);
+    await page.goto("/signin");
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.evaluate((path) => { window.open(path, "prYv Sign-in", "width=400,height=620"); }, authPath(true)),
+    ]);
+    await expect(popup.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(popup.getByRole("link", { name: /Back to App/ })).toHaveCount(0);
+  });
+
   test("[AWN4] Create account opens in the same window and keeps the request and the way back", async ({ page, context }) => {
     const posted: unknown[] = [];
     await mockPlatform(context, posted);

@@ -58,8 +58,8 @@ describe("delegationErrorMessage", () => {
     expect(delegationErrorMessage(null)).toMatch(/something went wrong/i);
   });
 
-  // A refused API call raised by `pryv` embeds the request params in its own
-  // message: on account creation that is the password. Never show it.
+  // A refused API call raised by `pryv` before 3.14.2 embeds the request params
+  // in its own message: on account creation that is the password. Never show it.
   it("[DEM1] a refused API call shows the platform's message, never the request params", () => {
     const refused = new Pryv.PryvError(
       'Error for api method: "delegations.createAccount" with params: {"username":"kid","password":"s3cret-pw"} >> Result: {}',

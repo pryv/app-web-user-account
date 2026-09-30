@@ -135,7 +135,7 @@ Every route accepts these query parameters:
 |---|---|
 | `pryvServiceInfoUrl` | Which Pryv platform to talk to. Optional when the deployment's `settings.json` names the platform (see [Deploy](#deploy-settingsjson)); when present it wins. |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
-| `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). On `/auth` in a tab (not a pop-up, not a frame), the page also goes there after the user accepts or cancels, since it cannot close the tab. |
+| `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). The link is not shown in a window your app opened by script (`window.opener` set) nor in a frame, where following it would load your app inside that window: open the account pages with a plain link, or `window.open(url, "_blank", "noopener")`, to keep it. On `/auth` in a tab (not a pop-up, not a frame), the page also goes there after the user accepts or cancels, since it cannot close the tab. |
 | `lang` | UI language for this visit (e.g. `fr`, `fr-CH`), when the build ships it. It wins over the account's language and the browser's, and is not remembered after the visit. |
 | `username` | `/signin` and `/auth`: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. On `/auth` (carried on your `authUrl`), when the browser holds a session for another account, the pre-filled form comes first and that session is offered as "Continue as {username} instead"; the hint never signs that session out (when that session's name cannot be looked up, only the form is shown). An email hint is accepted and resolved when the user submits. The hint names the account that signs in: an app that hints a managed account gets its user asked for that account's password, so hint the person who is signing in. |
 
@@ -181,6 +181,23 @@ Every route accepts these query parameters:
   and "Forgot password?" on `/auth` open in the same window and keep the
   request and the way back, so the user returns to the consent screen after
   creating an account.
+
+  **Accounts the user manages (`actAs`).** On a platform running account
+  delegation (`features.delegation` in its service info), a signed-in user who
+  actively manages other accounts is asked which account the access is for:
+  their own, or one they manage. The app steers that choice with `actAs` in
+  the access request body (`POST {register}/access`): `"allow"` (the default:
+  the user may pick), `"deny"` (the signed-in account only, no choice offered),
+  or a username to preselect. When the user does not actively manage the
+  account named, the choice (when one is offered) says so and preselects as if
+  no account had been named (the account the account pages were acting for,
+  else the user's own); a user who manages no other account is offered no
+  choice and grants on their own account. Your app receives an
+  ordinary app access on the chosen account; when that is a managed account, the
+  `ACCEPTED` answer also carries `delegation` (`isDelegatedAccess`,
+  `controlledUsername`, `delegate.username`) for display (the authoritative
+  answer is `delegation` in the token's `access-info`). A `username` hint
+  names who signs in, not the account the access is for: use `actAs` for that.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

@@ -49,7 +49,7 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
   }: {
     onSignedIn: (s: { username: string; personalToken: string; endpoint: string }) => void;
     externalError?: string | null;
-    footer?: ReactNode;
+    footer?: ReactNode | ((formBusy: boolean) => ReactNode);
     makeService?: () => unknown;
   }) => (
     <div ref={() => void (signInSeam.makeService = makeService ?? null)}>
@@ -68,7 +68,7 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
       {/* The real component renders this; the stub must too, or a message
           raised before the consent panel exists would look swallowed. */}
       {externalError ? <p>{externalError}</p> : null}
-      {footer}
+      {typeof footer === "function" ? footer(false) : footer}
     </div>
   ),
 }));

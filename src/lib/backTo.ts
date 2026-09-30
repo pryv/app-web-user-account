@@ -27,6 +27,9 @@ export interface BackTo {
   host: string | null;
 }
 
+/** No way back: nothing to render. */
+export const NO_BACK_TO: BackTo = { url: null, label: null, host: null };
+
 function parseHttpUrl(rawUrl: string): URL | null {
   try {
     const base = typeof window !== "undefined" ? window.location.origin : undefined;
@@ -36,6 +39,16 @@ function parseHttpUrl(rawUrl: string): URL | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether this page runs in a pop-up an app opened (`window.opener` set) or in
+ * a frame. There, going to `backUrl` would load the app inside the pop-up or
+ * the frame, so the page never does it and does not offer the header link.
+ */
+export function inPopupOrFrame(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.opener != null || window.top !== window.self;
 }
 
 /** Parse and validate the back-to params from a query string. */
