@@ -832,11 +832,12 @@ export default function Auth() {
 
   // Shared sign-in gate (initial state).
   // Register / password-reset links need the platform's service-info URL;
-  // same resolution order as makeService. They open in a new tab so this
-  // popup keeps its pending access request (poll context) alive. The links
-  // also carry that request, so a user who creates an account or resets a
-  // password there comes back to this consent screen instead of landing on
-  // the profile while the app keeps waiting.
+  // same resolution order as makeService. They open in this window: the links
+  // carry the pending access request (and the app's way back, `backUrl` /
+  // `backLabel`), so a user who creates an account or resets a password comes
+  // back to this consent screen instead of landing on the profile while the
+  // app keeps waiting, and a pop-up keeps its opener, so completion still
+  // closes it. (A new tab left the pop-up orphaned on its sign-in form.)
   const linksSvcInfoUrl = svcInfoUrlForFlow;
   const linksParams = new URLSearchParams(accessRequestSearch(search));
   if (linksSvcInfoUrl && !linksParams.has("pryvServiceInfoUrl")) {
@@ -884,14 +885,12 @@ export default function Auth() {
           <div className="mt-4 flex justify-between text-sm">
             <Link
               to={`/reset-password${linksSearch}`}
-              target="_blank"
               className="text-primary hover:underline"
             >
               {t("consent.forgotPassword")}
             </Link>
             <Link
               to={`/register${linksSearch}`}
-              target="_blank"
               className="text-primary hover:underline"
             >
               {t("consent.createAccount")}

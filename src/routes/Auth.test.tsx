@@ -600,21 +600,26 @@ describe("[AUCP] /auth consent panel", () => {
     expect(msg.querySelector("img")).toBeNull();
   });
 
-  it("[AUC10] Create account and Forgot password carry the pending request", async () => {
+  it("[AUC10] Create account and Forgot password stay in this window and carry the pending request and the way back", async () => {
     flow.loadAccessState.mockResolvedValue(stateWithConsent());
     render(
-      <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1&key=k1"]}>
+      <MemoryRouter initialEntries={["/auth?poll=https%3A%2F%2Fcore.test%2Freg%2Faccess%2Fk1&key=k1&backUrl=https%3A%2F%2Fapp.test%2Fback&backLabel=App"]}>
         <SessionProvider>
           <Auth />
         </SessionProvider>
       </MemoryRouter>,
     );
     for (const name of ["Create account", "Forgot password?"]) {
-      const href = (await screen.findByText(name)).closest("a")!.getAttribute("href")!;
+      const link = (await screen.findByText(name)).closest("a")!;
+      // a new tab left the pop-up orphaned on its sign-in form
+      expect(link.getAttribute("target")).toBeNull();
+      const href = link.getAttribute("href")!;
       const p = new URLSearchParams(href.slice(href.indexOf("?")));
       expect(p.get("poll")).toBe("https://core.test/reg/access/k1");
       expect(p.get("key")).toBe("k1");
       expect(p.get("pryvServiceInfoUrl")).toBe("https://core.test/service/info");
+      expect(p.get("backUrl")).toBe("https://app.test/back");
+      expect(p.get("backLabel")).toBe("App");
     }
   });
 });

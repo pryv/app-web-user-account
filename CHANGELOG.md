@@ -13,6 +13,13 @@
   otherwise shows "This request is complete" instead of the page it was on. A
   pop-up, or a page shown in a frame, is never sent to `backUrl`; the buttons
   stay disabled once the decision is sent.
+- **`/auth`: "Create account" stays in the same window**
+  ([#5](https://github.com/pryv/app-web-user-account/issues/5)). "Create account"
+  and "Forgot password?" opened a new tab, where the person completed the request
+  while the original pop-up stayed orphaned on its sign-in form. Both now open in
+  the same window; they carry the pending request and the app's way back
+  (`backUrl` / `backLabel`), which also survive the return to `/auth` after the
+  account is created, and a pop-up still closes on completion.
 
 ## 0.7.2 — 2026-09-30
 

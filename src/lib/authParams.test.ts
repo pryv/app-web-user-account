@@ -34,6 +34,13 @@ describe("[ARQS] access-request context", () => {
     expect(p.get("poll_rate_ms")).toBeNull();
   });
 
+  it("[ARQS5] keeps the app's way back (backUrl, backLabel) with the request", () => {
+    const p = new URLSearchParams(accessRequestSearch(REQ + "&backUrl=https%3A%2F%2Fapp.test%2Fback&backLabel=App"));
+    expect(p.get("backUrl")).toBe("https://app.test/back");
+    expect(p.get("backLabel")).toBe("App");
+    expect(p.get("returnURL")).toBeNull();
+  });
+
   it("[ARQS3] returns '' without a pending request", () => {
     expect(accessRequestSearch("?pryvServiceInfoUrl=https%3A%2F%2Fx.test%2Finfo")).toBe("");
     expect(accessRequestSearch("")).toBe("");
