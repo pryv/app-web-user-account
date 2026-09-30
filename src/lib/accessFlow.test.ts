@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   checkAppAccess,
   closeOrRedirect,
+  closeOrFallback,
+  CLOSE_CHECK_MS,
   loadAccessState,
   updateAccessState,
   buildAcceptedState,
@@ -63,6 +65,124 @@ describe("closeOrRedirect redirect-target scheme guard", () => {
   it("follows a valid http(s) REDIRECTED redirectUrl", () => {
     closeOrRedirect("https://poll", { status: "REDIRECTED", redirectUrl: "https://core2.pryv.me/handoff" } as AccessState, false);
     expect(hrefSet).toBe("https://core2.pryv.me/handoff");
+  });
+});
+
+/**
+ * After the decision, a pop-up opened by the app closes, but a tab the page did
+ * not open (a phone reached by redirection) cannot be closed by script. A moment
+ * later, a window still open goes back to the app when it is a tab with a way
+ * back, and otherwise hands over to the caller (the "request complete" card).
+ * A pop-up must never be navigated to the app (it would load inside the pop-up).
+ * Observed: the navigation made (`location.replace`) and the callback, with fake
+ * timers standing for the deferred check.
+ */
+describe("[CLBX] closeOrFallback: close, else go back from a tab", () => {
+  let replaced: string | null;
+  let onStillOpen: ReturnType<typeof vi.fn<() => void>>;
+  let hrefSet: string | null;
+  let win: {
+    closed: boolean; opener: unknown; close: () => void; top: unknown; self: unknown;
+    location: { replace: (u: string) => void; href: string };
+  };
+
+  function stubWindow ({ closes, opener, framed = false }: { closes: boolean; opener: unknown; framed?: boolean }) {
+    win = {
+      closed: false,
+      opener,
+      close: () => { if (closes) win.closed = true; },
+      top: null,
+      self: null,
+      location: {
+        replace: (u: string) => { replaced = u; },
+        set href(v: string) { hrefSet = v; },
+        get href() { return hrefSet ?? ""; },
+      },
+    };
+    win.self = win;
+    win.top = framed ? {} : win;
+    vi.stubGlobal("window", win);
+  }
+
+  beforeEach(() => {
+    replaced = null;
+    hrefSet = null;
+    onStillOpen = vi.fn<() => void>();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("[CLB1] a window that closes (pop-up or tab): no navigation, no callback", () => {
+    for (const opener of [{}, null]) {
+      stubWindow({ closes: true, opener });
+      closeOrFallback({ backUrl: "https://app.test/back", onStillOpen });
+      vi.advanceTimersByTime(CLOSE_CHECK_MS);
+      expect(replaced, String(opener)).toBe(null);
+      expect(onStillOpen, String(opener)).not.toHaveBeenCalled();
+    }
+  });
+
+  it("[CLB2] a tab still open with a way back goes back to the app", () => {
+    stubWindow({ closes: false, opener: null });
+    closeOrFallback({ backUrl: "https://app.test/back", onStillOpen });
+    expect(replaced).toBe(null); // not before the deferred check
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(replaced).toBe("https://app.test/back");
+    expect(onStillOpen).not.toHaveBeenCalled();
+  });
+
+  it("[CLB3] a pop-up still open is never navigated: the callback fires", () => {
+    stubWindow({ closes: false, opener: {} });
+    closeOrFallback({ backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(replaced).toBe(null);
+    expect(onStillOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("[CLB4] a tab still open without a (valid) way back: the callback fires", () => {
+    for (const backUrl of [null, "javascript:alert(1)"]) {
+      replaced = null;
+      onStillOpen = vi.fn<() => void>();
+      stubWindow({ closes: false, opener: null });
+      closeOrFallback({ backUrl, onStillOpen });
+      vi.advanceTimersByTime(CLOSE_CHECK_MS);
+      expect(replaced, String(backUrl)).toBe(null);
+      expect(onStillOpen, String(backUrl)).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("[CLB6] closeOrRedirect without a returnURL uses the fallback; with an http(s) returnURL it does not", () => {
+    stubWindow({ closes: false, opener: null });
+    closeOrRedirect("https://poll", { status: "REFUSED" } as AccessState, false, { backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(replaced).toBe("https://app.test/back");
+
+    replaced = null;
+    stubWindow({ closes: false, opener: null });
+    closeOrRedirect("https://poll", { status: "REFUSED", returnURL: "https://app.test/cb" } as AccessState, false, { backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(hrefSet).toMatch(/^https:\/\/app\.test\/cb\?/);
+    expect(replaced).toBe(null);
+    expect(onStillOpen).not.toHaveBeenCalled();
+  });
+
+  it("[CLB7] a page shown in a frame is never navigated: the callback fires", () => {
+    stubWindow({ closes: false, opener: null, framed: true });
+    closeOrFallback({ backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(replaced).toBe(null);
+    expect(onStillOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("[CLB8] a non-http(s) returnURL is not followed and falls back like no returnURL", () => {
+    stubWindow({ closes: false, opener: null });
+    closeOrRedirect("https://poll", { status: "REFUSED", returnURL: "javascript:alert(1)" } as AccessState, false, { backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(hrefSet).toBe(null);
+    expect(replaced).toBe("https://app.test/back");
   });
 });
 

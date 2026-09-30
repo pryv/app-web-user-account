@@ -15,6 +15,7 @@ import {
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch } from "../lib/authParams";
+import { parseBackTo } from "../lib/backTo";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -192,8 +193,12 @@ export default function Auth() {
   // delegate token for that account: in memory only, never stored and never
   // made the session.
   const [grantFor, setGrantFor] = useState<DelegationHint | null>(null);
-  // The request was decided in this tab and the server has since forgotten it.
+  // The request was decided in this tab and the server has since forgotten it,
+  // or it was decided and the window could not be closed.
   const [requestDone, setRequestDone] = useState(false);
+  // After the decision: a tab the page cannot close goes back to the app when
+  // it gave a way back (`backUrl`), else shows the complete card.
+  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true) };
 
   // The consent form, present only when the app sent a `consent` sidecar
   // AND this server understood it. Without one the legacy contract applies:
@@ -345,7 +350,10 @@ export default function Auth() {
         }
         // If the state is already ACCEPTED (re-open), short-circuit through close_or_redirect.
         if (state.status === "ACCEPTED" || state.status === "REFUSED") {
-          closeOrRedirect(query.pollUrl!, state, query.cli);
+          closeOrRedirect(query.pollUrl!, state, query.cli, closeFallback);
+          // Show the complete card at once rather than the sign-in form
+          // while the window closes or goes back.
+          setRequestDone(true);
         }
       } catch (err: unknown) {
         if (cancelled) return;
@@ -539,7 +547,7 @@ export default function Auth() {
     markRequestDone(query.pollUrl);
     // The delegate token has done its job: drop it before handing over.
     if (grantFor != null || hint != null) setPersonalToken(null);
-    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli);
+    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, closeFallback);
     return null;
   }
 
@@ -564,6 +572,9 @@ export default function Auth() {
     if (!accessState || !apiEndpoint || !personalToken || !check) return;
     setFinishing("accept");
     setError(null);
+    // Once the outcome is handed over, the buttons stay disabled: the window
+    // is closing, going back to the app, or about to show the complete card.
+    let handedOver = false;
     try {
       // With a consent form the user's ticks decide what is minted; locked
       // rows are always in. Without one, the whole checked set is minted,
@@ -608,6 +619,7 @@ export default function Auth() {
       // `personalToken` (guarded above) creates the hand-off secret on the
       // signed-in account; skipped for a delegated grant by the hint gate.
       const refusal = await finalizeAccepted(access.token, apiEndpoint, undefined, grantFor ?? hintForAccess(access, username), personalToken);
+      handedOver = refusal == null;
       if (refusal != null) {
         // A freshly created access was minted before the register was told,
         // so a refusal leaves one the app will never receive: remove it
@@ -625,7 +637,7 @@ export default function Auth() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("consent.errorCouldNotAccept"));
     } finally {
-      setFinishing(null);
+      if (!handedOver) setFinishing(null);
     }
   }
 
@@ -633,22 +645,20 @@ export default function Auth() {
     if (!accessState || !query.pollUrl) return;
     setFinishing("refuse");
     setError(null);
+    const refused: Partial<AccessState> = {
+      status: "REFUSED",
+      reasonId: "REFUSED_BY_USER",
+      message: "The user refused to give access to the requested permissions",
+    };
     try {
-      const refused: Partial<AccessState> = {
-        status: "REFUSED",
-        reasonId: "REFUSED_BY_USER",
-        message: "The user refused to give access to the requested permissions",
-      };
-      try {
-        await updateAccessState(query.pollUrl, refused);
-        markRequestDone(query.pollUrl);
-      } catch {
-        /* close anyway per legacy contract */
-      }
-      closeOrRedirect(query.pollUrl, { ...accessState, ...refused }, query.cli);
-    } finally {
-      setFinishing(null);
+      await updateAccessState(query.pollUrl, refused);
+      markRequestDone(query.pollUrl);
+    } catch {
+      /* close anyway per legacy contract */
     }
+    // Handed over: the buttons stay disabled (`finishing` is not cleared)
+    // while the window closes, goes back to the app or shows the complete card.
+    closeOrRedirect(query.pollUrl, { ...accessState, ...refused }, query.cli, closeFallback);
   }
 
   if (initError) {

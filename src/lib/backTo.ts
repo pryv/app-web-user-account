@@ -6,16 +6,18 @@
  *
  * IMPORTANT — this is deliberately NOT named `returnURL`. The auth flow already
  * has a `returnURL` (the completion redirect that carries `state`/`poll`/`code`,
- * i.e. the OAuth2 `redirect_uri` analog). `backUrl` is a separate, user-initiated
- * *cancel / go-back* affordance and must never be conflated with — or override —
- * the auth-completion redirect or an OAuth2 `redirect_uri`.
+ * i.e. the OAuth2 `redirect_uri` analog). `backUrl` is a separate *cancel /
+ * go-back* affordance and must never be conflated with — or override — the
+ * auth-completion redirect or an OAuth2 `redirect_uri`. The user follows it by
+ * clicking, except on `/auth` in a tab the page cannot close, where the page
+ * follows it after the decision (`closeOrFallback` in `accessFlow.ts`).
  *
  * Security: `backUrl` is attacker-controllable. It is restricted to
  * http(s) URLs (no `javascript:`/`data:` schemes), and the rendered link
  * always displays the target HOST next to the label, so a link to an
  * unexpected site is visible to the user instead of looking endorsed by
- * this page. It is a plain navigation the user chooses to click — it never
- * carries tokens and never overrides the auth-completion redirect.
+ * this page. It never carries tokens and never overrides the auth-completion
+ * redirect.
  */
 
 export interface BackTo {
