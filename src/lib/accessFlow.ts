@@ -23,6 +23,7 @@
  */
 
 import { httpUrlOrNull } from "./safeRedirect";
+import { inPopupOrFrame } from "./backTo";
 
 export interface Permission {
   streamId?: string;
@@ -365,7 +366,7 @@ export function closeOrFallback(fallback?: CloseFallback): void {
   setTimeout(() => {
     if (window.closed) return;
     const back = fallback.backUrl ? httpUrlOrNull(fallback.backUrl) : null;
-    if (back && window.opener == null && window.top === window.self) {
+    if (back && !inPopupOrFrame()) {
       window.location.replace(back.href);
       return;
     }

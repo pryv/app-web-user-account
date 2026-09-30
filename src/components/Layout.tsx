@@ -1,7 +1,7 @@
 import { useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { parseBackTo } from "../lib/backTo";
+import { inPopupOrFrame, parseBackTo } from "../lib/backTo";
 import { Logo } from "../brand";
 import DelegatedSessionBanner from "./DelegatedSessionBanner";
 import ThemeToggle from "./ThemeToggle";
@@ -12,12 +12,13 @@ import ThemeToggle from "./ThemeToggle";
  *
  * Note: this back link is a user-initiated cancel/return — it is independent of
  * the auth-completion `returnURL` / OAuth2 `redirect_uri`, which the auth flow
- * owns separately.
+ * owns separately. It is not shown in a pop-up the app opened, nor in a frame:
+ * following it would load the app inside the pop-up or the frame.
  */
 export default function Layout({ children }: { children: ReactNode }) {
   const { search } = useLocation();
   const { t } = useTranslation();
-  const backTo = parseBackTo(search);
+  const backTo = inPopupOrFrame() ? { url: null, label: null, host: null } : parseBackTo(search);
 
   return (
     <div className="min-h-screen bg-body text-ink">

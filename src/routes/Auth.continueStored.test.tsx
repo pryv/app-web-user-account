@@ -104,6 +104,13 @@ describe("[PCS] /auth continue with the stored session", () => {
     expect(flow.checkAppAccess).toHaveBeenCalledTimes(2);
   });
 
+  it("[PCS5] while the stored session is checked, the sign-in form cannot start a second sign-in", async () => {
+    flow.checkAppAccess.mockReturnValue(new Promise(() => {}));
+    await openAuth();
+    const signIn = (await screen.findByRole("button", { name: /^sign in$/i })) as HTMLButtonElement;
+    expect(signIn.disabled).toBe(true);
+  });
+
   it("[PCS4] a server failure (503) keeps the session", async () => {
     flow.checkAppAccess.mockRejectedValue(Object.assign(new Error("check-app failed (503)"), { status: 503 }));
     await openAuth();

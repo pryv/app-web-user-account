@@ -51,6 +51,7 @@ export function ConsentSignIn({
   onCancel,
   cancelId,
   cancelDisabled = false,
+  disabled = false,
   externalError = null,
   footer,
 }: {
@@ -70,6 +71,11 @@ export function ConsentSignIn({
   onCancel?: () => void;
   cancelId?: string;
   cancelDisabled?: boolean;
+  /**
+   * Flow-level busy (e.g. the page is checking a stored session): Sign in is
+   * disabled, so a second sign-in cannot start under a running one.
+   */
+  disabled?: boolean;
   /** Flow-level error to display (e.g. a failed Cancel/refuse). */
   externalError?: string | null;
   /** Extra content under the form (register / password-reset links…). */
@@ -99,6 +105,7 @@ export function ConsentSignIn({
 
   async function submitLogin(e: FormEvent) {
     e.preventDefault();
+    if (disabled) return;
     setBusy(true);
     setError(null);
     try {
@@ -214,7 +221,7 @@ export function ConsentSignIn({
           required
         />
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>
+          <Button type="submit" disabled={busy || disabled}>
             {busy ? t("common.signingIn") : t("common.signInButton")}
           </Button>
           {onCancel && (

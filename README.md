@@ -181,6 +181,21 @@ Every route accepts these query parameters:
   and "Forgot password?" on `/auth` open in the same window and keep the
   request and the way back, so the user returns to the consent screen after
   creating an account.
+
+  **Accounts the user manages (`actAs`).** On a platform running account
+  delegation (`features.delegation` in its service info), a signed-in user who
+  actively manages other accounts is asked which account the access is for:
+  their own, or one they manage. The app steers that choice with `actAs` in
+  the access request body (`POST {register}/access`): `"allow"` (the default:
+  the user may pick), `"deny"` (the signed-in account only, no choice offered),
+  or a username to preselect. When the user does not actively manage the
+  account named, the page says so and preselects as without it (the account the
+  account pages were acting for, else the user's own). Your app receives an
+  ordinary app access on the chosen account; when that is a managed account, the
+  `ACCEPTED` answer also carries `delegation` (`isDelegatedAccess`,
+  `controlledUsername`, `delegate.username`) for display (the authoritative
+  answer is `delegation` in the token's `access-info`). A `username` hint
+  names who signs in, not the account the access is for: use `actAs` for that.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

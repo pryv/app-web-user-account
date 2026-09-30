@@ -38,6 +38,16 @@ function parseHttpUrl(rawUrl: string): URL | null {
   }
 }
 
+/**
+ * Whether this page runs in a pop-up an app opened (`window.opener` set) or in
+ * a frame. There, going to `backUrl` would load the app inside the pop-up or
+ * the frame, so the page never does it and does not offer the header link.
+ */
+export function inPopupOrFrame(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.opener != null || window.top !== window.self;
+}
+
 /** Parse and validate the back-to params from a query string. */
 export function parseBackTo(search: string): BackTo {
   const params = new URLSearchParams(search);
