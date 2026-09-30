@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The delegation page leads with account creation.** `/account/delegation`
+  now shows "Create a managed account" first, then "Accounts I manage", then
+  "My delegates". A carer sent there to create an account for someone they
+  look after lands on the form instead of two empty lists. Titles and copy are
+  unchanged.
+
+### Added
+
+- **Deep link to the creation form.** `/account/delegation?create=1` scrolls the
+  "Create a managed account" form into view and puts the cursor in its username
+  field. `?create=1` survives the sign-in of a signed-out user; `#create` is
+  honoured too when the user is already signed in.
+- **A way on after creating an account.** When the page was opened with
+  `backUrl` (and `backLabel`), a successful creation shows "Continue to
+  {backLabel}" with the host under the success notice, a link back to the app.
+
 ## 0.7.2 — 2026-09-30
 
 ### Fixed

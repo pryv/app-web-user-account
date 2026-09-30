@@ -67,41 +67,37 @@ async function signedInWithDelegation(
     }),
   );
 
-  // The batch endpoint serves account.get and the delegations.* calls.
+  // The batch endpoint serves account.get and the delegations.* calls: the
+  // pryv client sends every `@pryv/delegation` method as a one-call batch
+  // (`connection.apiOne`), so the lists are answered here, by method id.
+  const methods: string[] = [];
   await page.route("https://*.example.test/", async (route) => {
     const body = route.request().postDataJSON() as Array<{ method: string }> | null;
     const method = Array.isArray(body) ? body[0]?.method : "";
-    if (method === "account.get") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          meta: META,
-          results: [{ account: { username: "alice", email: "a@example.test", language: "en" } }],
-        }),
-      });
-    }
+    methods.push(method);
+    const result = (() => {
+      switch (method) {
+        case "account.get":
+          return { account: { username: "alice", email: "a@example.test", language: "en" } };
+        case "delegations.listDelegates":
+          return { delegates: opts.delegates ?? [] };
+        case "delegations.listControlled":
+          return { controlled: opts.controlled ?? [] };
+        case "delegations.createAccount":
+          return {
+            delegation: { relId: "rel1", status: "active" },
+            apiEndpoint: "https://kid.example.test/",
+          };
+        default:
+          return {};
+      }
+    })();
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ meta: META, results: [{}] }),
+      body: JSON.stringify({ meta: META, results: [result] }),
     });
   });
-
-  await page.route("**/delegations/delegates**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ meta: META, delegates: opts.delegates ?? [] }),
-    }),
-  );
-  await page.route("**/delegations/controlled**", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ meta: META, controlled: opts.controlled ?? [] }),
-    }),
-  );
 
   // Seed a session so the account guard does not bounce us to /signin.
   await page.addInitScript(() => {
@@ -110,6 +106,9 @@ async function signedInWithDelegation(
     window.localStorage.setItem("pryv.session.apiEndpoint", "https://tok@alice.example.test/");
     window.localStorage.setItem("pryv.session.serviceInfoUrl", "https://reg.example.test/service/info");
   });
+
+  /** Batch method ids the page sent, in order. */
+  return { methods };
 }
 
 test.describe("delegated-session banner", () => {
@@ -164,5 +163,54 @@ test.describe("/account/delegation", () => {
     await page.getByLabel("Delegate username").fill("x");
     await page.getByRole("button", { name: "Send invite" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Invalid username" })).toBeVisible();
+  });
+
+  test("[DLG1] leads with creation: Create, Accounts I manage, My delegates", async ({ page }) => {
+    await signedInWithDelegation(page, {});
+    await page.goto("/account/delegation");
+    const sections = page.getByRole("heading", { level: 2 });
+    await expect(sections).toHaveText(["Create a managed account", "Accounts I manage", "My delegates"]);
+    // The lists loaded (empty), and no load error sits above the sections.
+    await expect(page.getByText("You do not manage any accounts.")).toBeVisible();
+    await expect(page.getByText("No delegates.")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  });
+
+  test("[DLG2] ?create=1 focuses the creation form", async ({ page }) => {
+    await signedInWithDelegation(page, {});
+    await page.goto("/account/delegation?create=1");
+    await expect(page.locator("#managed-username")).toBeFocused();
+  });
+
+  test("[DLG3] #create focuses the creation form too", async ({ page }) => {
+    await signedInWithDelegation(page, {});
+    await page.goto("/account/delegation#create");
+    await expect(page.locator("#managed-username")).toBeFocused();
+  });
+
+  test("[DLG4] after a creation, a way on to the app that sent the user", async ({ page }) => {
+    const { methods } = await signedInWithDelegation(page, {});
+    await page.goto(
+      "/account/delegation?backUrl=" + encodeURIComponent("https://app.example.test/") + "&backLabel=App",
+    );
+    // Not offered before a creation.
+    await expect(page.getByRole("heading", { name: "Create a managed account" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Continue to App" })).toHaveCount(0);
+
+    await page.locator("#managed-username").fill("kid-one");
+    await page.getByRole("button", { name: "Create managed account" }).click();
+
+    const notice = page.getByRole("alert").filter({ hasText: "Account kid-one created" });
+    await expect(notice).toBeVisible();
+    const link = notice.getByRole("link", { name: "Continue to App" });
+    await expect(link).toHaveAttribute("href", "https://app.example.test/");
+    // The host is shown next to the label (anti-phishing cue).
+    await expect(notice).toContainText("(app.example.test)");
+    expect(methods).toContain("delegations.createAccount");
+  });
+
+  test("[DLG5] a signed-out visit keeps ?create=1 through the sign-in bounce", async ({ page }) => {
+    await page.goto("/account/delegation?create=1");
+    await expect(page).toHaveURL(/\/signin\?.*returnTo=[^&]*create%3D1/);
   });
 });

@@ -155,6 +155,15 @@ Every route accepts these query parameters:
   browser tab). (The page
   rides along as `returnTo`, a same-origin account path the app validates; you
   do not need to set it yourself.)
+- `/account/delegation?create=1`: account delegation, opened on the
+  create-a-managed-account form (scrolled into view, cursor in the username
+  field). Link it from an app that sends a carer to create an account for
+  someone they look after. It is a self-service page like the ones above:
+  a signed-out user signs in first and comes back with `create=1` kept (a
+  `#create` fragment also works for a signed-in user, but does not survive
+  the sign-in). With `backUrl`/`backLabel`, a successful creation adds
+  "Continue to {backLabel}" (with the host shown) under the success notice,
+  a link to `backUrl` as given.
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.
