@@ -4,7 +4,8 @@
 
 ### Changed
 
-- **The delegation page leads with account creation.** `/account/delegation`
+- **The delegation page leads with account creation**
+  ([#7](https://github.com/pryv/app-web-user-account/issues/7)). `/account/delegation`
   now shows "Create a managed account" first, then "Accounts I manage", then
   "My delegates". A carer sent there to create an account for someone they
   look after lands on the form instead of two empty lists. Titles and copy are
@@ -19,6 +20,15 @@
 - **A way on after creating an account.** When the page was opened with
   `backUrl` (and `backLabel`), a successful creation shows "Continue to
   {backLabel}" with the host under the success notice, a link back to the app.
+  The notice is brought into view and the link focused.
+
+### Fixed
+
+- **A refused managed-account creation no longer shows the password.** When the
+  platform refused the call with an error the page did not map (a weak password,
+  a refusal, a server error), the alert showed the client library's error text,
+  which embeds the request parameters, password included. The page now shows the
+  platform's own message, or a generic one.
 
 ## 0.7.2 — 2026-09-30
 

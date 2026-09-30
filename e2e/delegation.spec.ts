@@ -88,10 +88,19 @@ async function signedInWithDelegation(
             delegation: { relId: "rel1", status: "active" },
             apiEndpoint: "https://kid.example.test/",
           };
+        case "delegations.requestAttach":
+          return {
+            delegation: { relId: "rel2", delegate: { username: "bob" }, status: "invite", requestedAt: 1 },
+          };
         default:
-          return {};
+          // Loud: an unanswered method used to get `{}`, which the client
+          // reads as a failure, so tests passed against an error page.
+          return null;
       }
     })();
+    if (result == null) {
+      return route.fulfill({ status: 500, contentType: "text/plain", body: "e2e harness: no answer for " + method });
+    }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -206,7 +215,16 @@ test.describe("/account/delegation", () => {
     await expect(link).toHaveAttribute("href", "https://app.example.test/");
     // The host is shown next to the label (anti-phishing cue).
     await expect(notice).toContainText("(app.example.test)");
+    // Brought into view with the focus on it (the notice sits above the form).
+    await expect(link).toBeFocused();
     expect(methods).toContain("delegations.createAccount");
+
+    // Only a creation offers the way on: another notice replaces it.
+    await page.locator("#delegate-username").fill("bobby");
+    await page.getByRole("button", { name: "Send invite" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Invitation sent to bobby" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Continue to App" })).toHaveCount(0);
+    expect(methods).toContain("delegations.requestAttach");
   });
 
   test("[DLG5] a signed-out visit keeps ?create=1 through the sign-in bounce", async ({ page }) => {

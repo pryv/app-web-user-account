@@ -95,6 +95,17 @@ export default function DelegationPage() {
     document.getElementById("managed-username")?.focus({ preventScroll: true });
   }, [wantsCreate, connection, client]);
 
+  // After a creation the success notice sits above the form, out of sight on a
+  // phone (the submit button is at the bottom of the form): bring it into view
+  // and put the focus on the way on when there is one.
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const continueRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!notice?.created) return;
+    noticeRef.current?.scrollIntoView({ block: "nearest" });
+    continueRef.current?.focus({ preventScroll: true });
+  }, [notice]);
+
   if (!connection || !client) {
     return <p className="text-sm text-muted">{t("common.loading")}</p>;
   }
@@ -103,18 +114,20 @@ export default function DelegationPage() {
     <section className="space-y-8">
       {loadError && <Alert>{loadError}</Alert>}
       {notice && (
-        <Alert tone="success">
-          {notice.text}
-          {/* The way on: the host is shown next to the label, as the header back link does. */}
-          {notice.created && backTo.url && (
-            <div className="mt-1">
-              <a href={backTo.url} className="text-primary hover:underline">
-                {t("delegation.continueTo", { label: backTo.label ?? backTo.host })}
-              </a>
-              {backTo.label && backTo.host && <span className="text-muted"> ({backTo.host})</span>}
-            </div>
-          )}
-        </Alert>
+        <div ref={noticeRef} className="scroll-mt-4">
+          <Alert tone="success">
+            {notice.text}
+            {/* The way on: the host is shown next to the label, as the header back link does. */}
+            {notice.created && backTo.url && (
+              <div className="mt-1">
+                <a ref={continueRef} href={backTo.url} className="text-primary hover:underline">
+                  {t("delegation.continueTo", { label: backTo.label ?? backTo.host })}
+                </a>
+                {backTo.label && backTo.host && <span className="text-muted"> ({backTo.host})</span>}
+              </div>
+            )}
+          </Alert>
+        </div>
       )}
 
       <div id="create" ref={createRef} className="scroll-mt-4">
