@@ -2,10 +2,10 @@
  * Reads the platform error out of what the Pryv client libraries throw.
  *
  * `@pryv/cmc` throws a `CmcError` with its id on `id`. `pryv`'s
- * `Connection.apiOne` throws a `PryvError` whose own message embeds the call's
- * params (which may carry a token-bearing URL), with the API error in
- * `innerObject` and, for a refusal raised by a plugin, its specific id under
- * `innerObject.data.id`.
+ * `Connection.apiOne` throws a `PryvError` with the API error in `innerObject`
+ * and, for a refusal raised by a plugin, its specific id under
+ * `innerObject.data.id`. Before `pryv` 3.14.2 its own message embedded the
+ * call's params (which may carry a token-bearing URL), so it is never shown.
  */
 
 export interface PlatformError {

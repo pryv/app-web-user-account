@@ -78,8 +78,12 @@ export function ConsentSignIn({
   disabled?: boolean;
   /** Flow-level error to display (e.g. a failed Cancel/refuse). */
   externalError?: string | null;
-  /** Extra content under the form (register / password-reset links…). */
-  footer?: ReactNode;
+  /**
+   * Extra content under the form (register / password-reset links…). As a
+   * function it receives whether this form's sign-in is running, so a footer
+   * action can wait for it.
+   */
+  footer?: ReactNode | ((formBusy: boolean) => ReactNode);
 }) {
   const { t } = useTranslation();
   const [username, setUsername] = useState(usernameHint);
@@ -237,7 +241,7 @@ export function ConsentSignIn({
           )}
         </div>
       </form>
-      {footer}
+      {typeof footer === "function" ? footer(busy) : footer}
     </Card>
   );
 }

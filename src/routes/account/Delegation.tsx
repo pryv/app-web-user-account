@@ -8,7 +8,7 @@ import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
 import { useSession, type PryvConnection } from "../../lib/session";
-import { parseBackTo } from "../../lib/backTo";
+import { NO_BACK_TO, inPopupOrFrame, parseBackTo } from "../../lib/backTo";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {
   runFlow,
@@ -45,7 +45,9 @@ export default function DelegationPage() {
   const { connection, actingAs, actAs } = useSession();
   const { search, hash } = useLocation();
   const navigate = useNavigate();
-  const backTo = parseBackTo(search);
+  // Like the header link: not offered where following it would load the app
+  // inside a script-opened window or a frame.
+  const backTo = inPopupOrFrame() ? NO_BACK_TO : parseBackTo(search);
   const wantsCreate = new URLSearchParams(search).get("create") === "1" || hash === "#create";
   const createRef = useRef<HTMLDivElement>(null);
   const createFocused = useRef(false);

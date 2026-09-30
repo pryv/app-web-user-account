@@ -90,9 +90,9 @@ export function delegationErrorMessage(err: unknown): string {
       return grantRequiresOwnerMessage();
     default: {
       // A refused API call raised by `pryv` carries the platform's error in
-      // `innerObject` (or `response.body.error`), and its own message embeds
-      // the request params, a password on account creation: show the
-      // platform's message, never that one.
+      // `innerObject` (or `response.body.error`); before `pryv` 3.14.2 its own
+      // message embedded the request params, a password on account creation:
+      // show the platform's message, never that one.
       const apiError = field(err, "innerObject") ?? field(field(field(err, "response"), "body"), "error");
       const apiMessage = field(apiError, "message");
       if (typeof apiMessage === "string" && apiMessage.length > 0) return apiMessage;

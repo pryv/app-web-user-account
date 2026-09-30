@@ -27,6 +27,9 @@ export interface BackTo {
   host: string | null;
 }
 
+/** No way back: nothing to render. */
+export const NO_BACK_TO: BackTo = { url: null, label: null, host: null };
+
 function parseHttpUrl(rawUrl: string): URL | null {
   try {
     const base = typeof window !== "undefined" ? window.location.origin : undefined;

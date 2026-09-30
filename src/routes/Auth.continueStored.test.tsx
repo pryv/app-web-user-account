@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 /**
@@ -21,9 +21,15 @@ const flow = vi.hoisted(() => ({
 }));
 vi.mock("../lib/accessFlow", () => flow);
 
+const login = vi.hoisted(() => vi.fn());
+
 vi.mock("pryv", () => ({
   default: {
-    Service: class {},
+    Service: class {
+      login(...args: unknown[]) {
+        return login(...args);
+      }
+    },
     Connection: class {
       apiEndpoint: string;
       endpoint: string;
@@ -67,6 +73,7 @@ async function openAuth() {
 describe("[PCS] /auth continue with the stored session", () => {
   beforeEach(() => {
     for (const fn of Object.values(flow)) if (typeof fn.mockReset === "function") fn.mockReset();
+    login.mockReset();
     flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
     localStorage.clear();
     sessionStorage.clear();
@@ -109,6 +116,27 @@ describe("[PCS] /auth continue with the stored session", () => {
     await openAuth();
     const signIn = (await screen.findByRole("button", { name: /^sign in$/i })) as HTMLButtonElement;
     expect(signIn.disabled).toBe(true);
+  });
+
+  it("[PCS6] while a password sign-in runs, \"Continue as ... instead\" cannot start a second one", async () => {
+    // A hint for another account: the form comes first, the stored session is the secondary action.
+    localStorage.setItem("pryv.session.serviceInfoUrl", "https://core.test/service/info");
+    localStorage.setItem("pryv.session.apiEndpoint", STORED_API);
+    flow.loadAccessState.mockResolvedValue({ status: "NEED_SIGNIN", requestingAppId: "some-app", requestedPermissions: PERMS, serviceInfo: { api: "https://{username}.core.test/" } });
+    login.mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL) + "&username=bob"]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    const instead = (await screen.findByRole("button", { name: /continue as alice instead/i })) as HTMLButtonElement;
+    expect(instead.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await waitFor(() => expect(instead.disabled).toBe(true));
+    expect(flow.checkAppAccess).not.toHaveBeenCalled();
   });
 
   it("[PCS4] a server failure (503) keeps the session", async () => {

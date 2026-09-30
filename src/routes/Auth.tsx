@@ -927,10 +927,10 @@ export default function Auth() {
       onCancel={() => void refuse()}
       cancelDisabled={finishing !== null || busy}
       disabled={busy}
-      footer={
+      footer={(formBusy) => (
         <>
           {hintDiffers && storedUsable && knownUsername && (
-            <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy} className="mt-3">
+            <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy || formBusy} className="mt-3">
               {busy ? t("consent.checking") : t("consent.continueAsInstead", { username: knownUsername })}
             </Button>
           )}
@@ -963,7 +963,7 @@ export default function Auth() {
             </p>
           )}
         </>
-      }
+      )}
     />
   );
 }

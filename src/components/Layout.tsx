@@ -1,7 +1,7 @@
 import { useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { inPopupOrFrame, parseBackTo } from "../lib/backTo";
+import { NO_BACK_TO, inPopupOrFrame, parseBackTo } from "../lib/backTo";
 import { Logo } from "../brand";
 import DelegatedSessionBanner from "./DelegatedSessionBanner";
 import ThemeToggle from "./ThemeToggle";
@@ -18,7 +18,7 @@ import ThemeToggle from "./ThemeToggle";
 export default function Layout({ children }: { children: ReactNode }) {
   const { search } = useLocation();
   const { t } = useTranslation();
-  const backTo = inPopupOrFrame() ? { url: null, label: null, host: null } : parseBackTo(search);
+  const backTo = inPopupOrFrame() ? NO_BACK_TO : parseBackTo(search);
 
   return (
     <div className="min-h-screen bg-body text-ink">

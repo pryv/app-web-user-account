@@ -7,10 +7,14 @@
 - **No "Back to {app}" link in a pop-up.** The header link to `backUrl` also
   rendered inside the sign-in pop-up an app opens on `/auth` (and on
   `/register` or `/reset-password` reached from it), and a click loaded the app
-  inside the pop-up. The link is no longer shown in a pop-up an app opened or
-  in a frame; a tab keeps it. The pop-up closes on accept or cancel as before.
-- **`/auth`: Sign in is disabled while "Continue as" is being checked**, so a
-  second sign-in cannot start under a running one.
+  inside the pop-up. The link (and "Continue to {app}" after a managed-account
+  creation) is no longer shown in a window an app opened by
+  script (`window.opener` set) or in a frame; a tab reached by a link or a
+  redirect keeps it. To keep the link on pages you open with `window.open`, pass
+  `noopener`. The pop-up closes on accept or cancel as before.
+- **`/auth`: one sign-in at a time.** Sign in is disabled while "Continue as" is
+  being checked, and "Continue as {username} instead" is disabled while a
+  password sign-in runs, so a second sign-in cannot start under a running one.
 
 ### Documentation
 

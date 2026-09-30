@@ -7,7 +7,7 @@ import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE } from "./delegat
 
 const cmcError = (id: string) => new CmcError("CMC accept failed: " + id, id);
 
-/** What `Connection.apiOne` throws for an API refusal: its message embeds the call's params. */
+/** What `Connection.apiOne` threw for an API refusal before `pryv` 3.14.2: its message embedded the call's params. */
 function apiRefusal(apiError: Record<string, unknown>): Error {
   return new Pryv.PryvError(
     "Error for api method: \"events.create\" with params: {\"content\":{\"capabilityUrl\":\"https://secret-token@core.example/\"}} >> Result: {...}",
