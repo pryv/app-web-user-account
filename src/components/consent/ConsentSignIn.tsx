@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../ui";
 import { isMfaRequired, resolveUserId } from "../../lib/service";
@@ -80,6 +80,11 @@ export function ConsentSignIn({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [internalError, setError] = useState<string | null>(null);
+  // A new error from the page (e.g. an action in the footer) replaces a stale
+  // one from this form, which would otherwise mask it.
+  useEffect(() => {
+    if (externalError != null) setError(null);
+  }, [externalError]);
   const error = internalError ?? externalError ?? null;
 
   const [mfaToken, setMfaToken] = useState<string | null>(null);

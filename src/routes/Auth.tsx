@@ -94,6 +94,9 @@ interface AuthQuery {
   username: string | null;
 }
 
+/** Longest wait for the stored session's name before a hinted page shows the form. */
+const KNOWN_USERNAME_WAIT_MS = 4000;
+
 function parseAuthQuery(search: string): AuthQuery {
   const p = new URLSearchParams(search);
   // Service-info URL: callers historically send `serviceInfo=` (the name
@@ -267,6 +270,12 @@ export default function Auth() {
     }
     let cancelled = false;
     setKnownResolved(false);
+    // The lookup is a network call: do not hold a hinted page on the loading
+    // card for longer than this (the form comes first meanwhile; the
+    // secondary "Continue as" appears if the name arrives later).
+    const giveUp = setTimeout(() => {
+      if (!cancelled) setKnownResolved(true);
+    }, KNOWN_USERNAME_WAIT_MS);
     storedConnection
       .username()
       .then((u) => {
@@ -276,17 +285,21 @@ export default function Auth() {
         if (!cancelled) setKnownUsername(null);
       })
       .finally(() => {
+        clearTimeout(giveUp);
         if (!cancelled) setKnownResolved(true);
       });
     return () => {
       cancelled = true;
+      clearTimeout(giveUp);
     };
   }, [storedUsable, storedConnection]);
   // The app named who should sign in (`username` hint). When a stored session
   // belongs to someone else, the sign-in form (pre-filled with the hint) comes
   // first and that session becomes a secondary "Continue as X instead". An
   // email hint never matches a username: it lands in the form and is resolved
-  // on submit. The hint never clears the stored session.
+  // on submit. The hint never clears the stored session. When the stored
+  // session's name cannot be looked up (offline, revoked token), the form comes
+  // first and no secondary action is offered: there is no name to show.
   const usernameHint = query.username;
   const hintDiffers =
     usernameHint != null &&
@@ -912,7 +925,7 @@ export default function Auth() {
         await afterSignIn(endpoint, s.personalToken, s.username, (s.connection as PryvConnection) ?? null);
       }}
       onCancel={() => void refuse()}
-      cancelDisabled={finishing !== null}
+      cancelDisabled={finishing !== null || busy}
       footer={
         <>
           {hintDiffers && storedUsable && knownUsername && (

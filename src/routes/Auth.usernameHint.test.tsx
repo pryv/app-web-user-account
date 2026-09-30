@@ -23,6 +23,9 @@ const flow = vi.hoisted(() => ({
 }));
 vi.mock("../lib/accessFlow", () => flow);
 
+// Controls the stored session's username lookup (a network call in real life).
+const lookup = vi.hoisted(() => ({ fn: null as null | (() => Promise<string>) }));
+
 vi.mock("pryv", () => ({
   default: {
     Service: class {},
@@ -39,6 +42,7 @@ vi.mock("pryv", () => ({
         this.endpoint = url.toString();
       }
       async username() {
+        if (lookup.fn) return lookup.fn();
         return new URL(this.apiEndpoint).hostname.split(".")[0];
       }
     },
@@ -75,9 +79,11 @@ describe("[AUH] /auth username hint", () => {
     flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
     localStorage.clear();
     sessionStorage.clear();
+    lookup.fn = null;
   });
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
   });
 
   it("[AUH1] no stored session: the form is pre-filled with the hint", async () => {
@@ -117,5 +123,40 @@ describe("[AUH] /auth username hint", () => {
     openAuth(null);
     await screen.findByRole("button", { name: "Continue as alice" });
     expect(screen.queryByLabelText("Username or email")).toBeNull();
+  });
+
+  it("[AUH6] with a hint, the page waits for the stored name (loading card), then decides; a lookup that never answers is given up", async () => {
+    storeAlice();
+    let resolve: (u: string) => void = () => {};
+    lookup.fn = () => new Promise<string>((r) => { resolve = r; });
+    openAuth("bob");
+    // Past the access-state load, the pending name lookup keeps the loading
+    // card: neither the stored-session card nor the form flashes first.
+    await waitFor(() => expect(flow.loadAccessState).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText(/Loading/)).toBeTruthy();
+    expect(screen.queryByText("Welcome back")).toBeNull();
+    expect(screen.queryByLabelText("Username or email")).toBeNull();
+    resolve("alice");
+    expect(((await screen.findByLabelText("Username or email")) as HTMLInputElement).value).toBe("bob");
+    await screen.findByRole("button", { name: "Continue as alice instead" });
+    cleanup();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    lookup.fn = () => new Promise<string>(() => {});
+    openAuth("bob");
+    await screen.findByText(/Loading/);
+    vi.advanceTimersByTime(4000);
+    expect(((await screen.findByLabelText("Username or email")) as HTMLInputElement).value).toBe("bob");
+    expect(screen.queryByRole("button", { name: /Continue as/ })).toBeNull();
+  });
+
+  it("[AUH7] a stored session whose name cannot be looked up: the form, no secondary action, the session kept", async () => {
+    storeAlice();
+    lookup.fn = () => Promise.reject(new Error("offline"));
+    openAuth("bob");
+    expect(((await screen.findByLabelText("Username or email")) as HTMLInputElement).value).toBe("bob");
+    expect(screen.queryByRole("button", { name: /Continue as/ })).toBeNull();
+    expect(localStorage.getItem("pryv.session.apiEndpoint")).toBe(STORED_API);
   });
 });

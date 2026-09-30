@@ -137,7 +137,7 @@ Every route accepts these query parameters:
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). On `/auth` in a tab (not a pop-up, not a frame), the page also goes there after the user accepts or cancels, since it cannot close the tab. |
 | `lang` | UI language for this visit (e.g. `fr`, `fr-CH`), when the build ships it. It wins over the account's language and the browser's, and is not remembered after the visit. |
-| `username` | `/signin` and `/auth`: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. On `/auth` (carried on your `authUrl`), when the browser holds a session for another account, the pre-filled form comes first and that session is offered as "Continue as {username} instead"; the hint never signs that session out. An email hint is accepted and resolved when the user submits. |
+| `username` | `/signin` and `/auth`: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. On `/auth` (carried on your `authUrl`), when the browser holds a session for another account, the pre-filled form comes first and that session is offered as "Continue as {username} instead"; the hint never signs that session out (when that session's name cannot be looked up, only the form is shown). An email hint is accepted and resolved when the user submits. The hint names the account that signs in: an app that hints a managed account gets its user asked for that account's password, so hint the person who is signing in. |
 
 **Hand-off targets:**
 
@@ -162,8 +162,9 @@ Every route accepts these query parameters:
   access request (lib-js `Pryv.Browser.setupAuth(...)` or
   `POST {register}/access`, optionally passing `authUrl` pointing at this
   app's `/auth` if the platform's `access:trustedAuthUrls` allows it) and open
-  the `authUrl` the server returns. Your `authUrl` may carry `backUrl` and
-  `backLabel` in its query (the trusted-URL match ignores the query). After the
+  the `authUrl` the server returns. Your `authUrl` may carry `backUrl`,
+  `backLabel` and `username` in its query (the trusted-URL match ignores the
+  query). After the
   user accepts or cancels, a pop-up your app opened closes. A tab it did not
   open (typically a phone, where the sign-in redirects) cannot be closed by the
   page: it goes back to `backUrl` when you gave one, otherwise it shows "This
