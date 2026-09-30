@@ -123,6 +123,12 @@ test.describe("[AWN] /auth after the decision: close a pop-up, go back from a ta
     await expect(page.getByRole("link", { name: /Back to App/ })).toBeVisible();
   });
 
+  test("[AWN5] a username hint pre-fills the sign-in form", async ({ page, context }) => {
+    await mockPlatform(context, []);
+    await page.goto(authPath(false) + "&username=bob");
+    await expect(page.getByLabel("Username or email")).toHaveValue("bob");
+  });
+
   test("[AWN3] a tab without a way back shows the request complete card", async ({ page, context }) => {
     const posted: unknown[] = [];
     await mockPlatform(context, posted);

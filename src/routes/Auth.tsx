@@ -14,7 +14,7 @@ import {
   type OfferPermission,
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
-import { accessRequestSearch } from "../lib/authParams";
+import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
@@ -90,6 +90,8 @@ interface AuthQuery {
   lang: string;
   cli: boolean;
   oauthState: string | null;
+  /** Sign-in hint (`username`), as `/signin` reads it. */
+  username: string | null;
 }
 
 function parseAuthQuery(search: string): AuthQuery {
@@ -104,6 +106,7 @@ function parseAuthQuery(search: string): AuthQuery {
     lang: p.get("lang") || "en",
     cli: p.get("cli") === "1",
     oauthState: p.get("oauthState"),
+    username: parseAuthParams(search).username,
   };
 }
 
@@ -254,12 +257,16 @@ export default function Auth() {
     flowSvcInfoUrl !== null &&
     storedServiceInfoUrl() === flowSvcInfoUrl;
   const [knownUsername, setKnownUsername] = useState<string | null>(null);
+  // Whether `knownUsername` has been looked up (resolved or failed).
+  const [knownResolved, setKnownResolved] = useState(false);
   useEffect(() => {
     if (!storedUsable || !storedConnection) {
       setKnownUsername(null);
+      setKnownResolved(true);
       return;
     }
     let cancelled = false;
+    setKnownResolved(false);
     storedConnection
       .username()
       .then((u) => {
@@ -267,11 +274,25 @@ export default function Auth() {
       })
       .catch(() => {
         if (!cancelled) setKnownUsername(null);
+      })
+      .finally(() => {
+        if (!cancelled) setKnownResolved(true);
       });
     return () => {
       cancelled = true;
     };
   }, [storedUsable, storedConnection]);
+  // The app named who should sign in (`username` hint). When a stored session
+  // belongs to someone else, the sign-in form (pre-filled with the hint) comes
+  // first and that session becomes a secondary "Continue as X instead". An
+  // email hint never matches a username: it lands in the form and is resolved
+  // on submit. The hint never clears the stored session.
+  const usernameHint = query.username;
+  const hintDiffers =
+    usernameHint != null &&
+    storedUsable &&
+    knownResolved &&
+    usernameHint.toLowerCase() !== (knownUsername ?? "").toLowerCase();
 
   async function continueAsStored() {
     if (!storedConnection) return;
@@ -794,10 +815,21 @@ export default function Auth() {
     );
   }
 
+  // With a hint, wait until the stored session's username is known before
+  // choosing between its card and the sign-in form (no flash of the wrong one).
+  if (storedUsable && !personalToken && usernameHint != null && !knownResolved) {
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="text-sm text-muted">{t("consent.loading")}</p>
+      </Card>
+    );
+  }
+
   // Already signed in on this platform (persisted session): offer to
   // continue to the consent step directly, with an explicit way out so a
   // shared browser doesn't grant access under the wrong account.
-  if (storedUsable && !personalToken) {
+  if (storedUsable && !personalToken && !hintDiffers) {
     return (
       <Card>
         <h1 className="mb-1 text-2xl">{t("consent.welcomeBack")}</h1>
@@ -850,6 +882,7 @@ export default function Auth() {
     <ConsentSignIn
       makeService={makeService}
       appId={APP_ID}
+      usernameHint={usernameHint ?? ""}
       // A refusal raised on the already-authorized short-circuit lands here,
       // after check-app has answered but before any consent panel exists.
       // Without this the message would be set and never rendered.
@@ -882,6 +915,11 @@ export default function Auth() {
       cancelDisabled={finishing !== null}
       footer={
         <>
+          {hintDiffers && storedUsable && knownUsername && (
+            <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy} className="mt-3">
+              {busy ? t("consent.checking") : t("consent.continueAsInstead", { username: knownUsername })}
+            </Button>
+          )}
           <div className="mt-4 flex justify-between text-sm">
             <Link
               to={`/reset-password${linksSearch}`}

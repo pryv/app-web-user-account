@@ -137,7 +137,7 @@ Every route accepts these query parameters:
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
 | `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). On `/auth` in a tab (not a pop-up, not a frame), the page also goes there after the user accepts or cancels, since it cannot close the tab. |
 | `lang` | UI language for this visit (e.g. `fr`, `fr-CH`), when the build ships it. It wins over the account's language and the browser's, and is not remembered after the visit. |
-| `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
+| `username` | `/signin` and `/auth`: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. On `/auth` (carried on your `authUrl`), when the browser holds a session for another account, the pre-filled form comes first and that session is offered as "Continue as {username} instead"; the hint never signs that session out. An email hint is accepted and resolved when the user submits. |
 
 **Hand-off targets:**
 

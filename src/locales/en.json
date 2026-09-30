@@ -355,6 +355,7 @@
     "checking": "Checking…",
     "continue": "Continue",
     "continueAs": "Continue as {{username}}",
+    "continueAsInstead": "Continue as {{username}} instead",
     "notMe": "Not me — use another account",
     "signinPrompt": "Sign in to grant access to <strong>{{appId}}</strong>.",
     "forgotPassword": "Forgot password?",
