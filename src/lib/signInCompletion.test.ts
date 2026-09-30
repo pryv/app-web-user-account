@@ -75,6 +75,17 @@ describe("[SICT] signed-in target", () => {
     expect(p.get("pryvServiceInfoUrl")).toBe(SI);
   });
 
+  it("[SICT12] the return to /auth after creating an account keeps the app's way back", () => {
+    const poll = "https://core.example/reg/access/KEY1";
+    const target = signedInTarget(
+      `?poll=${encodeURIComponent(poll)}&key=KEY1&backUrl=https%3A%2F%2Fapp.example%2Fback&backLabel=App`,
+      ENDPOINT,
+    );
+    const p = new URLSearchParams((target as { path: string }).path.slice("/auth".length));
+    expect(p.get("backUrl")).toBe("https://app.example/back");
+    expect(p.get("backLabel")).toBe("App");
+  });
+
   it("[SICT7] returns a bounced visitor to the account page it asked for", () => {
     expect(
       signedInTarget("?returnTo=%2Faccount%2Fsecurity%3FbackLabel%3DApp", ENDPOINT),

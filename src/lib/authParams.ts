@@ -72,6 +72,10 @@ const ACCESS_REQUEST_KEYS = [
   "lang",
   "cli",
   "oauthState",
+  // The app's way back must survive the register / reset / sign-in hops and
+  // the return to `/auth`, where Cancel and completion in a tab use it.
+  "backUrl",
+  "backLabel",
 ] as const;
 
 /**

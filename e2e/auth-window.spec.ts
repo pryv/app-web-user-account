@@ -105,6 +105,24 @@ test.describe("[AWN] /auth after the decision: close a pop-up, go back from a ta
     expect(posted.some((b) => (b as { status: string }).status === "REFUSED")).toBe(true);
   });
 
+  test("[AWN4] Create account opens in the same window and keeps the request and the way back", async ({ page, context }) => {
+    const posted: unknown[] = [];
+    await mockPlatform(context, posted);
+    await page.goto(authPath(true));
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    let opened = 0;
+    context.on("page", () => { opened++; });
+    await page.getByRole("link", { name: "Create account" }).click();
+    await page.waitForURL(/\/register\?/);
+    expect(opened).toBe(0);
+    const p = new URL(page.url()).searchParams;
+    expect(p.get("poll")).toBe(POLL);
+    expect(p.get("pryvServiceInfoUrl")).toBe(SVC);
+    expect(p.get("backUrl")).toBe(BACK);
+    expect(p.get("backLabel")).toBe("App");
+    await expect(page.getByRole("link", { name: /Back to App/ })).toBeVisible();
+  });
+
   test("[AWN3] a tab without a way back shows the request complete card", async ({ page, context }) => {
     const posted: unknown[] = [];
     await mockPlatform(context, posted);

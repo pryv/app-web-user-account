@@ -167,7 +167,10 @@ Every route accepts these query parameters:
   user accepts or cancels, a pop-up your app opened closes. A tab it did not
   open (typically a phone, where the sign-in redirects) cannot be closed by the
   page: it goes back to `backUrl` when you gave one, otherwise it shows "This
-  request is complete". A pop-up is never sent to `backUrl`.
+  request is complete". A pop-up is never sent to `backUrl`. "Create account"
+  and "Forgot password?" on `/auth` open in the same window and keep the
+  request and the way back, so the user returns to the consent screen after
+  creating an account.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and
