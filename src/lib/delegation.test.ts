@@ -57,6 +57,20 @@ describe("delegationErrorMessage", () => {
   it("falls back to a generic message for unknown shapes", () => {
     expect(delegationErrorMessage(null)).toMatch(/something went wrong/i);
   });
+
+  // A refused API call raised by `pryv` embeds the request params in its own
+  // message: on account creation that is the password. Never show it.
+  it("[DEM1] a refused API call shows the platform's message, never the request params", () => {
+    const refused = new Pryv.PryvError(
+      'Error for api method: "delegations.createAccount" with params: {"username":"kid","password":"s3cret-pw"} >> Result: {}',
+      { id: "invalid-parameters-format", message: "The password is too weak." },
+    );
+    expect(delegationErrorMessage(refused)).toBe("The password is too weak.");
+    const noMessage = new Pryv.PryvError('Error for api method: "x" with params: {"password":"s3cret-pw"}', { id: "forbidden" });
+    const shown = delegationErrorMessage(noMessage);
+    expect(shown).not.toContain("s3cret-pw");
+    expect(shown).toMatch(/something went wrong/i);
+  });
 });
 
 describe("delegationErrorId / isGenuineLoginRequired", () => {

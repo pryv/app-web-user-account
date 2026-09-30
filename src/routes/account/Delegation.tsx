@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { RefreshCw, UserPlus, LogIn, X, Trash2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
 import { useSession, type PryvConnection } from "../../lib/session";
+import { parseBackTo } from "../../lib/backTo";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {
   runFlow,
@@ -23,15 +24,18 @@ import {
  * Account-delegation management.
  *
  * Three surfaces, driven by `@pryv/delegation` over the current personal
- * session:
- *   - "My delegates" (this account, B): who can act on my behalf; detach an
- *     active delegate or cancel a pending invite (both need a genuine login on
- *     this account — surfaced gracefully if the session came from a delegated
- *     hand-off).
+ * session, in this order:
+ *   - "Create a managed account" (A): make a brand-new account this account
+ *     fully controls. First, because it is what a first-time visitor (a carer
+ *     sent here by an app) comes for, and the only section with content before
+ *     any delegation exists. `?create=1` (or `#create`) focuses its form; after
+ *     a creation, a "Continue to {backLabel}" link leads back to `backUrl`.
  *   - "Accounts I manage" (A): accept/refuse invites, open an account I
  *     control, dismiss a stale row.
- *   - "Create a managed account" (A): make a brand-new account this account
- *     fully controls.
+ *   - "My delegates" (this account, B): who can act on my behalf; request a
+ *     delegate, detach an active delegate or cancel a pending invite (removal
+ *     needs a genuine login on this account, surfaced gracefully if the
+ *     session came from a delegated hand-off).
  *
  * Removing a delegate is intentionally B-side only (no detach on the A-side
  * "Accounts I manage" list): a delegate cannot detach itself.
@@ -39,8 +43,12 @@ import {
 export default function DelegationPage() {
   const { t } = useTranslation();
   const { connection, actingAs, actAs } = useSession();
-  const { search } = useLocation();
+  const { search, hash } = useLocation();
   const navigate = useNavigate();
+  const backTo = parseBackTo(search);
+  const wantsCreate = new URLSearchParams(search).get("create") === "1" || hash === "#create";
+  const createRef = useRef<HTMLDivElement>(null);
+  const createFocused = useRef(false);
 
   const client = useMemo(
     () => (connection ? Delegation.fromConnection(connection, { pryv: Pryv }) : null),
@@ -50,7 +58,13 @@ export default function DelegationPage() {
   const [delegates, setDelegates] = useState<DelegateRecord[] | null>(null);
   const [controlled, setControlled] = useState<ControlledRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // `created` marks the notice of a creation made in this page load, the only
+  // one that offers the way on to the app that sent the user here.
+  const [notice, setNotice] = useState<{ text: string; created: boolean } | null>(null);
+  const showNotice = useCallback(
+    (text: string | null) => setNotice(text ? { text, created: false } : null),
+    [],
+  );
 
   const load = useCallback(async () => {
     if (!client) return;
@@ -69,6 +83,29 @@ export default function DelegationPage() {
     void load();
   }, [load]);
 
+  // Deep link (`?create=1`, or `#create`): once the page has rendered with a
+  // session, bring the creation form into view and put the cursor in it. Once
+  // per mount, so a later re-render never steals the focus back.
+  useEffect(() => {
+    if (!wantsCreate || createFocused.current || !connection || !client) return;
+    const section = createRef.current;
+    if (!section) return;
+    createFocused.current = true;
+    section.scrollIntoView({ block: "start" });
+    document.getElementById("managed-username")?.focus({ preventScroll: true });
+  }, [wantsCreate, connection, client]);
+
+  // After a creation the success notice sits above the form, out of sight on a
+  // phone (the submit button is at the bottom of the form): bring it into view
+  // and put the focus on the way on when there is one.
+  const noticeRef = useRef<HTMLDivElement>(null);
+  const continueRef = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (!notice?.created) return;
+    noticeRef.current?.scrollIntoView({ block: "nearest" });
+    continueRef.current?.focus({ preventScroll: true });
+  }, [notice]);
+
   if (!connection || !client) {
     return <p className="text-sm text-muted">{t("common.loading")}</p>;
   }
@@ -76,20 +113,38 @@ export default function DelegationPage() {
   return (
     <section className="space-y-8">
       {loadError && <Alert>{loadError}</Alert>}
-      {notice && <Alert tone="success">{notice}</Alert>}
+      {notice && (
+        <div ref={noticeRef} className="scroll-mt-4">
+          <Alert tone="success">
+            {notice.text}
+            {/* The way on: the host is shown next to the label, as the header back link does. */}
+            {notice.created && backTo.url && (
+              <div className="mt-1">
+                <a ref={continueRef} href={backTo.url} className="text-primary hover:underline">
+                  {t("delegation.continueTo", { label: backTo.label ?? backTo.host })}
+                </a>
+                {backTo.label && backTo.host && <span className="text-muted"> ({backTo.host})</span>}
+              </div>
+            )}
+          </Alert>
+        </div>
+      )}
 
-      <MyDelegates
-        client={client}
-        delegates={delegates}
-        reload={load}
-        onNotice={setNotice}
-      />
+      <div id="create" ref={createRef} className="scroll-mt-4">
+        <CreateManagedAccount
+          connection={connection}
+          client={client}
+          reload={load}
+          onNotice={showNotice}
+          onCreated={(text) => setNotice({ text, created: true })}
+        />
+      </div>
 
       <AccountsIManage
         client={client}
         controlled={controlled}
         reload={load}
-        onNotice={setNotice}
+        onNotice={showNotice}
         onOpen={async (username) => {
           // Hand-off: mint a delegate PAT for the controlled account and make it
           // this tab's active session ("act as that account"). The current
@@ -105,13 +160,18 @@ export default function DelegationPage() {
         }}
       />
 
-      <CreateManagedAccount connection={connection} client={client} reload={load} onNotice={setNotice} />
+      <MyDelegates
+        client={client}
+        delegates={delegates}
+        reload={load}
+        onNotice={showNotice}
+      />
     </section>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Section 1 — My delegates (B-side)                                    */
+/* Section 3: My delegates (B-side)                                     */
 /* ------------------------------------------------------------------ */
 
 function MyDelegates({
@@ -234,7 +294,7 @@ function MyDelegates({
 }
 
 /* ------------------------------------------------------------------ */
-/* Section 2 — Accounts I manage (A-side)                               */
+/* Section 2: Accounts I manage (A-side)                                */
 /* ------------------------------------------------------------------ */
 
 function AccountsIManage({
@@ -446,7 +506,7 @@ function AcceptDialog({
 }
 
 /* ------------------------------------------------------------------ */
-/* Section 3 — Create a managed account (A-side)                        */
+/* Section 1: Create a managed account (A-side)                         */
 /* ------------------------------------------------------------------ */
 
 function CreateManagedAccount({
@@ -454,11 +514,14 @@ function CreateManagedAccount({
   client,
   reload,
   onNotice,
+  onCreated,
 }: {
   connection: PryvConnection;
   client: Delegation;
   reload: () => Promise<void>;
   onNotice: (msg: string | null) => void;
+  /** The success notice of a creation (the page adds the way on). */
+  onCreated: (msg: string) => void;
 }) {
   const { t } = useTranslation();
   const [username, setUsername] = useState("");
@@ -512,7 +575,7 @@ function CreateManagedAccount({
     setUsername("");
     setEmail("");
     setPassword("");
-    onNotice(t("delegation.noticeAccountCreatedManaged", { username: u }));
+    onCreated(t("delegation.noticeAccountCreatedManaged", { username: u }));
     await reload();
   }
 

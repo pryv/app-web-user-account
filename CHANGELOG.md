@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- **`/auth` honours the `username` sign-in hint**
+  ([#4](https://github.com/pryv/app-web-user-account/issues/4)), as `/signin`
+  does: the form is pre-filled. When the browser holds a session for another
+  account, the pre-filled form comes first and that session is offered as
+  "Continue as {username} instead" (it is never signed out by the hint); a hint
+  matching the stored session, or none, keeps the "Continue as" card. Deliver it
+  on your `authUrl` query.
+- **Deep link to the creation form.** `/account/delegation?create=1` scrolls the
+  "Create a managed account" form into view and puts the cursor in its username
+  field. `?create=1` survives the sign-in of a signed-out user; `#create` is
+  honoured too when the user is already signed in.
+- **A way on after creating an account.** When the page was opened with
+  `backUrl` (and `backLabel`), a successful creation shows "Continue to
+  {backLabel}" with the host under the success notice, a link back to the app.
+  The notice is brought into view and the link focused.
+
+### Changed
+
+- **The delegation page leads with account creation**
+  ([#7](https://github.com/pryv/app-web-user-account/issues/7)). `/account/delegation`
+  now shows "Create a managed account" first, then "Accounts I manage", then
+  "My delegates". A carer sent there to create an account for someone they
+  look after lands on the form instead of two empty lists. Titles and copy are
+  unchanged.
+
 ### Fixed
 
 - **`/auth`: Cancel and completion no longer leave a dead page in a tab**
@@ -20,16 +47,11 @@
   the same window; they carry the pending request and the app's way back
   (`backUrl` / `backLabel`), which also survive the return to `/auth` after the
   account is created, and a pop-up still closes on completion.
-
-### Added
-
-- **`/auth` honours the `username` sign-in hint**
-  ([#4](https://github.com/pryv/app-web-user-account/issues/4)), as `/signin`
-  does: the form is pre-filled. When the browser holds a session for another
-  account, the pre-filled form comes first and that session is offered as
-  "Continue as {username} instead" (it is never signed out by the hint); a hint
-  matching the stored session, or none, keeps the "Continue as" card. Deliver it
-  on your `authUrl` query.
+- **A refused managed-account creation no longer shows the password.** When the
+  platform refused the call with an error the page did not map (a weak password,
+  a refusal, a server error), the alert showed the client library's error text,
+  which embeds the request parameters, password included. The page now shows the
+  platform's own message, or a generic one.
 
 ## 0.7.2 — 2026-09-30
 
