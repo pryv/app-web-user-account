@@ -11,7 +11,8 @@
   cannot be closed by script: a moment later it now goes back to `backUrl` when
   the app gave one (carry `backUrl` / `backLabel` on your `authUrl`), and
   otherwise shows "This request is complete" instead of the page it was on. A
-  pop-up is never sent to `backUrl`.
+  pop-up, or a page shown in a frame, is never sent to `backUrl`; the buttons
+  stay disabled once the decision is sent.
 
 ## 0.7.2 — 2026-09-30
 

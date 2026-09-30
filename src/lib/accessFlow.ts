@@ -355,8 +355,9 @@ export interface CloseFallback {
  * back to the app (`replace`, so Back does not return to a decided request),
  * anything else calls `onStillOpen` (the "request complete" card). A pop-up
  * (`window.opener` set) is never navigated to the app: that would load the app
- * inside the pop-up. `window.closed` does not flip synchronously in every
- * browser, hence the deferred check.
+ * inside the pop-up. Nor is a page shown in a frame (it would load the app in
+ * the frame). `window.closed` does not flip synchronously in every browser,
+ * hence the deferred check.
  */
 export function closeOrFallback(fallback?: CloseFallback): void {
   window.close();
@@ -364,7 +365,7 @@ export function closeOrFallback(fallback?: CloseFallback): void {
   setTimeout(() => {
     if (window.closed) return;
     const back = fallback.backUrl ? httpUrlOrNull(fallback.backUrl) : null;
-    if (back && window.opener == null) {
+    if (back && window.opener == null && window.top === window.self) {
       window.location.replace(back.href);
       return;
     }

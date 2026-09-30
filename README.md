@@ -135,7 +135,7 @@ Every route accepts these query parameters:
 |---|---|
 | `pryvServiceInfoUrl` | Which Pryv platform to talk to. Optional when the deployment's `settings.json` names the platform (see [Deploy](#deploy-settingsjson)); when present it wins. |
 | `backLabel` | Your app's display name — renders a "← Back to {name}" link in the header. |
-| `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). |
+| `backUrl` | Where that back link navigates (http/https only; the link always displays the target host). On `/auth` in a tab (not a pop-up, not a frame), the page also goes there after the user accepts or cancels, since it cannot close the tab. |
 | `lang` | UI language for this visit (e.g. `fr`, `fr-CH`), when the build ships it. It wins over the account's language and the browser's, and is not remembered after the visit. |
 | `username` | `/signin` only: a sign-in hint (like OIDC `login_hint`) that pre-fills the username field when you already know who the user is. The user can edit it and still enters the password; it grants nothing. |
 
@@ -212,10 +212,12 @@ wrong account. While a session acts for another account (delegation), a
 banner under the header says so on every page, based on what the core reports
 for the session.
 
-> Note: `backUrl` is a user-initiated *cancel / go-back* affordance. It is
-> separate from the authentication-completion redirect (`returnURL` /
-> OAuth2 `redirect_uri`), which the auth flow handles on its own. It never
-> carries tokens.
+> Note: `backUrl` is a *cancel / go-back* affordance. It is separate from the
+> authentication-completion redirect (`returnURL` / OAuth2 `redirect_uri`),
+> which the auth flow handles on its own, and it never carries tokens. The
+> user follows it by clicking the back link, except on `/auth` in a tab that
+> cannot be closed, where the page follows it after the decision (nothing is
+> appended to it; the app polls its request as usual).
 
 ## Deploy: `settings.json`
 

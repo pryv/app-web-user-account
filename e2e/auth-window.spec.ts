@@ -86,6 +86,25 @@ test.describe("[AWN] /auth after the decision: close a pop-up, go back from a ta
     expect(posted.some((b) => (b as { status: string }).status === "REFUSED")).toBe(true);
   });
 
+  test("[AWN6] a pop-up that fails to close is never sent to the app: it shows the complete card", async ({ page, context }) => {
+    const posted: unknown[] = [];
+    await mockPlatform(context, posted);
+    // A real pop-up closes, so this makes the opener gate observable: close() is a no-op.
+    await context.addInitScript(() => { window.close = () => {}; });
+    await page.goto("/signin");
+    const openerUrl = page.url();
+    const [popup] = await Promise.all([
+      page.waitForEvent("popup"),
+      page.evaluate((path) => { window.open(path, "prYv Sign-in", "width=400,height=620"); }, authPath(true)),
+    ]);
+    await expect(popup.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await popup.getByRole("button", { name: "Cancel" }).click();
+    await expect(popup.getByText("This request is complete")).toBeVisible();
+    expect(popup.url()).toContain("/auth?");
+    expect(page.url()).toBe(openerUrl);
+    expect(posted.some((b) => (b as { status: string }).status === "REFUSED")).toBe(true);
+  });
+
   test("[AWN3] a tab without a way back shows the request complete card", async ({ page, context }) => {
     const posted: unknown[] = [];
     await mockPlatform(context, posted);
