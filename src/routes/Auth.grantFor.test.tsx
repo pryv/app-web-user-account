@@ -274,4 +274,53 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     await screen.findByText(/is requesting permission/);
     expect(flow.checkAppAccess.mock.calls[0][1]).toBe("parent-token");
   });
+
+  // Cancel and completion hand `closeOrRedirect` the page's way back to the app
+  // (`backUrl`) and a callback that shows the complete card, so a tab that
+  // cannot be closed does not stay on a dead page.
+  describe("[CLB5] the decision passes the way back to closeOrRedirect", () => {
+    const BACK = "https://app.test/back";
+    async function signInWithBack(state: Record<string, unknown>) {
+      flow.loadAccessState.mockResolvedValue(state);
+      render(
+        <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL) + "&backUrl=" + encodeURIComponent(BACK) + "&backLabel=App"]}>
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+    }
+    function fallbackArg() {
+      const call = flow.closeOrRedirect.mock.calls.at(-1)!;
+      return call[3] as { backUrl: string | null; onStillOpen: () => void };
+    }
+
+    it("on accept and on reject", async () => {
+      await signInWithBack(needSignin({ actAs: "deny" }));
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/is requesting permission/);
+      screen.getByRole("button", { name: /accept/i }).click();
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(fallbackArg().backUrl).toBe(BACK);
+      cleanup();
+      flow.closeOrRedirect.mockReset();
+      sessionStorage.clear();
+
+      await signInWithBack(needSignin({ actAs: "deny" }));
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/is requesting permission/);
+      screen.getByRole("button", { name: /reject/i }).click();
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(flow.closeOrRedirect.mock.calls[0][1].status).toBe("REFUSED");
+      expect(fallbackArg().backUrl).toBe(BACK);
+    });
+
+    it("on re-opening a decided request, and the callback shows the complete card", async () => {
+      await signInWithBack({ status: "REFUSED", requestingAppId: "kid-app", serviceInfo: { api: "https://{username}.core.test/" } });
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(fallbackArg().backUrl).toBe(BACK);
+      fallbackArg().onStillOpen();
+      await screen.findByText(/This request is complete/);
+    });
+  });
 });

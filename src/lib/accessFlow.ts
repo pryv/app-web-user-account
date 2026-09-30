@@ -337,13 +337,50 @@ export async function updateAppAccess(
  */
 const RETURN_URL_PARAMS = ["key", "status"] as const;
 
+/** How long after `window.close()` a window still open is taken as not closable. */
+export const CLOSE_CHECK_MS = 300;
+
+/** What to do when `window.close()` leaves the window open. */
+export interface CloseFallback {
+  /** Way back to the calling app (`backUrl`, http(s) only), or null. */
+  backUrl: string | null;
+  /** Called when the window stays open and is not sent back to the app. */
+  onStillOpen?: () => void;
+}
+
+/**
+ * Close the window. A pop-up opened by the app closes; a tab the page did not
+ * open cannot be closed by script (a phone tab reached by redirection), so a
+ * short moment later, if the window is still open: a tab with a way back goes
+ * back to the app (`replace`, so Back does not return to a decided request),
+ * anything else calls `onStillOpen` (the "request complete" card). A pop-up
+ * (`window.opener` set) is never navigated to the app: that would load the app
+ * inside the pop-up. `window.closed` does not flip synchronously in every
+ * browser, hence the deferred check.
+ */
+export function closeOrFallback(fallback?: CloseFallback): void {
+  window.close();
+  if (fallback == null) return;
+  setTimeout(() => {
+    if (window.closed) return;
+    const back = fallback.backUrl ? httpUrlOrNull(fallback.backUrl) : null;
+    if (back && window.opener == null) {
+      window.location.replace(back.href);
+      return;
+    }
+    fallback.onStillOpen?.();
+  }, CLOSE_CHECK_MS);
+}
+
 /**
  * After accept/refuse, either close the popup or redirect to returnURL.
  * Mirrors app-web-auth3's `ops/close_or_redirect.js`, except for the params
  * appended to returnURL (see RETURN_URL_PARAMS):
  *
  *   - REDIRECTED status → follow redirectUrl (multi-core handoff).
- *   - no returnURL → window.close().
+ *   - no returnURL → close the window; a tab that cannot be closed goes back
+ *     to `backUrl` when there is one, else shows the complete card
+ *     (`closeOrFallback`).
  *   - oauthState present → appendparams: state=<oauthState>&code=<key>&poll=<pollUrl>.
  *   - else → append `prYvpoll=<pollUrl>` plus the RETURN_URL_PARAMS allow-list
  *           (legacy convention; lib-js's consumer reads both prYvpoll and
@@ -354,6 +391,7 @@ export function closeOrRedirect(
   pollUrl: string,
   state: AccessState,
   cli: boolean,
+  fallback?: CloseFallback,
 ): void {
   if (cli) {
     renderCliTerminalMessage();
@@ -371,13 +409,13 @@ export function closeOrRedirect(
   }
   const returnURL = state.returnURL;
   if (!returnURL || returnURL === "false") {
-    window.close();
+    closeOrFallback(fallback);
     return;
   }
   // `returnURL` is query-supplied; reject a non-http(s) scheme (open-redirect /
   // javascript:-scheme XSS) before building + assigning the completion URL.
   if (!httpUrlOrNull(returnURL)) {
-    window.close();
+    closeOrFallback(fallback);
     return;
   }
   let url = returnURL;

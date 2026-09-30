@@ -162,7 +162,12 @@ Every route accepts these query parameters:
   access request (lib-js `Pryv.Browser.setupAuth(...)` or
   `POST {register}/access`, optionally passing `authUrl` pointing at this
   app's `/auth` if the platform's `access:trustedAuthUrls` allows it) and open
-  the `authUrl` the server returns.
+  the `authUrl` the server returns. Your `authUrl` may carry `backUrl` and
+  `backLabel` in its query (the trusted-URL match ignores the query). After the
+  user accepts or cancels, a pop-up your app opened closes. A tab it did not
+  open (typically a phone, where the sign-in redirects) cannot be closed by the
+  page: it goes back to `backUrl` when you gave one, otherwise it shows "This
+  request is complete". A pop-up is never sent to `backUrl`.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

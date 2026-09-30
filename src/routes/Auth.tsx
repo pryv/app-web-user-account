@@ -15,6 +15,7 @@ import {
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch } from "../lib/authParams";
+import { parseBackTo } from "../lib/backTo";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -192,8 +193,12 @@ export default function Auth() {
   // delegate token for that account: in memory only, never stored and never
   // made the session.
   const [grantFor, setGrantFor] = useState<DelegationHint | null>(null);
-  // The request was decided in this tab and the server has since forgotten it.
+  // The request was decided in this tab and the server has since forgotten it,
+  // or it was decided and the window could not be closed.
   const [requestDone, setRequestDone] = useState(false);
+  // After the decision: a tab the page cannot close goes back to the app when
+  // it gave a way back (`backUrl`), else shows the complete card.
+  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true) };
 
   // The consent form, present only when the app sent a `consent` sidecar
   // AND this server understood it. Without one the legacy contract applies:
@@ -345,7 +350,7 @@ export default function Auth() {
         }
         // If the state is already ACCEPTED (re-open), short-circuit through close_or_redirect.
         if (state.status === "ACCEPTED" || state.status === "REFUSED") {
-          closeOrRedirect(query.pollUrl!, state, query.cli);
+          closeOrRedirect(query.pollUrl!, state, query.cli, closeFallback);
         }
       } catch (err: unknown) {
         if (cancelled) return;
@@ -539,7 +544,7 @@ export default function Auth() {
     markRequestDone(query.pollUrl);
     // The delegate token has done its job: drop it before handing over.
     if (grantFor != null || hint != null) setPersonalToken(null);
-    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli);
+    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, closeFallback);
     return null;
   }
 
@@ -645,7 +650,7 @@ export default function Auth() {
       } catch {
         /* close anyway per legacy contract */
       }
-      closeOrRedirect(query.pollUrl, { ...accessState, ...refused }, query.cli);
+      closeOrRedirect(query.pollUrl, { ...accessState, ...refused }, query.cli, closeFallback);
     } finally {
       setFinishing(null);
     }

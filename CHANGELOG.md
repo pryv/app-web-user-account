@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`/auth`: Cancel and completion no longer leave a dead page in a tab**
+  ([#6](https://github.com/pryv/app-web-user-account/issues/6)). After the user
+  accepts or cancels, the page closes the window as before; a pop-up opened by
+  the app closes. A tab the page did not open (a phone reached by redirection)
+  cannot be closed by script: a moment later it now goes back to `backUrl` when
+  the app gave one (carry `backUrl` / `backLabel` on your `authUrl`), and
+  otherwise shows "This request is complete" instead of the page it was on. A
+  pop-up is never sent to `backUrl`.
+
 ## 0.7.2 — 2026-09-30
 
 ### Fixed
