@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Deep links answer 200 on a dedicated origin.** `npm run build:root` now writes
+  one page per route (`auth.html`, `register.html`, `account/profile.html`, ...),
+  so a server with GitHub Pages semantics, such as an open-pryv.io hosted site,
+  answers `/auth?…` and the other entry points with status 200 instead of the
+  404 fallback page (which rendered the app, but with the wrong status). The
+  `/account` shell keeps `account/index.html`; dynamic routes still use
+  `404.html`.
+
 ## 0.7.1 — 2026-09-29
 
 ### Changed

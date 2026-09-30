@@ -1,7 +1,11 @@
-// Materialize each SPA route as dist/<route>/index.html so plain static
-// servers (no history-API fallback) resolve deep links like /auth?poll=…
-// GitHub Pages gets the same effect from the 404.html copy in build:pages;
-// this covers `npm run webserver` (local backloop.dev serving).
+// Materialize each SPA route so plain static servers (no history-API
+// fallback) resolve deep links like /auth?poll=…
+// Default: dist/<route>/index.html (`npm run webserver`, local backloop.dev).
+// With --html-files: dist/<route>.html, for servers with GitHub Pages
+// semantics (an open-pryv.io hosted site serving `build:root`): `/auth`
+// then answers 200 from auth.html, with no redirect to `/auth/`. The
+// /account shell keeps account/index.html, since the tabs need the folder.
+// GitHub Pages itself relies on the 404.html copy in build:pages.
 import { cpSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,10 +27,13 @@ const routes = [
   ...routeTable.account.map((tab) => `account/${tab}`),
 ];
 
+const htmlFiles = process.argv.includes("--html-files");
 for (const route of routes) {
-  const dir = join(dist, route);
-  mkdirSync(dir, { recursive: true });
-  cpSync(index, join(dir, "index.html"));
+  const target = htmlFiles && route !== "account"
+    ? join(dist, `${route}.html`)
+    : join(dist, route, "index.html");
+  mkdirSync(dirname(target), { recursive: true });
+  cpSync(index, target);
 }
 // Routes with a dynamic segment (/account/audit-access/:accessId) cannot be
 // listed in routes.json: they are served by 404.html, the same fallback GitHub Pages

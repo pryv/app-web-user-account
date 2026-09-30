@@ -274,8 +274,10 @@ refuses to build otherwise (run `npm ci`).
 Two production builds exist:
 
 - `npm run build:root` builds for the root path of a dedicated origin (for
-  example `https://account.example.com/`), with `404.html` as the single-page
-  fallback. This is what an open-pryv.io platform serves as a hosted site
+  example `https://account.example.com/`), with one page per route
+  (`auth.html`, `register.html`, ...) so entry points answer 200 on servers with
+  GitHub Pages semantics, and `404.html` as the fallback for dynamic routes.
+  This is what an open-pryv.io platform serves as a hosted site
   (`hostedSites: { account: { static: <folder> } }`), and what a release ships
   as `app-web-user-account-<version>-root.tar.gz`, created with
   `tar -czf app-web-user-account-<version>-root.tar.gz -C dist .` and attached
