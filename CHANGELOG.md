@@ -21,6 +21,16 @@
   (`backUrl` / `backLabel`), which also survive the return to `/auth` after the
   account is created, and a pop-up still closes on completion.
 
+### Added
+
+- **`/auth` honours the `username` sign-in hint**
+  ([#4](https://github.com/pryv/app-web-user-account/issues/4)), as `/signin`
+  does: the form is pre-filled. When the browser holds a session for another
+  account, the pre-filled form comes first and that session is offered as
+  "Continue as {username} instead" (it is never signed out by the hint); a hint
+  matching the stored session, or none, keeps the "Continue as" card. Deliver it
+  on your `authUrl` query.
+
 ## 0.7.2 — 2026-09-30
 
 ### Fixed
