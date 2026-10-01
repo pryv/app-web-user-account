@@ -24,6 +24,7 @@
 
 import { httpUrlOrNull } from "./safeRedirect";
 import { inPopupOrFrame } from "./backTo";
+import type { CmcInvite, CmcInviteOutcome } from "./cmcInvites";
 
 export interface Permission {
   streamId?: string;
@@ -101,6 +102,12 @@ export interface AccessState {
    * the token. Never posted together with a token.
    */
   handoff?: { type: "shared-secret"; key: string };
+  /**
+   * Consent invites (see `lib/cmcInvites`). On the NEED_SIGNIN poll: the
+   * request's invites, as the core normalised them. Posted with ACCEPTED: one
+   * outcome per invite, in the request's order (a hint for the requester).
+   */
+  cmcInvites?: CmcInvite[] | CmcInviteOutcome[];
 }
 
 /** A failed poll-URL read; `status` is the HTTP status. */

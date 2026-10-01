@@ -5,9 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
 import { Card, Alert } from "../components/ui";
 import { useSession, storedServiceInfoUrl } from "../lib/session";
-import { PermissionList } from "../components/consent/PermissionList";
-import { ConsentActions } from "../components/consent/ConsentActions";
-import { consentEntries, type OfferPermission } from "../lib/consent";
+import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
@@ -30,14 +28,6 @@ function outcomePayload(res: AcceptOutcome): AcceptOutcome {
   if (res.acceptEventId != null) out.acceptEventId = res.acceptEventId;
   if (res.reason != null) out.reason = res.reason;
   return out;
-}
-
-interface OfferView {
-  requester: { username: string | null; host: string; displayName?: string };
-  requestedPermissions: OfferPermission[];
-  consent?: Record<string, string>;
-  mode: string;
-  features?: { chat?: boolean; systemMessaging?: boolean };
 }
 
 interface AcceptParams {
@@ -101,7 +91,7 @@ export default function CmcApprove() {
   const { search } = useLocation();
   const params = parseCmcParams(search);
 
-  const [offer, setOffer] = useState<OfferView | null>(null);
+  const [offer, setOffer] = useState<CmcOfferView | null>(null);
   const [loadingOffer, setLoadingOffer] = useState(false);
   const [error, setError] = useState<{ message: string; tone: "danger" | "info" } | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
@@ -114,7 +104,7 @@ export default function CmcApprove() {
     setLoadingOffer(true);
     cmc
       .readOffer(params.capabilityUrl)
-      .then((o: unknown) => setOffer(o as OfferView))
+      .then((o: unknown) => setOffer(o as CmcOfferView))
       .catch((err: unknown) => {
         console.warn("cmc-accept: could not read the offer", err);
         setError({ message: i18n.t(OFFER_UNREADABLE_KEY), tone: "danger" });
@@ -217,37 +207,15 @@ export default function CmcApprove() {
   return (
     <Card>
       <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
-      {loadingOffer && <p className="mb-4 text-sm text-muted">{t("cmc.loadingOffer")}</p>}
-      {error && <Alert tone={error.tone}>{error.message}</Alert>}
-      {offer && (
-        <>
-          <p className="mb-4 text-sm">
-            {/* The account comes from the capability itself (verified); the
-                display name is what the requester says about itself, so it is
-                shown as such and never in place of the account. */}
-            <strong data-testid="cmc-requester">
-              {offer.requester.username
-                ? `${offer.requester.username}@${offer.requester.host}`
-                : t("cmc.unidentifiedRequester")}
-            </strong>
-            {offer.requester.displayName && (
-              <span className="text-muted"> {t("cmc.callsItself", { name: offer.requester.displayName })}</span>
-            )}{" "}
-            {t("cmc.requestingAccess")}
-          </p>
-          {offer.consent && Object.values(offer.consent)[0] && (
-            <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
-          )}
-          <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
-        </>
-      )}
-      <ConsentActions
+      <CmcOfferBlock
+        offer={offer}
+        loading={loadingOffer}
+        error={error}
+        labelFor={labelFor}
         busy={working}
         disabled={!offer}
-        acceptLabel={t("cmc.approve")}
-        refuseLabel={t("cmc.decline")}
-        onAccept={() => void approve()}
-        onRefuse={() => void decline()}
+        onApprove={() => void approve()}
+        onDecline={() => void decline()}
       />
     </Card>
   );

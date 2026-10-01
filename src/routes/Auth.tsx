@@ -2,11 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
-import { Pryv } from "../lib/pryvClient";
+import { Pryv, cmc, cmcErrorIds } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
+import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
 import { tNodes } from "../components/consent/tNodes";
+import {
+  invitesOf,
+  allDecided,
+  declinedMandatory,
+  acceptOrder,
+  acceptedOutcome,
+  boundedReason,
+  readOfferScope,
+  REFUSED_MANDATORY_CONSENT,
+  MANDATORY_CONSENT_FAILED,
+  type CmcInviteOutcome,
+  type InviteDecision,
+} from "../lib/cmcInvites";
+import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
 import {
   consentEntries,
   grantedPermissions,
@@ -101,6 +116,27 @@ interface AuthQuery {
 /** Longest wait for the stored session's name before a hinted page shows the form. */
 const KNOWN_USERNAME_WAIT_MS = 4000;
 
+/** One consent invite block: its offer as read, and where its accept belongs. */
+interface InviteView {
+  offer: CmcOfferView | null;
+  loading: boolean;
+  /** Why the invite cannot be approved here (unreadable link, no scope); Decline stays available. */
+  error: string | null;
+  scope: string | null;
+}
+
+/** An access the app already holds, kept as it is when the request carries consent invites. */
+interface ReusedAccess {
+  access: AppAccess;
+  endpoint: string;
+  /** The signed-in token, to create the hand-off secret with (see finalizeAccepted). */
+  creatorToken: string;
+  asUser?: string;
+  hint?: DelegationHint;
+  /** Granted on a controlled account: drop the delegate token once handed over. */
+  delegated: boolean;
+}
+
 function parseAuthQuery(search: string): AuthQuery {
   const p = new URLSearchParams(search);
   // Service-info URL: callers historically send `serviceInfo=` (the name
@@ -140,6 +176,18 @@ function parseAuthQuery(search: string): AuthQuery {
  * screen does: required entries locked, opt-in entries opening unticked,
  * and only the ticked subset minted. Without one, the older grammar
  * applies and the whole list renders all-or-nothing.
+ *
+ * An access request may also carry consent invites (`cmcInvites`, see
+ * `lib/cmcInvites`): after check-app, each invite is shown as its own offer
+ * block with its own Approve / Decline, under the app access, and the page's
+ * Accept becomes "Continue", enabled once every invite is decided. Continue
+ * then decides, accepts, grants, in that order: every declined invite that can
+ * be answered gets a refusal (best-effort); a declined mandatory invite then
+ * refuses the request before anything else is written; the approved invites are
+ * accepted (with the person's own token, or the delegate token for `target`);
+ * a failed mandatory accept refuses the request (a completion timeout is
+ * reported, not refused); only then is the app access
+ * created, and ACCEPTED carries one outcome per invite.
  *
  * Mirrors app-web-auth3's `Authorization.vue` + `bits/Permissions.vue` +
  * `ops/{login,check_access,accept_access,refuse_access,close_or_redirect,
@@ -190,6 +238,16 @@ export default function Auth() {
 
   const [check, setCheck] = useState<AppCheck | null>(null);
   const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
+
+  // Consent invites of the request (null without any): one offer block each,
+  // read once the consent step is reached, decided before anything is written.
+  const invites = useMemo(() => invitesOf(accessState), [accessState]);
+  const [inviteViews, setInviteViews] = useState<InviteView[]>([]);
+  const [inviteDecisions, setInviteDecisions] = useState<Array<InviteDecision | null>>([]);
+  // With invites, an access the app already holds does not end the flow on
+  // its own (the invites still need an answer): it is kept and handed over
+  // after them.
+  const [reuse, setReuse] = useState<ReusedAccess | null>(null);
 
   // "Who is this for?": offered after sign-in when the platform runs account
   // delegation, the app allows it, and the user controls other accounts (or,
@@ -272,6 +330,47 @@ export default function Auth() {
   useEffect(() => {
     setGrantedFlags(initialFlags(rows));
   }, [rows]);
+
+  // The invites' offers, read once the consent step is reached (after the
+  // platform check and the sign-in), through each capability, as
+  // `/cmc-accept` reads its one offer.
+  const consentStepReached = check?.checkedPermissions != null;
+  useEffect(() => {
+    if (invites == null || !consentStepReached) return;
+    let cancelled = false;
+    setInviteDecisions(invites.map(() => null));
+    setInviteViews(
+      invites.map((inv) =>
+        inv.capabilityUrl === ""
+          ? { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null }
+          : { offer: null, loading: true, error: null, scope: null },
+      ),
+    );
+    const settle = (i: number, view: InviteView) => {
+      if (cancelled) return;
+      setInviteViews((prev) => prev.map((v, j) => (j === i ? view : v)));
+    };
+    invites.forEach((inv, i) => {
+      if (inv.capabilityUrl === "") return;
+      Promise.all([cmc.readOffer(inv.capabilityUrl), readOfferScope(inv.capabilityUrl)])
+        .then(([offer, scope]) =>
+          settle(i, {
+            offer: offer as CmcOfferView,
+            loading: false,
+            error: scope == null ? t("cmc.inviteNoScope") : null,
+            scope,
+          }),
+        )
+        .catch((err: unknown) => {
+          console.warn("auth: could not read a consent invite's offer", err);
+          settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null });
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invites, consentStepReached]);
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
@@ -542,6 +641,20 @@ export default function Auth() {
       const reuseHint = hint != null
         ? (isDelegatedChild(result.matchingAccess) ? hint : undefined)
         : hintForAccess(result.matchingAccess, asUser ?? username);
+      if (invitesOf(accessState) != null) {
+        // The invites still need an answer: show them next to the access the
+        // app already holds, and hand that access over after them.
+        setReuse({
+          access: result.matchingAccess,
+          endpoint,
+          creatorToken: token,
+          asUser,
+          hint: reuseHint,
+          delegated: hint != null,
+        });
+        setCheck({ ...result, checkedPermissions: result.matchingAccess.permissions ?? [] });
+        return;
+      }
       // `token` here is the signed-in personal token (runCheckApp's own param),
       // used to create the hand-off secret; finalizeAccepted skips shape H when
       // a delegation hint is posted, so a delegated reuse stays inline.
@@ -571,6 +684,7 @@ export default function Auth() {
     asUser?: string,
     hint?: DelegationHint,
     creatorToken?: string | null,
+    inviteOutcomes?: CmcInviteOutcome[] | null,
   ): Promise<AccessStateUpdateResult | null> {
     if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
@@ -614,6 +728,8 @@ export default function Auth() {
       handoffKey,
       delegation: hint ?? null,
     });
+    // One outcome per consent invite, only when the request carried some.
+    if (inviteOutcomes != null) accepted.cmcInvites = inviteOutcomes;
     let result = await updateAccessState(query.pollUrl, accepted);
     if (result.errorId === "consent-check-unavailable") {
       // The server could not verify the grant, which says nothing about the
@@ -653,14 +769,112 @@ export default function Auth() {
     }
   }
 
+  /**
+   * Accept the approved consent invites, mandatory ones first, and return one
+   * outcome per invite in the request's order. A mandatory invite that cannot
+   * be accepted refuses the request instead: returns null, nothing granted.
+   * `for: 'target'` invites are accepted on the account the access is granted
+   * for, with the delegate token; without such an account, with the person's
+   * own token, and the outcome says so.
+   */
+  /**
+   * The credentials an invite is answered with: `for: 'target'` with the
+   * delegate token on the account the access is granted for, when there is
+   * one; otherwise the person's own (the owner's while granting for a
+   * controlled account, since `personalToken` then holds the delegate token).
+   * `asTarget` says whether the target account was used.
+   */
+  function inviteCredentials(i: number): { credentials: { endpoint: string; token: string } | null; asTarget: boolean } {
+    if (invites == null || !apiEndpoint || !personalToken) return { credentials: null, asTarget: false };
+    const own = grantFor != null
+      ? (owner != null ? { endpoint: owner.endpoint, token: owner.token } : null)
+      : { endpoint: apiEndpoint, token: personalToken };
+    const asTarget = invites[i].for === "target" && grantFor != null;
+    return { credentials: asTarget ? { endpoint: apiEndpoint, token: personalToken } : own, asTarget };
+  }
+
+  /**
+   * Answer every declined invite that can be answered (offer read, scope
+   * known) with a refusal, as `/cmc-accept`'s Decline does, so the requester
+   * is told rather than left waiting. Best-effort: a refusal that cannot be
+   * sent is logged, and the outcome stays `{ declined: true }`.
+   */
+  async function refuseDeclinedInvites(): Promise<void> {
+    if (invites == null) return;
+    for (let i = 0; i < invites.length; i++) {
+      if (inviteDecisions[i] !== "decline") continue;
+      const scope = inviteViews[i]?.scope;
+      const { credentials } = inviteCredentials(i);
+      // Unreadable or without a scope: nothing to answer with.
+      if (scope == null || credentials == null) continue;
+      try {
+        const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
+        await cmc.refuseInvite(conn, invites[i].capabilityUrl, { scopeStreamId: scope });
+      } catch (err: unknown) {
+        console.warn("auth: could not send a consent invite's refusal", err);
+      }
+    }
+  }
+
+  async function acceptInvites(): Promise<CmcInviteOutcome[] | null> {
+    // Unreachable (accept() checks the same), but an empty list would be
+    // refused by the core: take the refusal path rather than post it.
+    if (invites == null || !apiEndpoint || !personalToken) return null;
+    const outcomes: Array<CmcInviteOutcome | null> = invites.map((_, i) =>
+      inviteDecisions[i] === "decline" ? { declined: true } : null,
+    );
+    // Declined invites are answered first, before any accept or grant.
+    await refuseDeclinedInvites();
+    for (const i of acceptOrder(invites, inviteDecisions)) {
+      const invite = invites[i];
+      const { credentials, asTarget } = inviteCredentials(i);
+      try {
+        const scope = inviteViews[i]?.scope;
+        if (credentials == null || scope == null) throw new Error("cmc-invite-not-acceptable");
+        const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
+        const res = await cmc.acceptInvite(conn, invite.capabilityUrl, { scopeStreamId: scope });
+        outcomes[i] = acceptedOutcome(res, invite.for === "target" && !asTarget);
+      } catch (err: unknown) {
+        const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
+        // A wait that ended before the platform recorded the outcome is not a
+        // failure: the accept usually completes moments later. Reported, and
+        // the requester learns the truth from its inbox.
+        if (invite.mandatory && failure.reason !== cmcErrorIds.CAPABILITY_TIMEOUT) {
+          setError(t("consent.inviteMandatoryFailed", { reason: failure.message }));
+          await refuseWith(
+            MANDATORY_CONSENT_FAILED,
+            "A consent invite the app marked as mandatory could not be accepted (invite " +
+              (i + 1) + ": " + boundedReason(failure.reason) + ")",
+          );
+          return null;
+        }
+        outcomes[i] = { reason: boundedReason(failure.reason) };
+      }
+    }
+    return outcomes as CmcInviteOutcome[];
+  }
+
   async function accept() {
     if (!accessState || !apiEndpoint || !personalToken || !check) return;
+    if (invites != null && !allDecided(inviteDecisions, invites.length)) return;
     setFinishing("accept");
     setError(null);
     // Once the outcome is handed over, the buttons stay disabled: the window
     // is closing, going back to the app, or about to show the complete card.
     let handedOver = false;
     try {
+      // Decide: a declined mandatory invite refuses the whole request before
+      // anything is written (no invite accepted, no access created).
+      if (invites != null && declinedMandatory(invites, inviteDecisions) >= 0) {
+        // Every declined requester is told no; nothing is accepted or granted.
+        await refuseDeclinedInvites();
+        await refuseWith(
+          REFUSED_MANDATORY_CONSENT,
+          "The user declined a consent invite the app marked as mandatory",
+        );
+        handedOver = true;
+        return;
+      }
       // With a consent form the user's ticks decide what is minted; locked
       // rows are always in. Without one, the whole checked set is minted,
       // exactly as before.
@@ -669,10 +883,30 @@ export default function Auth() {
           ? grantedPermissions(entries, grantedFlags)
           : check.checkedPermissions || []
       ) as Permission[];
-      if (consentForm != null && permissions.length === 0) {
+      if (reuse == null && consentForm != null && permissions.length === 0) {
         // Granting nothing is a refusal; the server would say so anyway.
         setError(t("consent.errorTickOne"));
         setFinishing(null);
+        return;
+      }
+      // Accept: every approved invite, before the app access is written.
+      let inviteOutcomes: CmcInviteOutcome[] | null = null;
+      if (invites != null) {
+        inviteOutcomes = await acceptInvites();
+        if (inviteOutcomes == null) {
+          handedOver = true;
+          return;
+        }
+      }
+      // Grant: the access the app already holds is handed over as it is.
+      if (reuse != null) {
+        const refusal = await finalizeAccepted(
+          reuse.access.token, reuse.endpoint, reuse.asUser, reuse.hint, reuse.creatorToken, inviteOutcomes,
+        );
+        handedOver = refusal == null;
+        if (refusal == null && reuse.delegated) setPersonalToken(null);
+        // Not deleted on a refusal: it predates this request.
+        if (refusal != null) setError(consentRefusalMessage(refusal));
         return;
       }
       const mismatching = check.mismatchingAccess;
@@ -703,7 +937,9 @@ export default function Auth() {
       // marker, so the hint is read from the access the server returned.
       // `personalToken` (guarded above) creates the hand-off secret on the
       // signed-in account; skipped for a delegated grant by the hint gate.
-      const refusal = await finalizeAccepted(access.token, apiEndpoint, undefined, grantFor ?? hintForAccess(access, username), personalToken);
+      const refusal = await finalizeAccepted(
+        access.token, apiEndpoint, undefined, grantFor ?? hintForAccess(access, username), personalToken, inviteOutcomes,
+      );
       handedOver = refusal == null;
       if (refusal != null) {
         // A freshly created access was minted before the register was told,
@@ -730,10 +966,16 @@ export default function Auth() {
     if (!accessState || !query.pollUrl) return;
     setFinishing("refuse");
     setError(null);
+    await refuseWith("REFUSED_BY_USER", "The user refused to give access to the requested permissions");
+  }
+
+  /** Post REFUSED with this reason and hand over (close, go back, or the complete card). */
+  async function refuseWith(reasonId: string, message: string) {
+    if (!accessState || !query.pollUrl) return;
     const refused: Partial<AccessState> = {
       status: "REFUSED",
-      reasonId: "REFUSED_BY_USER",
-      message: "The user refused to give access to the requested permissions",
+      reasonId,
+      message,
     };
     try {
       await updateAccessState(query.pollUrl, refused);
@@ -759,6 +1001,8 @@ export default function Auth() {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        {/* Why the request ended refused, when the page ended it (a required consent invite failed). */}
+        {error && <Alert>{error}</Alert>}
         <p className="text-sm">{t("consent.requestComplete")}</p>
       </Card>
     );
@@ -856,6 +1100,14 @@ export default function Auth() {
   // screen: mandatory rows locked, opt-in rows open unticked.
   if (check && check.checkedPermissions) {
     const consentMsg = consentMessage(accessState.clientData);
+    // An access the app already holds is shown as it is, all rows locked.
+    const panelEntries = reuse != null
+      ? consentEntries(reuse.access.permissions as OfferPermission[], { labelFor })
+      : entries;
+    const panelChoice = allowsChoice && reuse == null;
+    const invitesPending = invites != null && !allDecided(inviteDecisions, invites.length);
+    const decide = (i: number, d: InviteDecision | null) =>
+      setInviteDecisions((prev) => prev.map((v, j) => (j === i ? d : v)));
     return (
       <Card>
         <ConsentPanel
@@ -880,32 +1132,76 @@ export default function Auth() {
               </div>
             )
           }
-          entries={entries}
-          flags={allowsChoice ? grantedFlags : undefined}
+          entries={panelEntries}
+          flags={panelChoice ? grantedFlags : undefined}
           onToggle={
-            allowsChoice
+            panelChoice
               ? (i, checked) => setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
               : undefined
           }
           choiceHint={
-            allowsChoice && (
+            panelChoice && (
               <p className="mb-2 text-sm text-muted">
                 {t("consent.choiceHint")}
               </p>
             )
           }
-          expireAfterSeconds={accessState.expireAfter ?? null}
+          expireAfterSeconds={reuse != null ? null : accessState.expireAfter ?? null}
           mismatchWarning={
-            check.mismatchingAccess ? (
+            reuse != null ? t("consent.alreadyGranted") : check.mismatchingAccess ? (
               updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
                 ? t("consent.mismatchWillUpdate")
                 : t("consent.mismatchWillReplace")
             ) : undefined
           }
           busy={finishing}
+          acceptDisabled={invitesPending}
+          labels={invites != null ? { accept: t("consent.continue") } : undefined}
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
         >
+          {invites != null && (
+            <div className="mb-4">
+              {invites.map((invite, i) => {
+                const view = inviteViews[i];
+                return (
+                  <section
+                    key={i}
+                    data-testid="cmc-invite"
+                    aria-labelledby={`cmc-invite-${i}-heading`}
+                    className="mt-4 border-t border-divider pt-4"
+                  >
+                    <CmcOfferBlock
+                      heading={
+                        <h2 id={`cmc-invite-${i}-heading`} className="mb-2 text-base font-semibold">
+                          {t("cmc.inviteHeading", { n: i + 1, count: invites.length })}{" "}
+                          <span className="text-sm font-normal text-muted">
+                            {invite.mandatory ? t("cmc.inviteMandatory") : t("cmc.inviteOptional")}
+                          </span>
+                        </h2>
+                      }
+                      offer={view?.offer ?? null}
+                      loading={view?.loading ?? true}
+                      error={view?.error != null ? { message: view.error, tone: "danger" } : null}
+                      labelFor={labelFor}
+                      busy={null}
+                      disabled={finishing !== null || view == null || view.loading}
+                      approveDisabled={view?.offer == null || view.scope == null}
+                      onApprove={() => decide(i, "approve")}
+                      onDecline={() => decide(i, "decline")}
+                      decided={inviteDecisions[i] ?? null}
+                      onChange={() => decide(i, null)}
+                    />
+                  </section>
+                );
+              })}
+              {invitesPending && (
+                <p className="mt-4 text-sm text-muted" data-testid="cmc-invites-pending">
+                  {t("consent.invitesPending")}
+                </p>
+              )}
+            </div>
+          )}
           {error && <Alert>{error}</Alert>}
         </ConsentPanel>
       </Card>

@@ -9,6 +9,7 @@ import { Button } from "../ui";
 export function ConsentActions({
   busy,
   disabled = false,
+  acceptDisabled = false,
   acceptLabel,
   refuseLabel,
   acceptId,
@@ -20,6 +21,8 @@ export function ConsentActions({
   busy: "accept" | "refuse" | null;
   /** Extra disable condition (e.g. offer not loaded yet). */
   disabled?: boolean;
+  /** Disables Accept only (Reject stays available). */
+  acceptDisabled?: boolean;
   /** Defaults to the catalog's Accept / Reject. */
   acceptLabel?: string;
   refuseLabel?: string;
@@ -32,7 +35,7 @@ export function ConsentActions({
   const blocked = disabled || busy !== null;
   return (
     <div className="flex gap-3">
-      <Button id={acceptId} type="button" disabled={blocked} onClick={onAccept}>
+      <Button id={acceptId} type="button" disabled={blocked || acceptDisabled} onClick={onAccept}>
         {busy === "accept" ? t("common.approving") : (acceptLabel ?? t("common.accept"))}
       </Button>
       <button

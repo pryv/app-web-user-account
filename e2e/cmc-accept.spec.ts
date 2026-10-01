@@ -70,6 +70,10 @@ interface MockOptions {
   createErrorId?: string;
   /** settings.json served by the deployment. Default: none (404). */
   settings?: Record<string, unknown>;
+  /** Ids of the accept triggers `events.create` records, in order. Default: always ACCEPT_EVENT_ID. */
+  acceptEventIds?: string[];
+  /** Stamped on the offer as the requester's scope (`originStreamId`). Default: none. */
+  offerOriginStreamId?: string;
 }
 
 function json(route: Route, body: unknown, status = 200) {
@@ -116,13 +120,20 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
     const calls = (route.request().postDataJSON() ?? []) as CoreCall[];
     const results = calls.map((c) =>
       c.method === "events.get"
-        ? { events: [OFFER_EVENT] }
+        ? {
+            events: [
+              opts.offerOriginStreamId
+                ? { ...OFFER_EVENT, content: { ...OFFER_EVENT.content, originStreamId: opts.offerOriginStreamId } }
+                : OFFER_EVENT,
+            ],
+          }
         : { error: { id: "unknown-resource", message: `unmocked ${c.method}` } },
     );
     return json(route, { meta: META, results });
   });
 
   // The accepter's core: the signed-in session.
+  let acceptsRecorded = 0;
   await context.route("https://alice.example.test/access-info", (route) =>
     json(route, { meta: META, type: "personal", user: { username: "alice" } }),
   );
@@ -141,8 +152,9 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
           };
         }
         const refuse = c.params.type === "consent/refuse-cmc";
+        const id = refuse ? REFUSE_EVENT_ID : (opts.acceptEventIds?.[acceptsRecorded++] ?? ACCEPT_EVENT_ID);
         return {
-          event: completedTrigger(refuse ? REFUSE_EVENT_ID : ACCEPT_EVENT_ID, String(c.params.type), "pending"),
+          event: completedTrigger(id, String(c.params.type), "pending"),
         };
       }
       if (c.method === "events.getOne") {
@@ -437,5 +449,91 @@ test.describe("/cmc-accept without opener or returnUrl", () => {
     await expect(alert).toBeVisible();
     await expect(alert).toHaveClass(/bg-info/);
     await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
+  });
+});
+
+/**
+ * `/auth` with consent invites in the access request (`cmcInvites`): the
+ * invites are answered on the consent screen itself, accepted with the real
+ * `@pryv/cmc` client before the app access is created, and their outcomes
+ * ride on the ACCEPTED answer.
+ */
+test.describe("[ACI] /auth with consent invites", () => {
+  const POLL = "https://reg.example.test/reg/access/aci1";
+  const PERMS = [{ streamId: "diary", defaultName: "Diary", level: "read" }];
+  const CAP_MANDATORY = "https://cap-a@requester.example.test/";
+  const CAP_OPTIONAL = "https://cap-b@requester.example.test/";
+  const ORIGIN_SCOPE = ":_cmc:apps:demo:study-1";
+
+  test("[ACI8] one mandatory and one optional invite, both approved: two outcomes on ACCEPTED", async ({ page, context }) => {
+    const mock = await mockCmcPlatform(context, {
+      acceptEventIds: ["aci-ev-1", "aci-ev-2"],
+      offerOriginStreamId: ORIGIN_SCOPE,
+    });
+    const posted: Array<Record<string, unknown>> = [];
+    const order: string[] = [];
+    await context.route(POLL, (route) => {
+      if (route.request().method() === "POST") {
+        posted.push(route.request().postDataJSON() as Record<string, unknown>);
+        return json(route, { status: "ACCEPTED" });
+      }
+      return json(route, {
+        status: "NEED_SIGNIN",
+        requestingAppId: "carer-app",
+        requestedPermissions: PERMS,
+        cmcInvites: [
+          { capabilityUrl: CAP_MANDATORY, mandatory: true, for: "self" },
+          { capabilityUrl: CAP_OPTIONAL, mandatory: false, for: "self" },
+        ],
+      });
+    });
+    await context.route("https://alice.example.test/accesses/check-app", (route) =>
+      json(route, { meta: META, checkedPermissions: PERMS }),
+    );
+    await context.route("https://alice.example.test/accesses", (route) => {
+      order.push("accesses.create after " + mock.accepterCalls.filter((c) => c.method === "events.create").length + " accepts");
+      return json(route, { meta: META, access: { id: "app-access-1", token: "app-token-1", type: "app", permissions: PERMS } });
+    });
+
+    await page.goto(
+      "/auth?" + new URLSearchParams({ poll: POLL, pryvServiceInfoUrl: "https://reg.example.test/service/info" }).toString(),
+    );
+    await page.getByRole("button", { name: "Continue as alice" }).click();
+    await expect(page.getByText(/is requesting permission/)).toBeVisible();
+
+    const blocks = page.getByTestId("cmc-invite");
+    await expect(blocks).toHaveCount(2);
+    await expect(blocks.nth(0).getByTestId("cmc-requester")).toHaveText("bob@example.test");
+    await expect(blocks.nth(1).getByTestId("cmc-requester")).toHaveText("bob@example.test");
+    await expect(blocks.nth(0)).toContainText("required");
+    await expect(blocks.nth(1)).toContainText("optional");
+
+    const cont = page.getByRole("button", { name: "Continue" });
+    await expect(cont).toBeDisabled();
+    await blocks.nth(0).getByRole("button", { name: "Approve" }).click();
+    await expect(cont).toBeDisabled();
+    await blocks.nth(1).getByRole("button", { name: "Approve" }).click();
+    await expect(cont).toBeEnabled();
+    // Deciding wrote nothing.
+    expect(mock.accepterCalls.some((c) => c.method === "events.create")).toBe(false);
+    await cont.click();
+
+    await expect.poll(() => posted.length).toBe(1);
+    expect(posted[0].status).toBe("ACCEPTED");
+    expect(posted[0].token).toBe("app-token-1");
+    expect(posted[0].cmcInvites).toEqual([
+      { acceptEventId: "aci-ev-1", dataGrantAccessId: "grant-access-1" },
+      { acceptEventId: "aci-ev-2", dataGrantAccessId: "grant-access-1" },
+    ]);
+    // Both accepted on the requester's scope, before the access was created.
+    const creates = mock.accepterCalls.filter((c) => c.method === "events.create");
+    expect(creates.map((c) => c.params.content)).toEqual([
+      expect.objectContaining({ capabilityUrl: CAP_MANDATORY }),
+      expect.objectContaining({ capabilityUrl: CAP_OPTIONAL }),
+    ]);
+    for (const c of creates) {
+      expect(c.params).toMatchObject({ streamIds: [ORIGIN_SCOPE], type: "consent/accept-cmc" });
+    }
+    expect(order).toEqual(["accesses.create after 2 accepts"]);
   });
 });

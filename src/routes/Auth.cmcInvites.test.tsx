@@ -1,0 +1,502 @@
+// @vitest-environment jsdom
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, cleanup, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+
+/**
+ * [ACI] `/auth` with consent invites in the access request (`cmcInvites`).
+ * Pinned here: the invite blocks come after check-app and Continue waits for
+ * every decision; the order decide, accept, grant; a declined mandatory invite
+ * refuses before anything is written; a failed mandatory accept refuses
+ * without a grant; an optional failure or decline is reported and the grant
+ * proceeds; `for: 'target'` is accepted with the delegate token, or as self
+ * (and said so) when there is no account to act for.
+ */
+
+const flow = vi.hoisted(() => ({
+  loadAccessState: vi.fn(),
+  updateAccessState: vi.fn(),
+  checkAppAccess: vi.fn(),
+  createAppAccess: vi.fn(),
+  deleteAppAccess: vi.fn(),
+  closeOrRedirect: vi.fn(),
+  deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
+}));
+vi.mock("../lib/accessFlow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/accessFlow")>()),
+  ...flow,
+}));
+
+const cmcMock = vi.hoisted(() => ({ readOffer: vi.fn(), acceptInvite: vi.fn(), refuseInvite: vi.fn() }));
+vi.mock("../lib/pryvClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/pryvClient")>();
+  return { ...actual, cmc: { ...actual.cmc, ...cmcMock } };
+});
+
+const scopeMock = vi.hoisted(() => ({ readOfferScope: vi.fn() }));
+vi.mock("../lib/cmcInvites", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/cmcInvites")>()),
+  ...scopeMock,
+}));
+
+const deleg = vi.hoisted(() => ({
+  listControlled: vi.fn(),
+  getToken: vi.fn(),
+  serviceInfo: { features: {} } as Record<string, unknown>,
+}));
+vi.mock("@pryv/delegation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@pryv/delegation")>();
+  return {
+    ...actual,
+    Delegation: { fromConnection: () => ({ listControlled: deleg.listControlled, getToken: deleg.getToken }) },
+  };
+});
+
+vi.mock("../components/consent/ConsentSignIn", () => ({
+  ConsentSignIn: ({ onSignedIn }: { onSignedIn: (s: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        void onSignedIn({
+          username: "parent",
+          personalToken: "parent-token",
+          endpoint: "https://parent.core.test/",
+          connection: {
+            apiEndpoint: "https://parent-token@parent.core.test/",
+            endpoint: "https://parent.core.test/",
+            username: async () => "parent",
+            service: { info: async () => deleg.serviceInfo },
+          },
+        })
+      }
+    >
+      sign-in-stub
+    </button>
+  ),
+}));
+
+// The connection each accept is made with: its token-bearing endpoint.
+vi.mock("pryv", () => ({
+  default: {
+    Service: class {},
+    Connection: class {
+      apiEndpoint: string;
+      constructor(apiEndpoint: string) {
+        this.apiEndpoint = apiEndpoint;
+      }
+    },
+  },
+}));
+
+import Auth from "./Auth";
+import { SessionProvider } from "../lib/session";
+
+const PAT = "delegate-pat-secret";
+const PERMS = [{ streamId: "diary", level: "read", defaultName: "Journal" }];
+const POLL = "https://core.test/reg/access/k1";
+const CAP_A = "https://cap-a@requester.test/";
+const CAP_B = "https://cap-b@requester.test/";
+
+/** What happened, in order: accepts and access writes on one timeline. */
+let timeline: string[] = [];
+
+function needSignin(cmcInvites: unknown[], extra: Record<string, unknown> = {}) {
+  return {
+    status: "NEED_SIGNIN",
+    requestingAppId: "carer-app",
+    requestedPermissions: PERMS,
+    serviceInfo: { api: "https://{username}.core.test/" },
+    cmcInvites,
+    ...extra,
+  };
+}
+
+async function reachConsent(state: Record<string, unknown>) {
+  flow.loadAccessState.mockResolvedValue(state);
+  render(
+    <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+      <SessionProvider>
+        <Auth />
+      </SessionProvider>
+    </MemoryRouter>,
+  );
+  (await screen.findByText("sign-in-stub")).click();
+  await screen.findByText(/is requesting permission/);
+}
+
+/** The invite blocks, once every offer is read. */
+async function inviteBlocks(count: number) {
+  const blocks = await screen.findAllByTestId("cmc-invite");
+  expect(blocks).toHaveLength(count);
+  for (const b of blocks) await within(b).findByTestId("cmc-requester");
+  return blocks;
+}
+
+function decide(block: HTMLElement, choice: "Approve" | "Decline") {
+  within(block).getByRole("button", { name: choice }).click();
+}
+
+function continueButton(): HTMLButtonElement {
+  return screen.getByRole("button", { name: "Continue" }) as HTMLButtonElement;
+}
+
+function posted(): Record<string, unknown> {
+  return flow.updateAccessState.mock.calls[0][1] as Record<string, unknown>;
+}
+
+describe("[ACI] /auth: consent invites in the access request", () => {
+  beforeEach(() => {
+    timeline = [];
+    for (const fn of Object.values(flow)) fn.mockReset();
+    flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
+    flow.checkAppAccess.mockResolvedValue({ checkedPermissions: PERMS });
+    flow.createAppAccess.mockImplementation(async () => {
+      timeline.push("createAppAccess");
+      return { id: "acc-1", token: "app-token", type: "app", permissions: PERMS };
+    });
+    flow.updateAccessState.mockImplementation(async (_poll: string, body: { status?: string }) => {
+      timeline.push("post " + body.status);
+      return { status: 200 };
+    });
+    cmcMock.readOffer.mockReset();
+    cmcMock.acceptInvite.mockReset();
+    cmcMock.refuseInvite.mockReset();
+    cmcMock.refuseInvite.mockImplementation(async (conn: { apiEndpoint: string }, url: string) => {
+      timeline.push("refuseInvite " + url + " " + conn.apiEndpoint);
+      return { refuseEventId: "rf-1" };
+    });
+    cmcMock.readOffer.mockImplementation(async (url: string) => ({
+      requester: { username: url === CAP_A ? "doctor" : "study", host: "requester.test" },
+      requestedPermissions: [{ streamId: "diary", level: "read" }],
+      consent: { en: "Share your diary." },
+      mode: "single-use",
+    }));
+    let n = 0;
+    cmcMock.acceptInvite.mockImplementation(async (conn: { apiEndpoint: string }, url: string) => {
+      timeline.push("acceptInvite " + url + " " + conn.apiEndpoint);
+      n += 1;
+      return { acceptEventId: "ev-" + n, dataGrantAccessId: "grant-" + n, counterparty: null, features: {} };
+    });
+    scopeMock.readOfferScope.mockReset();
+    scopeMock.readOfferScope.mockResolvedValue(":_cmc:apps:carer");
+    deleg.listControlled.mockReset();
+    deleg.getToken.mockReset();
+    deleg.serviceInfo = { features: {} };
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("[ACI1] the invite blocks come after check-app; Continue waits for every decision", async () => {
+    flow.loadAccessState.mockResolvedValue(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/is requesting permission/);
+    // Not read before the consent step.
+    expect(flow.checkAppAccess.mock.invocationCallOrder[0]).toBeLessThan(cmcMock.readOffer.mock.invocationCallOrder[0]);
+    const blocks = await inviteBlocks(2);
+    expect(within(blocks[0]).getByTestId("cmc-requester").textContent).toBe("doctor@requester.test");
+    expect(blocks[0].textContent).toContain("required");
+    expect(blocks[1].textContent).toContain("optional");
+    // The page's Accept is Continue, disabled until every block is decided.
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(continueButton().disabled).toBe(true);
+    decide(blocks[0], "Approve");
+    await waitFor(() => expect(within(blocks[0]).getByTestId("cmc-offer-decision")).toBeTruthy());
+    expect(continueButton().disabled).toBe(true);
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    // A decision can be changed.
+    within(blocks[1]).getByRole("button", { name: "Change" }).click();
+    await waitFor(() => expect(continueButton().disabled).toBe(true));
+    // Nothing was written while deciding.
+    expect(cmcMock.acceptInvite).not.toHaveBeenCalled();
+    expect(cmcMock.refuseInvite).not.toHaveBeenCalled();
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    expect(flow.updateAccessState).not.toHaveBeenCalled();
+  });
+
+  it("[ACI2] a declined mandatory invite refuses the request before any write", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("REFUSED");
+    expect(posted().reasonId).toBe("REFUSED_MANDATORY_CONSENT");
+    expect(typeof posted().message).toBe("string");
+    expect(posted().cmcInvites).toBeUndefined();
+    expect(cmcMock.acceptInvite).not.toHaveBeenCalled();
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    expect(flow.updateAccessState).toHaveBeenCalledTimes(1);
+    // The declined requester is told no, before the request is refused.
+    expect(cmcMock.refuseInvite).toHaveBeenCalledTimes(1);
+    expect(cmcMock.refuseInvite.mock.calls[0][1]).toBe(CAP_B);
+    expect(cmcMock.refuseInvite.mock.calls[0][2]).toEqual({ scopeStreamId: ":_cmc:apps:carer" });
+    expect(timeline).toEqual(["refuseInvite " + CAP_B + " https://parent-token@parent.core.test/", "post REFUSED"]);
+  });
+
+  it("[ACI14] a declined invite is answered with a refusal before the grant; a failed refusal changes nothing", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    let blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(cmcMock.refuseInvite).toHaveBeenCalledTimes(1);
+    expect(cmcMock.refuseInvite.mock.calls[0].slice(1)).toEqual([CAP_B, { scopeStreamId: ":_cmc:apps:carer" }]);
+    expect(timeline.indexOf("refuseInvite " + CAP_B + " https://parent-token@parent.core.test/")).toBeLessThan(
+      timeline.indexOf("createAppAccess"),
+    );
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }, { declined: true }]);
+    cleanup();
+    localStorage.clear();
+    sessionStorage.clear();
+
+    // A refusal that cannot be sent: the outcome is the same, the grant proceeds.
+    flow.updateAccessState.mockClear();
+    flow.createAppAccess.mockClear();
+    cmcMock.refuseInvite.mockRejectedValue(new Error("network down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("ACCEPTED");
+    expect((posted().cmcInvites as unknown[])[1]).toEqual({ declined: true });
+    expect(flow.createAppAccess).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("[ACI15] a mandatory accept whose wait times out is reported, not refused", async () => {
+    cmcMock.acceptInvite.mockRejectedValue(
+      Object.assign(new Error("trigger did not complete"), { id: "cmc-capability-timeout" }),
+    );
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("ACCEPTED");
+    expect(posted().cmcInvites).toEqual([{ reason: "cmc-capability-timeout" }]);
+    expect(flow.createAppAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("[ACI16] an offer that names no scope: Approve disabled, Decline available, said so; nothing to refuse with", async () => {
+    scopeMock.readOfferScope.mockResolvedValue(null);
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    within(block).getByText(/does not say where its consent belongs/);
+    expect((within(block).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(block).getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(false);
+    decide(block, "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(cmcMock.refuseInvite).not.toHaveBeenCalled();
+    expect(posted().cmcInvites).toEqual([{ declined: true }]);
+  });
+
+  it("[ACI3] a declined optional invite: the grant proceeds, the outcome says declined", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("ACCEPTED");
+    expect(posted().token).toBe("app-token");
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }, { declined: true }]);
+    expect(cmcMock.acceptInvite).toHaveBeenCalledTimes(1);
+    expect(cmcMock.acceptInvite.mock.calls[0][1]).toBe(CAP_A);
+    expect(cmcMock.acceptInvite.mock.calls[0][2]).toEqual({ scopeStreamId: ":_cmc:apps:carer" });
+  });
+
+  it("[ACI4] a mandatory accept that fails refuses the request with its reason, no grant", async () => {
+    cmcMock.acceptInvite.mockRejectedValue(
+      Object.assign(new Error("CMC accept failed"), { id: "cmc-capability-consumed" }),
+    );
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("REFUSED");
+    expect(posted().reasonId).toBe("MANDATORY_CONSENT_FAILED");
+    expect(String(posted().message)).toContain("cmc-capability-consumed");
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    expect(flow.updateAccessState).toHaveBeenCalledTimes(1);
+  });
+
+  it("[ACI11] an optional accept that fails is reported, and the grant proceeds", async () => {
+    cmcMock.acceptInvite.mockImplementation(async (_conn: unknown, url: string) => {
+      if (url === CAP_B) throw Object.assign(new Error("CMC accept failed"), { id: "cmc-capability-invalidated" });
+      return { acceptEventId: "ev-a", dataGrantAccessId: null, counterparty: null, features: {} };
+    });
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("ACCEPTED");
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-a" }, { reason: "cmc-capability-invalidated" }]);
+    expect(flow.createAppAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("[ACI5] every invite is accepted before the app access is created", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_B, mandatory: false, for: "self" }, { capabilityUrl: CAP_A, mandatory: true, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(timeline).toEqual([
+      // mandatory first, then optional
+      "acceptInvite " + CAP_A + " https://parent-token@parent.core.test/",
+      "acceptInvite " + CAP_B + " https://parent-token@parent.core.test/",
+      "createAppAccess",
+      "post ACCEPTED",
+    ]);
+    // Outcomes in the request's order.
+    expect(posted().cmcInvites).toEqual([
+      { acceptEventId: "ev-2", dataGrantAccessId: "grant-2" },
+      { acceptEventId: "ev-1", dataGrantAccessId: "grant-1" },
+    ]);
+  });
+
+  it("[ACI6] for: 'target' is accepted with the delegate token on the controlled account", async () => {
+    deleg.serviceInfo = { features: { delegation: true } };
+    deleg.listControlled.mockResolvedValue([
+      { relId: "r1", controlled: { username: "kid-a", hostSlug: "core-b" }, status: "active", requestedAt: 1 },
+    ]);
+    deleg.getToken.mockResolvedValue({ token: PAT, apiEndpoint: "https://kid-a.core.test/" });
+    flow.loadAccessState.mockResolvedValue(
+      needSignin(
+        [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }],
+        { actAs: "kid-a" },
+      ),
+    );
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await screen.findByText(/is requesting permission/);
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const byUrl = Object.fromEntries(
+      cmcMock.acceptInvite.mock.calls.map((c) => [c[1] as string, (c[0] as { apiEndpoint: string }).apiEndpoint]),
+    );
+    expect(byUrl[CAP_A]).toBe("https://" + PAT + "@kid-a.core.test/");
+    expect(byUrl[CAP_B]).toBe("https://parent-token@parent.core.test/");
+    expect(posted().status).toBe("ACCEPTED");
+    expect(posted().username).toBe("kid-a");
+    const outcomes = posted().cmcInvites as Array<Record<string, unknown>>;
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes[0].acceptedFor).toBeUndefined();
+    expect(JSON.stringify(posted())).not.toContain(PAT);
+  });
+
+  it("[ACI7] for: 'target' without an account to act for is accepted as self, and said so", async () => {
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "target" }]));
+    const [block] = await inviteBlocks(1);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect((cmcMock.acceptInvite.mock.calls[0][0] as { apiEndpoint: string }).apiEndpoint).toBe(
+      "https://parent-token@parent.core.test/",
+    );
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1", acceptedFor: "self" }]);
+  });
+
+  it("[ACI9] an unreadable invite can only be declined", async () => {
+    cmcMock.readOffer.mockImplementation(async (url: string) => {
+      if (url === CAP_B) throw new Error("capability gone");
+      return { requester: { username: "doctor", host: "requester.test" }, requestedPermissions: [], mode: "single-use" };
+    });
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await screen.findAllByTestId("cmc-invite");
+    await within(blocks[1]).findByText(/could not be read/);
+    expect((within(blocks[1]).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(blocks[1]).getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("[ACI12] (guard) a request without invites: Accept as before, the same ACCEPTED body, no offer read", async () => {
+    const state = needSignin([]);
+    delete (state as { cmcInvites?: unknown }).cmcInvites;
+    await reachConsent(state);
+    expect(screen.queryAllByTestId("cmc-invite")).toHaveLength(0);
+    screen.getByRole("button", { name: "Accept" }).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted()).toEqual({
+      status: "ACCEPTED",
+      username: "parent",
+      apiEndpoint: "https://app-token@parent.core.test/",
+      token: "app-token",
+    });
+    expect(cmcMock.readOffer).not.toHaveBeenCalled();
+    expect(scopeMock.readOfferScope).not.toHaveBeenCalled();
+  });
+
+  it("[ACI10] (guard) an access the app already holds is not handed over before the invites are answered", async () => {
+    flow.checkAppAccess.mockResolvedValue({
+      matchingAccess: { id: "m1", token: "existing-token", type: "app", permissions: PERMS },
+    });
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    expect(flow.updateAccessState).not.toHaveBeenCalled();
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    expect(posted().token).toBe("existing-token");
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }]);
+  });
+});

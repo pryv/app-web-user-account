@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`/auth`: consent invites inside the access request**
+  ([#11](https://github.com/pryv/app-web-user-account/issues/11)). An access
+  request carrying `cmcInvites` (`[{ capabilityUrl, mandatory?, for? }]`, read
+  from the poll state of a core that supports them) shows, after the app
+  access, one block per invite with its own Approve and Decline; the page's
+  Accept becomes "Continue", enabled once every invite is decided. Continue
+  decides, accepts, grants, in that order: each declined invite is answered
+  with a refusal (best-effort, as on `/cmc-accept`), so its requester is told;
+  a declined mandatory invite refuses the request (`REFUSED_MANDATORY_CONSENT`)
+  before anything else is written; the
+  approved invites are accepted (mandatory first) on the scope the requester
+  stamped on its offer, `for: "self"` with the person's own session and
+  `for: "target"` with the delegate token on the managed account the access is
+  for (or as self, reported `acceptedFor: "self"`, when there is none); a
+  mandatory accept that fails refuses the request (`MANDATORY_CONSENT_FAILED`)
+  without a grant (a wait that times out is reported, not refused), an optional
+  one is reported and the grant proceeds; then the
+  app access is created and `ACCEPTED` carries one outcome per invite
+  (`cmcInvites`), a hint for the requester. An access the app already holds
+  waits for the invites instead of being handed over at once. A request without
+  `cmcInvites` behaves exactly as before.
+
+### Changed
+
+- The `/cmc-accept` offer (requester, consent text, permissions, Approve and
+  Decline) is now the shared `CmcOfferBlock` component, also used by `/auth`;
+  `/cmc-accept` behaves as before.
+
 ## 0.10.0 - 2026-10-01
 
 ### Added

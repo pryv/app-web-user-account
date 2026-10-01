@@ -407,7 +407,10 @@
     "mismatchWillReplace": "A different access was already given to this app. Approving will replace it.",
     "signedInAsReview": "You are signed in as {{username}}. Continue to review the access requested by {{app}}?",
     "signedInReview": "You are signed in. Continue to review the access requested by {{app}}?",
-    "signinPromptApp": "Sign in to grant access to {{app}}."
+    "signinPromptApp": "Sign in to grant access to {{app}}.",
+    "alreadyGranted": "This app already holds this access. It is kept as it is.",
+    "invitesPending": "Approve or decline every consent invite above to continue.",
+    "inviteMandatoryFailed": "A required consent invite could not be accepted ({{reason}}). The request was refused and the app was given no access."
   },
   "oauth": {
     "invalidTitle": "Invalid authorization request",
@@ -478,7 +481,14 @@
     "scopeNoPermissionSet": "The scope-update request carries no permission set.",
     "scopeProposedLabel": "Proposed permissions:",
     "scopeLoadingProposal": "Loading the proposed permissions…",
-    "scopeCouldNotComplete": "Could not complete the request."
+    "scopeCouldNotComplete": "Could not complete the request.",
+    "inviteHeading": "Consent invite {{n}} of {{count}}",
+    "inviteMandatory": "(required: declining it refuses the whole request)",
+    "inviteOptional": "(optional)",
+    "inviteWillApprove": "Approved: it is accepted when you continue.",
+    "inviteWillDecline": "Declined: the requester is told when you continue.",
+    "inviteChange": "Change",
+    "inviteNoScope": "This invite does not say where its consent belongs, so it cannot be approved here. You can decline it."
   },
   "emailVerification": {
     "pageTitle": "Verify your email address",

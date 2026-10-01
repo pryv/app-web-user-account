@@ -232,6 +232,56 @@ Every route accepts these query parameters:
     link; for a single-use invite it is a bearer link until the request
     expires.
 
+  **Consent invites inside the access request (`cmcInvites`).** Instead of a
+  second page, your app can put the consent invites it needs answered in the
+  access request body itself (`POST {register}/access`, needs a core that
+  echoes `cmcInvites` on its `201` answer):
+  `cmcInvites: [{ capabilityUrl, mandatory?, for? }]`, 1 to 8 entries,
+  `mandatory` `false` by default, `for` `"self"` (default) or `"target"` (the
+  account the access is granted for, see `actAs` below). After the user signs
+  in, the consent screen shows the app access first, then one block per invite
+  (who asks, their consent text, what they ask for) with its own Approve and
+  Decline; the app access's Accept becomes "Continue", enabled once every
+  invite has a decision (Reject still refuses the whole request). Approving or
+  declining an invite only records the choice; on Continue the page, in this
+  order:
+  - answers every declined invite with a refusal (`@pryv/cmc` `refuseInvite`,
+    with the same session its accept would use), as `/cmc-accept`'s Decline
+    does, so the requester is told; best-effort: a refusal that cannot be sent
+    does not block, and an invite that could not be read or names no scope has
+    nothing to answer with;
+  - refuses the request when a **mandatory** invite was declined: `REFUSED`
+    with `reasonId: "REFUSED_MANDATORY_CONSENT"`, before anything else is
+    written (no invite accepted, no access created);
+  - accepts every approved invite (mandatory ones first) with `@pryv/cmc`
+    `acceptInvite`, on the scope the requester stamped on its offer
+    (`originStreamId`, else `:_cmc:apps:<its app id>`): `for: "self"` with
+    the signed-in person's own session, `for: "target"` with the delegate token
+    on the managed account the access is granted for (with no such account,
+    with the person's own session, and the outcome says `acceptedFor: "self"`);
+  - refuses the request when a mandatory invite cannot be accepted: `REFUSED`
+    with `reasonId: "MANDATORY_CONSENT_FAILED"` and the platform's error id in
+    `message`, no access created (mandatory invites accepted before it stay
+    accepted); a wait that ends before the platform records the outcome
+    (`cmc-capability-timeout`) is reported, not refused, since the accept
+    usually completes moments later; an optional invite that fails is reported
+    and the grant goes on;
+  - creates (or keeps) the app access, then posts `ACCEPTED` with `cmcInvites`:
+    one outcome per invite, in the request's order,
+    `{ acceptEventId, dataGrantAccessId?, acceptedFor? }`, `{ declined: true }`
+    or `{ reason }`.
+
+  A declined invite's outcome is `{ declined: true }` whether or not its
+  refusal could be sent. The outcomes are a hint, like
+  `delegation`: your app (or the requester) learns the truth from the
+  requester's inbox (`@pryv/cmc` `waitForAccept`); `mandatory` is enforced by
+  this page, not re-checked by the core. An invite whose offer cannot be read,
+  or that names no scope, can only be declined. An access the app already holds
+  is not handed over before the invites are answered: it is shown, kept as it
+  is, and handed over with the outcomes. The capability URLs stay in the
+  request, readable by whoever holds the poll URL while it lives, as for
+  `next` above.
+
   **Accounts the user manages (`actAs`).** On a platform running account
   delegation (`features.delegation` in its service info), a signed-in user who
   actively manages other accounts is asked which account the access is for:
