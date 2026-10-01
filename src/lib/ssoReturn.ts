@@ -33,6 +33,16 @@
 
 import { httpUrlOrNull } from "./safeRedirect";
 import { safeReturnTo } from "./session";
+import { HANDOFF_ROUTES } from "./handoffReturn";
+
+/**
+ * `next` rides through the core only as a bare hand-off route. A chained `next`
+ * (`/cmc-accept?capabilityUrl=…`) carries a bearer capability URL: it survives
+ * through the same-tab stash only.
+ */
+function coreCarriesNext(value: string): boolean {
+  return HANDOFF_ROUTES.has(value);
+}
 
 /**
  * The only keys that ride through the core. Never a credential: that is why a
@@ -89,6 +99,7 @@ export function buildSsoReturn(search: string): { value: string | null; nonce: s
     // to, so it is dropped here rather than on the way back.
     if (key === "returnURL" && httpUrlOrNull(raw) == null) continue;
     if (key === "returnTo" && safeReturnTo(raw) == null) continue;
+    if (key === "next" && !coreCarriesNext(raw)) continue;
     out.set(key, raw);
   }
   if ([...out.keys()].length === 0) return { value: null, nonce };
@@ -148,7 +159,9 @@ export function restoreSsoReturn(
   const subset = new URLSearchParams();
   for (const key of RETURN_KEYS) {
     const value = returned.get(key);
-    if (value != null) subset.set(key, value);
+    if (value == null) continue;
+    if (key === "next" && !coreCarriesNext(value)) continue;
+    subset.set(key, value);
   }
 
   // The stash is the full-fidelity copy, usable when it is this tab's, fresh,

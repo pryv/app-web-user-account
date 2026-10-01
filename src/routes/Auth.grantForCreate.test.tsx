@@ -159,6 +159,14 @@ describe("[GFC] /auth: create the managed account from the grant-for step", () =
     cleanup();
   });
 
+  it("[GFC8] a failed listing still offers the creation when actAs is sent, and says why", async () => {
+    deleg.listControlled.mockRejectedValue(new TypeError("Failed to fetch"));
+    await signIn(needSignin({ actAs: "allow" }));
+    await screen.findByText(/could not be listed/i);
+    expect(screen.getAllByRole("radio")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: TOGGLE })).toBeTruthy();
+  });
+
   it("[GFC1] actAs 'allow' and no managed account: the step shows one choice and the creation offer", async () => {
     await signIn(needSignin({ actAs: "allow" }));
     await screen.findByText(/access to:/);

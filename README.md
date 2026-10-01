@@ -210,8 +210,11 @@ Every route accepts these query parameters:
     pins the result it posts to your opener page to `returnUrl`'s origin (a
     referrer from another origin still comes first). The pop-up keeps its
     `window.opener` across the hop.
-  - The offer is decided by the account that signed in, even when the access
-    was granted on an account the user manages (`actAs` below).
+  - The offer is decided by the session this app holds: the account that
+    signed in, even when the access was granted on an account the user manages
+    (`actAs` below), or, when the account pages were acting for a managed
+    account, that account's delegated session (which the core refuses until a
+    delegate may accept a consent for the account it manages).
   - The core keeps the `/auth` query of your `authUrl` with the pending access
     request and returns it on every poll while the request waits for the
     user, so the capability URL

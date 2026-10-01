@@ -199,6 +199,7 @@ export default function Auth() {
   // its connection and delegation client are the user's OWN session, never a
   // delegate token.
   const [targets, setTargets] = useState<GrantTarget[] | null>(null);
+  const [listFailed, setListFailed] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [owner, setOwner] = useState<{
     username: string;
@@ -451,7 +452,12 @@ export default function Auth() {
       if (offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs)) {
         const client = Delegation.fromConnection(connection, { pryv: Pryv });
         const listed = await runFlow(() => client.listControlled());
-        const choices = listed.ok ? grantTargets(asUser, listed.value) : [];
+        // A failed listing still offers the creation when the app named `actAs`
+        // (with the user's own account as the only choice), and says why the
+        // managed accounts are missing, rather than skipping the step silently.
+        const offerDespiteFailure = !listed.ok && namesActAs(accessState.actAs) && actingAs == null;
+        const choices = listed.ok || offerDespiteFailure ? grantTargets(asUser, listed.ok ? listed.value : []) : [];
+        setListFailed(offerDespiteFailure);
         // A single choice (the user's own account) is still shown when the app
         // named `actAs`, for the creation offer below it (never offered to a
         // session acting for another account, so not shown there either).
@@ -779,7 +785,9 @@ export default function Auth() {
         <h1 className="mb-2 text-2xl">
           {tNodes("consent.grantHeading", { app: <strong>{appName}</strong> })}
         </h1>
-        {unavailable != null && (
+        {listFailed ? (
+          <Alert tone="info">{t("consent.grantListFailed")}</Alert>
+        ) : unavailable != null && (
           <Alert tone="info">
             {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>

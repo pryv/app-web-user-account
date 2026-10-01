@@ -394,6 +394,7 @@
     "requestComplete": "This request is complete. You can close this window.",
     "grantHeading": "Grant {{app}} access to:",
     "grantUnavailable": "{{username}} is not an account you can act for; choose below.",
+    "grantListFailed": "The accounts you manage could not be listed. You can still create one below, or continue for your own account.",
     "grantLegend": "Account to grant access to",
     "grantTargetSelf": "(me)",
     "grantTargetVia": "(via {{username}})",
