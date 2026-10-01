@@ -348,6 +348,16 @@ like, configure your platform to point there.
 
 1. **Deploy `app-web-user-account`** at a URL of your choice (Vite produces a
    static bundle; serve any way you like — gh-pages, S3+CloudFront, nginx).
+   **Refuse framing on every page:** send `Content-Security-Policy:
+   frame-ancestors 'none'` and `X-Frame-Options: DENY` (nginx:
+   `add_header Content-Security-Policy "frame-ancestors 'none'" always;` and
+   `add_header X-Frame-Options "DENY" always;`). The consent pages (`/auth`,
+   `/oauth2-authorize`, `/cmc-accept`) must not be framable by another site,
+   or it can hide them under a decoy and trick a click on Accept
+   (clickjacking); a `<meta>` tag cannot set `frame-ancestors`. open-pryv.io's
+   hosted sites (2.0.0-rc.29 and later) send both headers for you. A host that
+   cannot send headers (GitHub Pages) should not be listed in your platform's
+   `access:trustedAuthUrls`.
 2. **Point your platform config** at the new paths:
    - `auth.authUrl` → `<your-deploy>/auth`
    - `oauth.consentUrl` → `<your-deploy>/oauth2-authorize` (if OAuth2 is

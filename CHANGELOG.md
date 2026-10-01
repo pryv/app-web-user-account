@@ -20,6 +20,10 @@
 
 - README: `actAs` on the access request (who the access is for, on a platform
   with account delegation) and the `delegation` hint in the `ACCEPTED` answer.
+- README, deploying: refuse framing on every page (`Content-Security-Policy:
+  frame-ancestors 'none'` and `X-Frame-Options: DENY`, with the nginx lines);
+  the consent pages must not be framable by another site (clickjacking). A host
+  that cannot send headers should not be a trusted auth URL.
 
 ## 0.8.0 - 2026-09-30
 
