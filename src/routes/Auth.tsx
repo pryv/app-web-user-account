@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
@@ -25,8 +26,10 @@ import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
+import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
+  namesActAs,
   grantTargets,
   preselectedTarget,
   unavailableActAs,
@@ -189,16 +192,23 @@ export default function Auth() {
   const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
 
   // "Who is this for?": offered after sign-in when the platform runs account
-  // delegation, the app allows it, and the user controls other accounts.
-  // `owner` keeps the signed-in account's own credentials while it is open.
+  // delegation, the app allows it, and the user controls other accounts (or,
+  // when the app named `actAs`, even without one: the step then offers to
+  // create an account for someone the user looks after).
+  // `owner` keeps the signed-in account's own credentials while it is open:
+  // its connection and delegation client are the user's OWN session, never a
+  // delegate token.
   const [targets, setTargets] = useState<GrantTarget[] | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [owner, setOwner] = useState<{
     username: string;
     endpoint: string;
     token: string;
-    client: { getToken(u: string): Promise<{ token: string; apiEndpoint: string }> };
+    connection: PryvConnection;
+    client: Delegation;
   } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createdNotice, setCreatedNotice] = useState<string | null>(null);
   // Set when granting on a controlled account. `personalToken` then holds a
   // delegate token for that account: in memory only, never stored and never
   // made the session.
@@ -442,15 +452,39 @@ export default function Auth() {
         const client = Delegation.fromConnection(connection, { pryv: Pryv });
         const listed = await runFlow(() => client.listControlled());
         const choices = listed.ok ? grantTargets(asUser, listed.value) : [];
-        if (choices.length > 1) {
-          setOwner({ username: asUser, endpoint, token, client });
+        // A single choice (the user's own account) is still shown when the app
+        // named `actAs`, for the creation offer below it.
+        if (choices.length > 1 || (choices.length === 1 && namesActAs(accessState.actAs))) {
+          setOwner({ username: asUser, endpoint, token, connection, client });
           setTargets(choices);
           setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);
+          // The app named an account the user does not manage yet: open the
+          // creation form, pre-filled with that name.
+          setCreateOpen(unavailableActAs(choices, accessState.actAs) != null);
+          setCreatedNotice(null);
           return;
         }
       }
     }
     await runCheckApp(endpoint, token, asUser);
+  }
+
+  /**
+   * An account created from the step (with the user's own session): it is
+   * active at birth, so it joins the choices, selected. Nothing continues on
+   * its own: the user sees what was created, then presses "Continue for …".
+   */
+  function onManagedCreated(created: CreatedAccount) {
+    setTargets((prev) => {
+      if (prev == null) return prev;
+      if (prev.some((c) => c.username === created.username)) return prev;
+      const added: GrantTarget = { username: created.username, self: false };
+      if (created.hostSlug) added.hostSlug = created.hostSlug;
+      return [...prev, added];
+    });
+    setSelectedTarget(created.username);
+    setCreateOpen(false);
+    setCreatedNotice(t("consent.createManagedCreated", { username: created.username }));
   }
 
   /** Continue with the account picked in the selector. */
@@ -735,6 +769,9 @@ export default function Auth() {
   if (targets != null && owner != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
     const unavailable = unavailableActAs(targets, accessState.actAs);
+    // Creation is offered when the app named `actAs`, and never from a session
+    // acting for another account: the new account's delegate is the user.
+    const offersCreation = namesActAs(accessState.actAs) && actingAs == null;
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
@@ -761,6 +798,34 @@ export default function Auth() {
             </label>
           ))}
         </fieldset>
+        {createdNotice && <Alert tone="success">{createdNotice}</Alert>}
+        {offersCreation && (
+          <div className="mb-4">
+            <button
+              type="button"
+              aria-expanded={createOpen}
+              aria-controls="grant-create-managed"
+              onClick={() => setCreateOpen(!createOpen)}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {createOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+              {t("consent.createManagedToggle")}
+            </button>
+            {createOpen && (
+              <div id="grant-create-managed" className="mt-3">
+                <CreateManagedAccount
+                  connection={owner.connection}
+                  client={owner.client}
+                  reload={async () => {}}
+                  onNotice={setCreatedNotice}
+                  onCreated={(_msg, created) => onManagedCreated(created)}
+                  initialUsername={unavailable ?? undefined}
+                  embedded
+                />
+              </div>
+            )}
+          </div>
+        )}
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
           {busy ? t("consent.checking") : t("consent.continueFor", { username: selectedTarget ?? owner.username })}

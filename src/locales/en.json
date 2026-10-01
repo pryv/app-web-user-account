@@ -398,6 +398,8 @@
     "grantTargetSelf": "(me)",
     "grantTargetVia": "(via {{username}})",
     "continueFor": "Continue for {{username}}",
+    "createManagedToggle": "Create an account for someone you look after",
+    "createManagedCreated": "Account {{username}} created and selected. Continue when you are ready.",
     "appMessageCaption": "Message from the app",
     "choiceHint": "Untick anything you would rather not share. Entries marked as required cannot be unticked.",
     "mismatchWillUpdate": "A different access was already given to this app. Approving will update it.",

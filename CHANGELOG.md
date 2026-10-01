@@ -14,6 +14,17 @@
   in CLI mode. `next` survives "Create account", "Forgot password?" and the
   sign-in, like `backUrl`. The README notes that the core keeps the `authUrl`
   query, so the capability URL, with the pending request.
+- **`/auth`: create the managed account from the "who is this for?" step**
+  ([#9](https://github.com/pryv/app-web-user-account/issues/9)). When the access
+  request sends `actAs` (`"allow"` or a username) on a platform running
+  account delegation, the step is shown even when the user manages no account
+  yet, with "Create an account for someone you look after" below the choices:
+  the same form and full-control warning as `/account/delegation`, submitted
+  with the user's own session (never offered to a session acting for another
+  account). The new account joins the choices, selected; the user then presses
+  "Continue for {account}". An `actAs` naming an account the user does not
+  manage yet opens the form pre-filled with that username. Requests without
+  `actAs` are unchanged.
 
 ### Changed
 

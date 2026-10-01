@@ -229,8 +229,18 @@ Every route accepts these query parameters:
   or a username to preselect. When the user does not actively manage the
   account named, the choice (when one is offered) says so and preselects as if
   no account had been named (the account the account pages were acting for,
-  else the user's own); a user who manages no other account is offered no
-  choice and grants on their own account. Your app receives an
+  else the user's own). A user who manages no other account is offered no
+  choice and grants on their own account, unless your request sends `actAs`
+  (`"allow"` or a username): the step is then shown even with the user's own
+  account as the only choice, with "Create an account for someone you look
+  after" below it (the creation form and full-control warning of
+  `/account/delegation`, submitted with the user's own session; not offered to
+  a session acting for another account). The account created joins the
+  choices, selected, and the user presses "Continue for {account}" (nothing
+  continues on its own). When `actAs` names an account the user does not
+  manage yet, the form opens pre-filled with that username. A request that
+  does not send `actAs` keeps the step only for users who manage accounts, so
+  apps that never serve managed accounts gain no step. Your app receives an
   ordinary app access on the chosen account; when that is a managed account, the
   `ACCEPTED` answer also carries `delegation` (`isDelegatedAccess`,
   `controlledUsername`, `delegate.username`) for display (the authoritative

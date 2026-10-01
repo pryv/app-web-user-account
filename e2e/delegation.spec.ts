@@ -88,6 +88,8 @@ async function signedInWithDelegation(
             delegation: { relId: "rel1", status: "active" },
             apiEndpoint: "https://kid.example.test/",
           };
+        case "delegations.getToken":
+          return { token: "kid-pat", apiEndpoint: "https://kid-pat@kiddo.example.test/" };
         case "delegations.requestAttach":
           return {
             delegation: { relId: "rel2", delegate: { username: "bob" }, status: "invite", requestedAt: 1 },
@@ -230,5 +232,82 @@ test.describe("/account/delegation", () => {
   test("[DLG5] a signed-out visit keeps ?create=1 through the sign-in bounce", async ({ page }) => {
     await page.goto("/account/delegation?create=1");
     await expect(page).toHaveURL(/\/signin\?.*returnTo=[^&]*create%3D1/);
+  });
+});
+
+/**
+ * `/auth` on a platform running delegation, for a request that names `actAs`:
+ * a carer who manages no account yet creates the child's account from the
+ * "who is this for?" step, continues for it, and grants the app access there.
+ */
+test.describe("[GFC] /auth: create the managed account from the grant-for step", () => {
+  const POLL = "https://reg.example.test/reg/access/gfc1";
+  const PERMS = [{ streamId: "diary", defaultName: "Diary", level: "read" }];
+
+  test("[GFC7] sign in, create, continue for the new account, accept: the answer names it", async ({ page }) => {
+    const { methods } = await signedInWithDelegation(page, { controlled: [] });
+    await page.route("**/service/info", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...SERVICE_INFO, features: { ...SERVICE_INFO.features, delegation: true } }),
+      }),
+    );
+    const posted: Array<Record<string, unknown>> = [];
+    await page.route(POLL, (route) => {
+      if (route.request().method() === "POST") {
+        posted.push(route.request().postDataJSON() as Record<string, unknown>);
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ACCEPTED" }) });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "NEED_SIGNIN", requestingAppId: "kid-app", requestedPermissions: PERMS, actAs: "allow" }),
+      });
+    });
+    const kidCalls: Array<{ url: string; auth: string | null }> = [];
+    await page.route("https://kiddo.example.test/accesses/check-app", (route) => {
+      kidCalls.push({ url: route.request().url(), auth: route.request().headers()["authorization"] ?? null });
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ meta: META, checkedPermissions: PERMS }) });
+    });
+    await page.route("https://kiddo.example.test/accesses", (route) => {
+      kidCalls.push({ url: route.request().url(), auth: route.request().headers()["authorization"] ?? null });
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ meta: META, access: { id: "kid-access", token: "kid-app-token", type: "app", permissions: PERMS } }),
+      });
+    });
+
+    await page.goto(
+      "/auth?poll=" + encodeURIComponent(POLL) + "&pryvServiceInfoUrl=" + encodeURIComponent("https://reg.example.test/service/info"),
+    );
+    await page.getByRole("button", { name: "Continue as alice" }).click();
+
+    // One choice (the carer's own account) and the creation offer.
+    await expect(page.getByText("Grant kid-app access to:")).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(1);
+    await page.getByRole("button", { name: "Create an account for someone you look after" }).click();
+    await expect(page.getByText("A delegate has full control of this account:")).toBeVisible();
+    await page.locator("#managed-username").fill("kiddo");
+    await page.getByRole("button", { name: "Create managed account" }).click();
+
+    // Added and selected; nothing continues on its own.
+    await expect(page.getByText("Account kiddo created and selected.")).toBeVisible();
+    await expect(page.getByRole("radio", { name: /kiddo/ })).toBeChecked();
+    expect(methods).toContain("delegations.createAccount");
+    expect(methods).not.toContain("delegations.getToken");
+
+    await page.getByRole("button", { name: "Continue for kiddo" }).click();
+    await expect(page.getByText(/is requesting permission/)).toBeVisible();
+    await page.getByRole("button", { name: "Accept" }).click();
+
+    await expect.poll(() => posted.length).toBe(1);
+    expect(posted[0].status).toBe("ACCEPTED");
+    expect(posted[0].username).toBe("kiddo");
+    expect(posted[0].delegation).toEqual({ isDelegatedAccess: true, controlledUsername: "kiddo", delegate: { username: "alice" } });
+    // The access on the new account was minted with the delegate token, which never reaches the answer.
+    expect(kidCalls.map((c) => c.auth)).toEqual(["kid-pat", "kid-pat"]);
+    expect(JSON.stringify(posted[0])).not.toContain("kid-pat");
   });
 });
