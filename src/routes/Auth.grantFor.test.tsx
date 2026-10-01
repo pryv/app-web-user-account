@@ -315,6 +315,61 @@ describe("[AGF] /auth: grant for a controlled account", () => {
       expect(fallbackArg().backUrl).toBe(BACK);
     });
 
+    // A request with a hand-off page (`next`) continues to it only after an
+    // accept: Reject and Cancel end the flow, a re-opened request does not
+    // start the next step again.
+    it("[CHN5] only the accept hands closeOrRedirect the next page; reject, cancel and re-open never do", async () => {
+      const NEXT = "/cmc-accept?capabilityUrl=https%3A%2F%2Fcap%40req.test%2F&scopeStreamId=s1&mode=popup";
+      const withNext = (state: Record<string, unknown>) => {
+        flow.loadAccessState.mockResolvedValue(state);
+        render(
+          <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL) + "&next=" + encodeURIComponent(NEXT)]}>
+            <SessionProvider>
+              <Auth />
+            </SessionProvider>
+          </MemoryRouter>,
+        );
+      };
+      const nextArg = () => (flow.closeOrRedirect.mock.calls.at(-1)![3] as { next?: string | null }).next ?? null;
+      const reset = () => {
+        cleanup();
+        flow.closeOrRedirect.mockReset();
+        sessionStorage.clear();
+      };
+
+      withNext(needSignin({ actAs: "deny" }));
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/is requesting permission/);
+      screen.getByRole("button", { name: /accept/i }).click();
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(flow.closeOrRedirect.mock.calls[0][1].status).toBe("ACCEPTED");
+      expect(nextArg()).toBe(NEXT);
+      reset();
+
+      withNext(needSignin({ actAs: "deny" }));
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/is requesting permission/);
+      screen.getByRole("button", { name: /reject/i }).click();
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(flow.closeOrRedirect.mock.calls[0][1].status).toBe("REFUSED");
+      expect(nextArg()).toBeNull();
+      reset();
+
+      // Cancel on the selector ("who is this for?") posts a refusal too.
+      withNext(needSignin());
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/access to:/);
+      screen.getByRole("button", { name: /cancel/i }).click();
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(flow.closeOrRedirect.mock.calls[0][1].status).toBe("REFUSED");
+      expect(nextArg()).toBeNull();
+      reset();
+
+      withNext({ status: "ACCEPTED", requestingAppId: "kid-app", serviceInfo: { api: "https://{username}.core.test/" } });
+      await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());
+      expect(nextArg()).toBeNull();
+    });
+
     it("on re-opening a decided request, and the callback shows the complete card", async () => {
       await signInWithBack({ status: "REFUSED", requestingAppId: "kid-app", serviceInfo: { api: "https://{username}.core.test/" } });
       await waitFor(() => expect(flow.closeOrRedirect).toHaveBeenCalled());

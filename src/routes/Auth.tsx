@@ -16,6 +16,7 @@ import {
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
+import { chainedHandoffPath } from "../lib/handoffReturn";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -122,6 +123,9 @@ function parseAuthQuery(search: string): AuthQuery {
  * (or update a mismatching prior one in place) and POST the result back
  * to `pollUrl`; finally we either close the popup or redirect to
  * `returnURL` with the legacy `prYv*` params the lib-js consumer reads.
+ * A request carrying a page-only `next` (a hand-off page such as
+ * `/cmc-accept?…`, see `chainedHandoffPath`) continues to it in this window
+ * after an accept, when there is no `returnURL` and not in CLI mode.
  *
  * Sign-in, permission render and Accept/Reject come from the shared
  * consent kit (`components/consent/`); this container keeps only the
@@ -204,7 +208,12 @@ export default function Auth() {
   const [requestDone, setRequestDone] = useState(false);
   // After the decision: a tab the page cannot close goes back to the app when
   // it gave a way back (`backUrl`), else shows the complete card.
-  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true) };
+  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true), next: null };
+  // Once the access is granted, a request with a hand-off page (`next`, a
+  // consent offer) continues to it in this window instead of closing. Accept
+  // only: Cancel and Reject end the flow, and a decided request re-opened does
+  // not start the next step again.
+  const acceptFallback = { ...closeFallback, next: inAppHref(chainedHandoffPath(search)) };
 
   // The consent form, present only when the app sent a `consent` sidecar
   // AND this server understood it. Without one the legacy contract applies:
@@ -581,7 +590,7 @@ export default function Auth() {
     markRequestDone(query.pollUrl);
     // The delegate token has done its job: drop it before handing over.
     if (grantFor != null || hint != null) setPersonalToken(null);
-    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, closeFallback);
+    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, acceptFallback);
     return null;
   }
 
@@ -974,6 +983,12 @@ export default function Auth() {
  * `https://{token}@host/{user}/` for dnsLess too (the token always prefixes
  * the host part as `Authorization`).
  */
+/** An in-app path (`/cmc-accept?…`) as a URL path under the app's base (`build:pages` serves it under a sub-path). */
+function inAppHref(path: string | null): string | null {
+  if (path == null) return null;
+  return import.meta.env.BASE_URL.replace(/\/$/, "") + path;
+}
+
 function buildApiEndpointWithToken(endpoint: string, token: string): string {
   try {
     const u = new URL(endpoint);

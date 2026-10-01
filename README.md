@@ -182,6 +182,44 @@ Every route accepts these query parameters:
   request and the way back, so the user returns to the consent screen after
   creating an account.
 
+  **Continue to a consent offer in the same window (`next`).** When your app
+  also needs the user's decision on a consent offer (a `@pryv/cmc` invite), put
+  the `/cmc-accept` link in `next` on your `authUrl`, URL-encoded as one
+  parameter, with the offer page's own query inside it:
+
+  ```
+  https://<this-app>/auth?next=%2Fcmc-accept%3FcapabilityUrl%3D…%26scopeStreamId%3D…%26mode%3Dpopup%26returnUrl%3Dhttps%253A%252F%252Fyour-app.example
+  ```
+
+  After the user accepts the access request and the outcome is posted, the
+  window continues to that page (`/cmc-accept?capabilityUrl=…&scopeStreamId=…&mode=popup&returnUrl=…`,
+  without `next`) instead of closing; it reuses the session the user just
+  signed in with, shows the offer with its own Approve and Decline, and reports
+  its outcome as `/cmc-accept` always does. Two decisions: declining the offer
+  leaves the app access in place. The rules:
+  - `next` must be exactly `/cmc-accept` or `/cmc-scope-update`, followed only
+    by its query; any other path, a URL or `//host` is ignored and the window
+    closes as usual. It is page-only: the access request knows nothing of it.
+  - Accept only: Cancel and Reject end the flow and never follow `next`; a
+    `returnURL` on the request (or a multi-core redirection) keeps precedence;
+    in CLI mode `next` is ignored.
+  - It survives "Create account", "Forgot password?" and the sign-in, like
+    `backUrl`.
+  - In a pop-up, pass `mode=popup&returnUrl=<your origin>` inside `next`: after
+    the in-window hop the referrer is this app, not yours, so `/cmc-accept`
+    pins the result it posts to your opener page to `returnUrl`'s origin (a
+    referrer from another origin still comes first). The pop-up keeps its
+    `window.opener` across the hop.
+  - The offer is decided by the account that signed in, even when the access
+    was granted on an account the user manages (`actAs` below).
+  - The core keeps the `/auth` query of your `authUrl` with the pending access
+    request and returns it on every poll while the request waits for the
+    user, so the capability URL
+    in `next` is readable by whoever holds the poll URL for as long as the
+    request lives (up to an hour). Harmless for an invite published as an open
+    link; for a single-use invite it is a bearer link until the request
+    expires.
+
   **Accounts the user manages (`actAs`).** On a platform running account
   delegation (`features.delegation` in its service info), a signed-in user who
   actively manages other accounts is asked which account the access is for:

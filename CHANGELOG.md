@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`/auth` continues to a consent offer in the same window**
+  ([#8](https://github.com/pryv/app-web-user-account/issues/8)). An `authUrl`
+  carrying a page-only `next=/cmc-accept?…` (or `/cmc-scope-update?…`, exact
+  routes only, the offer page's own query inside `next`) continues to that page
+  once the access is granted and the outcome posted, instead of closing: one
+  window, one sign-in, two decisions. Accept only (Cancel and Reject never
+  follow `next`), only without a `returnURL` (which keeps precedence) and not
+  in CLI mode. `next` survives "Create account", "Forgot password?" and the
+  sign-in, like `backUrl`. The README notes that the core keeps the `authUrl`
+  query, so the capability URL, with the pending request.
+
+### Changed
+
+- **`/cmc-accept` and `/cmc-scope-update` pin a pop-up's result to `returnUrl`
+  when the referrer is this app.** After an in-window hop (from `/auth`) the
+  referrer is the account app itself, and the result posted to the opener was
+  pinned to it, so the app never received it. A referrer on the page's own
+  origin now counts as absent: the pin is `returnUrl`'s origin (a referrer from
+  another origin still comes first). Pass `mode=popup&returnUrl=<your origin>`.
+
 ## 0.8.1 - 2026-09-30
 
 ### Fixed

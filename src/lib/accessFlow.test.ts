@@ -475,3 +475,90 @@ describe("[AFUP] updateAppAccess", () => {
     ).rejects.toThrow(/update access failed \(403\)/);
   });
 });
+
+/**
+ * A granted request carrying a hand-off page (`next`, a consent offer)
+ * continues to it in the same window instead of closing. Observed: the
+ * `location.replace` made, `window.close` (not called), and the redirect
+ * that wins over it.
+ */
+describe("[CHN] closeOrRedirect continues to the hand-off page", () => {
+  const NEXT = "/cmc-accept?capabilityUrl=https%3A%2F%2Fcap%40req.test%2F&scopeStreamId=s1&mode=popup";
+  let replaced: string | null;
+  let hrefSet: string | null;
+  let closed: boolean;
+  let cliRendered: boolean;
+
+  beforeEach(() => {
+    replaced = null;
+    hrefSet = null;
+    closed = false;
+    cliRendered = false;
+    vi.useFakeTimers();
+    vi.stubGlobal("window", {
+      closed: false,
+      opener: {},
+      close: () => { closed = true; },
+      location: {
+        replace: (u: string) => { replaced = u; },
+        set href(v: string) { hrefSet = v; },
+        get href() { return hrefSet ?? ""; },
+      },
+    });
+    const root = { set innerHTML(_v: string) { cliRendered = true; } };
+    vi.stubGlobal("document", { title: "", getElementById: () => root, body: root });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("[CHN1] without a returnURL it replaces the location with next and does not close", () => {
+    for (const returnURL of [undefined, null, "false"]) {
+      replaced = null;
+      closed = false;
+      closeOrRedirect("https://poll", { status: "ACCEPTED", returnURL } as AccessState, false, { backUrl: null, next: NEXT });
+      vi.advanceTimersByTime(CLOSE_CHECK_MS);
+      expect(replaced, String(returnURL)).toBe(NEXT);
+      expect(closed, String(returnURL)).toBe(false);
+      expect(hrefSet, String(returnURL)).toBe(null);
+    }
+  });
+
+  it("[CHN3] a returnURL wins over next", () => {
+    closeOrRedirect("https://poll", { status: "ACCEPTED", returnURL: "https://app.test/cb" } as AccessState, false, { backUrl: null, next: NEXT });
+    expect(hrefSet).toMatch(/^https:\/\/app\.test\/cb\?/);
+    expect(replaced).toBe(null);
+  });
+
+  it("[CHN3] a REDIRECTED hand-off wins over next", () => {
+    closeOrRedirect("https://poll", { status: "REDIRECTED", redirectUrl: "https://core2.test/handoff" } as AccessState, false, { backUrl: null, next: NEXT });
+    expect(hrefSet).toBe("https://core2.test/handoff");
+    expect(replaced).toBe(null);
+  });
+
+  it("[CHN4] CLI mode ignores next", () => {
+    closeOrRedirect("https://poll", { status: "ACCEPTED" } as AccessState, true, { backUrl: null, next: NEXT });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
+    expect(cliRendered).toBe(true);
+    expect(replaced).toBe(null);
+    expect(closed).toBe(false);
+  });
+
+  it("[CHN8] (guard) a next that is not a path on this origin is never followed: the window closes", () => {
+    for (const next of ["https://evil.test/cmc-accept", "//evil.test/cmc-accept", "/\\evil.test", "javascript:alert(1)", ""]) {
+      replaced = null;
+      closed = false;
+      closeOrRedirect("https://poll", { status: "ACCEPTED" } as AccessState, false, { backUrl: null, next });
+      vi.advanceTimersByTime(CLOSE_CHECK_MS);
+      expect(replaced, next).toBe(null);
+      expect(closed, next).toBe(true);
+    }
+  });
+
+  it("[CHN9] without next the window closes as before", () => {
+    closeOrRedirect("https://poll", { status: "ACCEPTED" } as AccessState, false, { backUrl: null, next: null });
+    expect(closed).toBe(true);
+    expect(replaced).toBe(null);
+  });
+});

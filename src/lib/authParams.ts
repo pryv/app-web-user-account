@@ -76,6 +76,9 @@ const ACCESS_REQUEST_KEYS = [
   // the return to `/auth`, where Cancel and completion in a tab use it.
   "backUrl",
   "backLabel",
+  // The hand-off page to continue to once the access is granted (a consent
+  // offer): the chain survives the register / reset / sign-in hops too.
+  "next",
 ] as const;
 
 /**

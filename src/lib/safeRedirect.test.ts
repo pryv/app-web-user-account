@@ -60,4 +60,23 @@ describe("trustedOpenerOrigin", () => {
     expect(trustedOpenerOrigin(null, "")).toBeNull();
     expect(trustedOpenerOrigin("data:text/html,x", "not a url")).toBeNull();
   });
+
+  // After `/auth` continued to the hand-off page in the same window, the
+  // referrer is this app itself, not the opener.
+  it("[OPN1] a same-origin referrer counts as absent: the pin is the returnUrl origin", () => {
+    expect(
+      trustedOpenerOrigin("https://app.example/back", "https://account.example/auth?poll=x", "https://account.example"),
+    ).toBe("https://app.example");
+  });
+
+  it("[OPN2] a cross-origin referrer still wins over the returnUrl", () => {
+    expect(
+      trustedOpenerOrigin("https://other.example/back", "https://app.example/page", "https://account.example"),
+    ).toBe("https://app.example");
+  });
+
+  it("[OPN3] neither: null (a same-origin referrer and no returnUrl)", () => {
+    expect(trustedOpenerOrigin(null, "https://account.example/auth", "https://account.example")).toBeNull();
+    expect(trustedOpenerOrigin(undefined, undefined, "https://account.example")).toBeNull();
+  });
 });
