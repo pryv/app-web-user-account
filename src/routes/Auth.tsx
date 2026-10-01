@@ -453,8 +453,10 @@ export default function Auth() {
         const listed = await runFlow(() => client.listControlled());
         const choices = listed.ok ? grantTargets(asUser, listed.value) : [];
         // A single choice (the user's own account) is still shown when the app
-        // named `actAs`, for the creation offer below it.
-        if (choices.length > 1 || (choices.length === 1 && namesActAs(accessState.actAs))) {
+        // named `actAs`, for the creation offer below it (never offered to a
+        // session acting for another account, so not shown there either).
+        const forCreation = choices.length === 1 && namesActAs(accessState.actAs) && actingAs == null;
+        if (choices.length > 1 || forCreation) {
           setOwner({ username: asUser, endpoint, token, connection, client });
           setTargets(choices);
           setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);

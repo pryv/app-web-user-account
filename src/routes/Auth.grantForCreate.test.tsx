@@ -227,15 +227,28 @@ describe("[GFC] /auth: create the managed account from the grant-for step", () =
   });
 
   it("[GFC6] a session acting for another account is offered no creation", async () => {
-    localStorage.setItem("pryv.session.serviceInfoUrl", "https://core.test/service/info");
-    localStorage.setItem("pryv.session.apiEndpoint", "https://kid-session@kid-a.core.test/");
-    localStorage.setItem("pryv.session.parent.apiEndpoint", "https://parent-token@parent.core.test/");
-    localStorage.setItem("pryv.session.actingAs", JSON.stringify({ username: "kid-a", parentUsername: "parent" }));
+    const actingSession = () => {
+      localStorage.setItem("pryv.session.serviceInfoUrl", "https://core.test/service/info");
+      localStorage.setItem("pryv.session.apiEndpoint", "https://kid-session@kid-a.core.test/");
+      localStorage.setItem("pryv.session.parent.apiEndpoint", "https://parent-token@parent.core.test/");
+      localStorage.setItem("pryv.session.actingAs", JSON.stringify({ username: "kid-a", parentUsername: "parent" }));
+    };
+    actingSession();
     deleg.listControlled.mockResolvedValue([{ relId: "r1", controlled: { username: "kid-a", hostSlug: "core-b" }, status: "active", requestedAt: 1 }]);
     openAuth(needSignin({ actAs: "allow" }));
     (await screen.findByRole("button", { name: /continue as parent/i })).click();
     await screen.findByText(/access to:/);
     expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
+    cleanup();
+
+    // With nothing else to choose, no step at all: there is nothing to offer.
+    localStorage.clear();
+    actingSession();
+    deleg.listControlled.mockResolvedValue([]);
+    openAuth(needSignin({ actAs: "allow" }));
+    (await screen.findByRole("button", { name: /continue as parent/i })).click();
+    await screen.findByText(/is requesting permission/);
+    expect(screen.queryByText(/access to:/)).toBeNull();
     expect(deleg.createAccount).not.toHaveBeenCalled();
   });
 });
