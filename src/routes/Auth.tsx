@@ -977,18 +977,18 @@ export default function Auth() {
   );
 }
 
-/**
- * Build the token-embedded apiEndpoint string from a bare endpoint + token.
- * Legacy uses `https://{token}@host/{user}/` for subdomain platforms and
- * `https://{token}@host/{user}/` for dnsLess too (the token always prefixes
- * the host part as `Authorization`).
- */
 /** An in-app path (`/cmc-accept?…`) as a URL path under the app's base (`build:pages` serves it under a sub-path). */
 function inAppHref(path: string | null): string | null {
   if (path == null) return null;
   return import.meta.env.BASE_URL.replace(/\/$/, "") + path;
 }
 
+/**
+ * Build the token-embedded apiEndpoint string from a bare endpoint + token.
+ * Legacy uses `https://{token}@host/{user}/` for subdomain platforms and
+ * `https://{token}@host/{user}/` for dnsLess too (the token always prefixes
+ * the host part as `Authorization`).
+ */
 function buildApiEndpointWithToken(endpoint: string, token: string): string {
   try {
     const u = new URL(endpoint);
