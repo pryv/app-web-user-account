@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Removing a delegate: review the consents they gave**
+  ([#10](https://github.com/pryv/app-web-user-account/issues/10)). On
+  `/account/delegation`, removing a delegate who accepted cross-account consent
+  requests for this account opens a review of those consents first: who asked,
+  what is shared, when it was given and which delegate approved it, each with
+  Keep or Withdraw and nothing chosen in advance; "Remove delegate" stays
+  disabled until every consent has a decision. A consent whose requester never
+  received it (a delivery that failed and awaits its retry) is listed as not
+  delivered and is withdrawn; it cannot be kept. The removal then keeps the
+  chosen consents (they become the owner's own) and withdraws the others (their
+  requesters are told). A delegate who gave no consent is removed as before. If
+  the consents cannot be listed, nothing is removed. Needs open-pryv.io
+  2.0.0-rc.31 or later for a keep; until `@pryv/delegation` 3.15.0 passes the
+  keep list, the page sends it on the session's connection.
+
 ## 0.9.0 - 2026-10-01
 
 ### Added

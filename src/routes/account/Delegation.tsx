@@ -10,8 +10,21 @@ import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
 import { useSession, type PryvConnection } from "../../lib/session";
 import { NO_BACK_TO, inPopupOrFrame, parseBackTo } from "../../lib/backTo";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../../lib/username";
-import { runFlow, toDelegateRow, toControlledRow } from "../../lib/delegation";
+import {
+  runFlow,
+  toDelegateRow,
+  toControlledRow,
+  consentGrantsOf,
+  toConsentGrantReview,
+  approvedByUsername,
+  acceptDelivered,
+  detachDelegate,
+  type AccessLike,
+  type ConsentGrantReview,
+  type DelegateRow,
+} from "../../lib/delegation";
 import { CreateManagedAccount, DelegateWarning } from "../../components/delegation/CreateManagedAccount";
+import { DetachReviewDialog } from "../../components/delegation/DetachReviewDialog";
 
 /**
  * Account-delegation management.
@@ -206,19 +219,62 @@ function MyDelegates({
     await reload();
   }
 
-  async function removeRow(username: string, action: "detach" | "cancel") {
+  // The consents a delegate gave for this account, under review before it is removed.
+  const [review, setReview] = useState<{ username: string; grants: ConsentGrantReview[] } | null>(null);
+
+  async function removeRow(row: DelegateRow) {
     setError(null);
     onNotice(null);
-    setBusy(username);
-    const res = await runFlow(() =>
-      action === "detach" ? client.detachDelegate(username) : client.cancelInvite(username),
-    );
+    if (row.action === "cancel") {
+      setBusy(row.username);
+      const res = await runFlow(() => client.cancelInvite(row.username));
+      setBusy(null);
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      onNotice(t("delegation.noticeInviteCancelled"));
+      await reload();
+      return;
+    }
+    // Before a delegate goes, the consents it gave for this account are
+    // reviewed one by one. If they cannot be listed, nothing is removed:
+    // removing without the review would withdraw them all unasked.
+    setBusy(row.username);
+    let grants: ConsentGrantReview[];
+    try {
+      grants = await consentGrantReviews(client, row.relId);
+    } catch {
+      setBusy(null);
+      setError(t("delegation.errLoadConsents"));
+      return;
+    }
     setBusy(null);
+    if (grants.length > 0) {
+      setReview({ username: row.username, grants });
+      return;
+    }
+    await detach(row.username, [], 0);
+  }
+
+  async function detach(username: string, keepAccessIds: string[], total: number) {
+    setBusy(username);
+    const res = await runFlow(() => detachDelegate(client, username, keepAccessIds));
+    // A core older than the review ignores the keep list and withdraws every
+    // consent: report what is actually left, never what was asked.
+    const kept = res.ok && keepAccessIds.length > 0 ? await stillThere(client, keepAccessIds) : keepAccessIds.length;
+    setBusy(null);
+    setReview(null);
     if (!res.ok) {
       setError(res.message);
       return;
     }
-    onNotice(action === "detach" ? t("delegation.noticeDelegateRemoved") : t("delegation.noticeInviteCancelled"));
+    if (kept < keepAccessIds.length) setError(t("delegation.errKeepNotSupported"));
+    onNotice(
+      total > 0
+        ? t("delegation.noticeDelegateRemovedReviewed", { kept, dropped: total - kept })
+        : t("delegation.noticeDelegateRemoved"),
+    );
     await reload();
   }
 
@@ -252,7 +308,7 @@ function MyDelegates({
               <button
                 type="button"
                 disabled={busy === r.username}
-                onClick={() => void removeRow(r.username, r.action)}
+                onClick={() => void removeRow(r)}
                 className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
               >
                 {r.action === "detach" ? <Trash2 size={14} aria-hidden /> : <X size={14} aria-hidden />}
@@ -284,8 +340,63 @@ function MyDelegates({
           </Button>
         </form>
       </Card>
+
+      {review && (
+        <DetachReviewDialog
+          username={review.username}
+          grants={review.grants}
+          busy={busy === review.username}
+          onConfirm={(keepAccessIds) => void detach(review.username, keepAccessIds, review.grants.length)}
+          onCancel={() => setReview(null)}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * How many of `accessIds` still exist on this account (all of them when they
+ * cannot be listed). The compatibility probe for a core older than the review,
+ * which ignores `keepAccessIds` and withdraws everything.
+ */
+async function stillThere(client: Delegation, accessIds: string[]): Promise<number> {
+  try {
+    const [res] = (await client.connection.api([{ method: "accesses.get", params: {} }])) as Array<{ accesses?: AccessLike[] }>;
+    if (!Array.isArray(res?.accesses)) return accessIds.length;
+    const ids = new Set(res.accesses.map((a) => a.id));
+    return accessIds.filter((id) => ids.has(id)).length;
+  } catch {
+    return accessIds.length;
+  }
+}
+
+/**
+ * The consents the delegate of relationship `relId` gave for this account,
+ * read with this account's own session. Who approved each is read from its
+ * accept event, best-effort: a consent whose event cannot be read is still
+ * listed.
+ */
+async function consentGrantReviews(client: Delegation, relId: string): Promise<ConsentGrantReview[]> {
+  const [res] = (await client.connection.api([{ method: "accesses.get", params: {} }])) as Array<{
+    accesses?: AccessLike[];
+    error?: { message?: string };
+  }>;
+  if (res?.error || !Array.isArray(res?.accesses)) throw new Error(res?.error?.message ?? "accesses.get");
+  const reviews = consentGrantsOf(res.accesses, relId).map(toConsentGrantReview);
+  const withEvent = reviews.filter((r) => r.acceptEventId != null);
+  if (withEvent.length === 0) return reviews;
+  try {
+    const events = (await client.connection.api(
+      withEvent.map((r) => ({ method: "events.getOne", params: { id: r.acceptEventId } })),
+    )) as Array<{ event?: unknown }>;
+    withEvent.forEach((r, i) => {
+      r.approvedBy = approvedByUsername(events[i]?.event);
+      r.delivered = acceptDelivered(events[i]?.event);
+    });
+  } catch {
+    /* best-effort: the review works without who approved */
+  }
+  return reviews;
 }
 
 /* ------------------------------------------------------------------ */

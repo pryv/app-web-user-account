@@ -42,6 +42,14 @@ async function signedInWithDelegation(
     controlled?: unknown[];
     /** When set, access-info reports a DELEGATED session. */
     actingAs?: { controlled: string; delegate: string };
+    /** `accesses.get` answer. */
+    accesses?: unknown[];
+    /** `accesses.get` answer once a delegate has been detached (default: `accesses`). */
+    accessesAfterDetach?: unknown[];
+    /** `accesses.get` fails (a per-call error inside the batch). */
+    accessesError?: boolean;
+    /** `events.getOne` answers, by event id. */
+    events?: Record<string, unknown>;
   } = {},
 ) {
   await page.route("**/service/info", (route) =>
@@ -69,46 +77,64 @@ async function signedInWithDelegation(
 
   // The batch endpoint serves account.get and the delegations.* calls: the
   // pryv client sends every `@pryv/delegation` method as a one-call batch
-  // (`connection.apiOne`), so the lists are answered here, by method id.
+  // (`connection.apiOne`), so the lists are answered here, by method id. A
+  // batch of several calls gets one result per call.
   const methods: string[] = [];
+  const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  let detached = false;
   await page.route("https://*.example.test/", async (route) => {
-    const body = route.request().postDataJSON() as Array<{ method: string }> | null;
-    const method = Array.isArray(body) ? body[0]?.method : "";
-    methods.push(method);
-    const result = (() => {
-      switch (method) {
-        case "account.get":
-          return { account: { username: "alice", email: "a@example.test", language: "en" } };
-        case "delegations.listDelegates":
-          return { delegates: opts.delegates ?? [] };
-        case "delegations.listControlled":
-          return { controlled: opts.controlled ?? [] };
-        case "delegations.createAccount":
-          return {
-            delegation: { relId: "rel1", status: "active" },
-            apiEndpoint: "https://kid.example.test/",
-          };
-        case "delegations.getToken":
-          return { token: "kid-pat", apiEndpoint: "https://kid-pat@kiddo.example.test/" };
-        case "delegations.requestAttach":
-          return {
-            delegation: { relId: "rel2", delegate: { username: "bob" }, status: "invite", requestedAt: 1 },
-          };
-        default:
-          // Loud: an unanswered method used to get `{}`, which the client
-          // reads as a failure, so tests passed against an error page.
-          return null;
-      }
-    })();
-    if (result == null) {
-      return route.fulfill({ status: 500, contentType: "text/plain", body: "e2e harness: no answer for " + method });
+    const body = route.request().postDataJSON() as Array<{ method: string; params?: Record<string, unknown> }> | null;
+    const batch = Array.isArray(body) && body.length > 0 ? body : [{ method: "" }];
+    for (const call of batch) {
+      methods.push(call.method);
+      calls.push(call);
+    }
+    const results = batch.map((call) => answer(call.method, call.params ?? {}));
+    if (results.some((r) => r == null)) {
+      return route.fulfill({ status: 500, contentType: "text/plain", body: "e2e harness: no answer for " + batch.map((c) => c.method).join(", ") });
     }
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ meta: META, results: [result] }),
+      body: JSON.stringify({ meta: META, results }),
     });
   });
+
+  function answer(method: string, params: Record<string, unknown>): unknown {
+    switch (method) {
+      case "account.get":
+        return { account: { username: "alice", email: "a@example.test", language: "en" } };
+      case "delegations.listDelegates":
+        return { delegates: opts.delegates ?? [] };
+      case "delegations.listControlled":
+        return { controlled: opts.controlled ?? [] };
+      case "delegations.createAccount":
+        return {
+          delegation: { relId: "rel1", status: "active" },
+          apiEndpoint: "https://kid.example.test/",
+        };
+      case "delegations.getToken":
+        return { token: "kid-pat", apiEndpoint: "https://kid-pat@kiddo.example.test/" };
+      case "delegations.requestAttach":
+        return {
+          delegation: { relId: "rel2", delegate: { username: "bob" }, status: "invite", requestedAt: 1 },
+        };
+      case "delegations.detachDelegate":
+        detached = true;
+        return {};
+      case "accesses.get":
+        if (opts.accessesError) return { error: { id: "unexpected-error", message: "e2e: accesses unavailable" } };
+        return { accesses: (detached ? opts.accessesAfterDetach : undefined) ?? opts.accesses ?? [] };
+      case "events.getOne": {
+        const event = opts.events?.[String(params.id)];
+        return event != null ? { event } : { error: { id: "unknown-resource", message: "no such event" } };
+      }
+      default:
+        // Loud: an unanswered method used to get `{}`, which the client
+        // reads as a failure, so tests passed against an error page.
+        return null;
+    }
+  }
 
   // Seed a session so the account guard does not bounce us to /signin.
   await page.addInitScript(() => {
@@ -118,8 +144,8 @@ async function signedInWithDelegation(
     window.localStorage.setItem("pryv.session.serviceInfoUrl", "https://reg.example.test/service/info");
   });
 
-  /** Batch method ids the page sent, in order. */
-  return { methods };
+  /** Batch method ids the page sent, in order, and the calls with their params. */
+  return { methods, calls };
 }
 
 test.describe("delegated-session banner", () => {
@@ -232,6 +258,91 @@ test.describe("/account/delegation", () => {
   test("[DLG5] a signed-out visit keeps ?create=1 through the sign-in bounce", async ({ page }) => {
     await page.goto("/account/delegation?create=1");
     await expect(page).toHaveURL(/\/signin\?.*returnTo=[^&]*create%3D1/);
+  });
+
+  const BOB = { relId: "rel-bob", delegate: { username: "bob" }, status: "active", activatedAt: 1789000000 };
+  const consentGrant = (id: string, relId: string, requester: string) => ({
+    id,
+    name: "grant-" + id,
+    type: "shared",
+    created: 1789100000,
+    permissions: [{ streamId: "diary", level: "read" }],
+    clientData: {
+      cmc: { role: "counterparty", acceptEventId: "ev-" + id, counterparty: { username: requester, host: "peer.example.test" } },
+      delegation: { kind: "delegated-child", relId, delegate: { username: "bob" }, viaAccessId: "pat" },
+    },
+  });
+
+  test("[DKP4] removing a delegate that gave no consent: no review, a plain detach", async ({ page }) => {
+    const { calls } = await signedInWithDelegation(page, {
+      delegates: [BOB],
+      accesses: [consentGrant("other", "rel-someone-else", "doctor"), { id: "plain", name: "app", type: "app", clientData: null }],
+    });
+    await page.goto("/account/delegation");
+    await page.getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Delegate removed." })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(calls.find((c) => c.method === "delegations.detachDelegate")?.params).toEqual({ username: "bob" });
+  });
+
+  test("[DKP5] removing a delegate that gave consents: review, keep one, withdraw one", async ({ page }) => {
+    const { calls } = await signedInWithDelegation(page, {
+      delegates: [BOB],
+      accesses: [
+        consentGrant("g1", "rel-bob", "doctor"),
+        consentGrant("g2", "rel-bob", "study"),
+        consentGrant("other", "rel-someone-else", "lab"),
+      ],
+      events: { "ev-g1": { id: "ev-g1", type: "consent/accept-cmc", content: { approvedBy: { delegate: { username: "bob" }, relId: "rel-bob" } } } },
+    });
+    await page.goto("/account/delegation");
+    await page.getByRole("button", { name: "Remove" }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Remove bob: review the consents they gave");
+    const rows = dialog.getByTestId("detach-review-grant");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Requested by doctor (peer.example.test)");
+    await expect(rows.nth(0)).toContainText("Approved by bob");
+    await expect(rows.nth(1)).toContainText("Requested by study (peer.example.test)");
+    // nothing is decided for the user
+    const confirm = dialog.getByRole("button", { name: "Remove delegate" });
+    await expect(confirm).toBeDisabled();
+    expect(calls.some((c) => c.method === "delegations.detachDelegate")).toBe(false);
+
+    await rows.nth(0).getByRole("radio", { name: /Keep/ }).check();
+    await expect(confirm).toBeDisabled();
+    await rows.nth(1).getByRole("radio", { name: /Withdraw/ }).check();
+    await confirm.click();
+
+    await expect(page.getByRole("alert").filter({ hasText: "Consents kept: 1. Consents withdrawn: 1." })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    expect(calls.find((c) => c.method === "delegations.detachDelegate")?.params).toEqual({ username: "bob", keepAccessIds: ["g1"] });
+  });
+
+  test("[DKP6] a core that cannot keep: the page reports the consents as withdrawn", async ({ page }) => {
+    await signedInWithDelegation(page, {
+      delegates: [BOB],
+      accesses: [consentGrant("g1", "rel-bob", "doctor"), consentGrant("g2", "rel-bob", "study")],
+      accessesAfterDetach: [],
+    });
+    await page.goto("/account/delegation");
+    await page.getByRole("button", { name: "Remove" }).click();
+    const rows = page.getByRole("dialog").getByTestId("detach-review-grant");
+    await rows.nth(0).getByRole("radio", { name: /Keep/ }).check();
+    await rows.nth(1).getByRole("radio", { name: /Withdraw/ }).check();
+    await page.getByRole("button", { name: "Remove delegate" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "cannot keep a delegate's consents yet" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Consents kept: 0. Consents withdrawn: 2." })).toBeVisible();
+  });
+
+  test("[DKP8] the consents cannot be listed: an error, no dialog, no detach", async ({ page }) => {
+    const { calls } = await signedInWithDelegation(page, { delegates: [BOB], accessesError: true });
+    await page.goto("/account/delegation");
+    await page.getByRole("button", { name: "Remove" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "nothing was removed" })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(calls.some((c) => c.method === "delegations.detachDelegate")).toBe(false);
   });
 });
 

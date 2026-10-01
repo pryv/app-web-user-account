@@ -163,7 +163,16 @@ Every route accepts these query parameters:
   `#create` fragment also works for a signed-in user, but does not survive
   the sign-in). With `backUrl`/`backLabel`, a successful creation adds
   "Continue to {backLabel}" (with the host shown) under the success notice,
-  a link to `backUrl` as given.
+  a link to `backUrl` as given. Removing a delegate who accepted
+  cross-account consents for this account first lists those consents (who
+  asked, what is shared, when, which delegate approved) with a Keep /
+  Withdraw choice for each, nothing chosen in advance: a kept consent becomes
+  the owner's own, a withdrawn one ends and its requester is told. A consent
+  whose requester never received it (a delivery that failed and awaits its
+  retry) is listed as not delivered and is withdrawn; it cannot be kept. Needs a
+  core that supports the review (open-pryv.io 2.0.0-rc.31 or later): an older
+  core withdraws every consent whatever the choice, and the page says so
+  after the removal.
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.

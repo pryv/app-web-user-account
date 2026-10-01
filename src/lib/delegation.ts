@@ -16,10 +16,18 @@
 import { DelegationError, delegationErrorIds as errorIds, delegationStatus as STATUS } from "./pryvClient";
 import i18n from "../i18n";
 import type {
+  Delegation,
   DelegateRecord,
   ControlledRecord,
   RelationshipStatus,
 } from "./pryvClient";
+import type { OfferPermission } from "./consent";
+
+/**
+ * Refusal of a detach whose keep list names an access that is not a consent
+ * grant of the relationship. Not yet in `@pryv/delegation`'s catalogue.
+ */
+export const INVALID_KEEP_LIST_ID = "delegation-invalid-keep-list";
 
 /**
  * The account-owner warning, shown whenever someone is about to hand another
@@ -88,6 +96,8 @@ export function delegationErrorMessage(err: unknown): string {
       return i18n.t("delegation.errDelegateMismatch");
     case errorIds.GRANT_REQUIRES_OWNER:
       return grantRequiresOwnerMessage();
+    case INVALID_KEEP_LIST_ID:
+      return i18n.t("delegation.errInvalidKeepList");
     default: {
       // A refused API call raised by `pryv` carries the platform's error in
       // `innerObject` (or `response.body.error`); before `pryv` 3.14.2 its own
@@ -190,6 +200,7 @@ export function formatSince(ts?: number | null): string {
 /** View-model for a "My delegates" (B-side) row. */
 export interface DelegateRow {
   key: string;
+  relId: string;
   username: string;
   status: RelationshipStatus;
   statusText: string;
@@ -202,6 +213,7 @@ export function toDelegateRow(rec: DelegateRecord): DelegateRow {
   const since = rec.status === STATUS.ACTIVE ? rec.activatedAt : rec.requestedAt;
   return {
     key: rec.relId,
+    relId: rec.relId,
     username: rec.delegate.username,
     status: rec.status,
     statusText: statusLabel(rec.status),
@@ -313,4 +325,96 @@ export function delegationManagedKind(
 export function managedKindLabel(kind: string): string {
   const key = Object.hasOwn(MANAGED_KIND_LABEL_KEYS, kind) ? MANAGED_KIND_LABEL_KEYS[kind] : null;
   return key ? i18n.t(key) : kind;
+}
+
+// ------------------------------------------ consents a delegate gave (review)
+
+/** The fields of an access the detach review reads. */
+export interface AccessLike {
+  id: string;
+  created?: number;
+  permissions?: Array<Record<string, unknown>>;
+  clientData?: Record<string, unknown> | null;
+}
+
+/**
+ * The consent grants a delegate gave through the relationship `relId`: the
+ * cross-account messaging data grants (`clientData.cmc.role` `counterparty`)
+ * carrying this relationship's `delegated-child` lineage. Exactly the
+ * accesses the server accepts in a detach's keep list.
+ */
+export function consentGrantsOf<T extends AccessLike>(accesses: readonly T[], relId: string): T[] {
+  return accesses.filter((a) => {
+    const cmc = a.clientData?.cmc as { role?: unknown } | null | undefined;
+    const lineage = a.clientData?.delegation as { kind?: unknown; relId?: unknown } | null | undefined;
+    return cmc?.role === "counterparty" && lineage?.kind === "delegated-child" && lineage.relId === relId;
+  });
+}
+
+/** One consent grant as the detach review shows it. */
+export interface ConsentGrantReview {
+  accessId: string;
+  /** Who asked: the requester's username, with its host when known. */
+  requester: string;
+  permissions: OfferPermission[];
+  givenOnText: string;
+  /** The delegate recorded on the accept event (`approvedBy`), when it could be read. */
+  approvedBy: string | null;
+  /** The accept event's id, to read `approvedBy` from. */
+  acceptEventId: string | null;
+  /**
+   * False when the accept event says the consent never reached the requester
+   * (not `completed`: a failed delivery awaiting its retry); such a grant
+   * cannot be kept. Null when the event could not be read (it may be kept).
+   */
+  delivered: boolean | null;
+}
+
+export function toConsentGrantReview(access: AccessLike): ConsentGrantReview {
+  const cmc = (access.clientData?.cmc ?? {}) as {
+    counterparty?: { username?: unknown; host?: unknown };
+    acceptEventId?: unknown;
+  };
+  const username = typeof cmc.counterparty?.username === "string" ? cmc.counterparty.username : "";
+  const host = typeof cmc.counterparty?.host === "string" ? cmc.counterparty.host : "";
+  return {
+    accessId: access.id,
+    requester: username && host ? username + " (" + host + ")" : username || host || i18n.t("delegation.bannerAnotherAccount"),
+    permissions: (access.permissions ?? []) as OfferPermission[],
+    givenOnText: formatSince(access.created),
+    approvedBy: null,
+    acceptEventId: typeof cmc.acceptEventId === "string" ? cmc.acceptEventId : null,
+    delivered: null,
+  };
+}
+
+/** Whether an accept event reached its requester (`completed`); null when it is not a readable event. */
+export function acceptDelivered(event: unknown): boolean | null {
+  const status = field(field(event, "content"), "status");
+  return typeof status === "string" ? status === "completed" : null;
+}
+
+/** The delegate named by an accept event's `content.approvedBy`, or null. */
+export function approvedByUsername(event: unknown): string | null {
+  const approvedBy = field(field(event, "content"), "approvedBy");
+  const username = field(field(approvedBy, "delegate"), "username");
+  return typeof username === "string" && username.length > 0 ? username : null;
+}
+
+/**
+ * Detach a delegate, keeping the consent grants in `keepAccessIds`. Without a
+ * keep list this is the client's plain detach. `@pryv/delegation` passes the
+ * keep list through from 3.15.0; until then the same API call is made on the
+ * client's connection (a refusal still carries its `delegation-*` id).
+ */
+export async function detachDelegate(
+  client: Delegation,
+  username: string,
+  keepAccessIds: readonly string[] = [],
+): Promise<void> {
+  if (keepAccessIds.length === 0) {
+    await client.detachDelegate(username);
+    return;
+  }
+  await client.connection.apiOne("delegations.detachDelegate", { username, keepAccessIds: [...keepAccessIds] });
 }

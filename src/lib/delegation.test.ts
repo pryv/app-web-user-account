@@ -19,6 +19,12 @@ import {
   DELEGATE_WARNING_LEAD,
   delegationManagedKind,
   managedKindLabel,
+  consentGrantsOf,
+  toConsentGrantReview,
+  approvedByUsername,
+  acceptDelivered,
+  detachDelegate,
+  INVALID_KEEP_LIST_ID,
 } from "./delegation";
 
 const err = (id: string, message = "server said no") => new DelegationError(message, id);
@@ -293,5 +299,66 @@ describe("[DMK] delegation-managed accesses", () => {
     for (const access of [withKind("toString"), withKind(1), { clientData: { delegation: null } }, { clientData: null }, {}, null]) {
       expect(delegationManagedKind(access)).toBeNull();
     }
+  });
+});
+
+describe("[DKP1] consents a delegate gave, for the detach review", () => {
+  const lineage = (relId: string, kind = "delegated-child") => ({ kind, relId, delegate: { username: "parent" }, viaAccessId: "pat" });
+  const grant = (id: string, relId: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    created: 1_700_000_000,
+    permissions: [{ streamId: "diary", level: "read" }],
+    clientData: {
+      cmc: { role: "counterparty", acceptEventId: "ev-" + id, counterparty: { username: "doctor", host: "peer.example.com" } },
+      delegation: lineage(relId),
+      ...extra,
+    },
+  });
+
+  it("keeps only consent grants carrying this relationship's lineage", () => {
+    const accesses = [
+      grant("mine", "rel-1"),
+      grant("other-relationship", "rel-2"),
+      { id: "owner-consent", clientData: { cmc: { role: "counterparty" } } },
+      { id: "app-for-kid", clientData: { delegation: lineage("rel-1") } },
+      { id: "delegate-session", clientData: { delegation: lineage("rel-1", "delegate-pat") } },
+      { ...grant("requester-side", "rel-1"), clientData: { cmc: { role: "requester" }, delegation: lineage("rel-1") } },
+      { id: "plain" },
+    ];
+    expect(consentGrantsOf(accesses, "rel-1").map((a) => a.id)).toEqual(["mine"]);
+  });
+
+  it("describes a grant: who asked, what, when; who approved comes from the accept event", () => {
+    const review = toConsentGrantReview(grant("g1", "rel-1"));
+    expect(review.accessId).toBe("g1");
+    expect(review.requester).toBe("doctor (peer.example.com)");
+    expect(review.permissions).toEqual([{ streamId: "diary", level: "read" }]);
+    expect(review.givenOnText).not.toBe("");
+    expect(review.acceptEventId).toBe("ev-g1");
+    expect(review.approvedBy).toBeNull();
+    expect(approvedByUsername({ content: { approvedBy: { delegate: { username: "parent" }, relId: "rel-1" } } })).toBe("parent");
+    expect(approvedByUsername({ content: {} })).toBeNull();
+    expect(approvedByUsername(undefined)).toBeNull();
+    expect(review.delivered).toBeNull();
+    expect(acceptDelivered({ content: { status: "completed" } })).toBe(true);
+    expect(acceptDelivered({ content: { status: "failed" } })).toBe(false);
+    expect(acceptDelivered({ content: { status: "pending" } })).toBe(false);
+    expect(acceptDelivered(undefined)).toBeNull();
+  });
+
+  it("detaches with the plain client call when nothing is kept, and passes the keep list otherwise", async () => {
+    const client = { detachDelegate: vi.fn(async () => {}), connection: { apiOne: vi.fn(async () => ({})) } };
+    await detachDelegate(client as never, "parent");
+    await detachDelegate(client as never, "parent", []);
+    expect(client.detachDelegate).toHaveBeenCalledTimes(2);
+    expect(client.connection.apiOne).not.toHaveBeenCalled();
+    await detachDelegate(client as never, "parent", ["g1", "g2"]);
+    expect(client.connection.apiOne).toHaveBeenCalledWith("delegations.detachDelegate", { username: "parent", keepAccessIds: ["g1", "g2"] });
+  });
+
+  it("explains a refused keep list", () => {
+    const refused = Object.assign(new Error("refused"), { innerObject: { id: INVALID_KEEP_LIST_ID, message: "refused" } });
+    expect(delegationErrorId(refused)).toBe(INVALID_KEEP_LIST_ID);
+    expect(delegationErrorMessage(refused)).toMatch(/no longer belong to this delegate/i);
   });
 });
