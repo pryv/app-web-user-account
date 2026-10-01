@@ -347,6 +347,32 @@ export interface CloseFallback {
   backUrl: string | null;
   /** Called when the window stays open and is not sent back to the app. */
   onStillOpen?: () => void;
+  /**
+   * In-app hand-off page to continue to instead of closing (`/auth`'s `next`,
+   * a consent offer), already resolved against the hand-off routes; null when
+   * the request has none. Only the accept path sets it: a refusal ends the flow.
+   */
+  next?: string | null;
+}
+
+/** Whether `path` is a path on this origin (`/x`), never a URL or `//host`. */
+function isSameOriginPath(path: string): boolean {
+  return /^\/(?![/\\])/.test(path);
+}
+
+/**
+ * Completion without a usable `returnURL`: continue to the hand-off page when
+ * there is one, in the same window (`replace`, so Back never returns to a
+ * decided request; a pop-up keeps its opener across the navigation); else close
+ * (`closeOrFallback`).
+ */
+function completeInPlace(fallback?: CloseFallback): void {
+  const next = fallback?.next;
+  if (next != null && isSameOriginPath(next)) {
+    window.location.replace(next);
+    return;
+  }
+  closeOrFallback(fallback);
 }
 
 /**
@@ -379,9 +405,12 @@ export function closeOrFallback(fallback?: CloseFallback): void {
  * Mirrors app-web-auth3's `ops/close_or_redirect.js`, except for the params
  * appended to returnURL (see RETURN_URL_PARAMS):
  *
+ *   - CLI mode → the terminal message, nothing else (`next` included).
  *   - REDIRECTED status → follow redirectUrl (multi-core handoff).
- *   - no returnURL → close the window; a tab that cannot be closed goes back
- *     to `backUrl` when there is one, else shows the complete card
+ *   - no returnURL, and a `next` hand-off page (accept only) → continue to it
+ *     in the same window.
+ *   - no returnURL otherwise → close the window; a tab that cannot be closed
+ *     goes back to `backUrl` when there is one, else shows the complete card
  *     (`closeOrFallback`).
  *   - oauthState present → appendparams: state=<oauthState>&code=<key>&poll=<pollUrl>.
  *   - else → append `prYvpoll=<pollUrl>` plus the RETURN_URL_PARAMS allow-list
@@ -411,13 +440,13 @@ export function closeOrRedirect(
   }
   const returnURL = state.returnURL;
   if (!returnURL || returnURL === "false") {
-    closeOrFallback(fallback);
+    completeInPlace(fallback);
     return;
   }
   // `returnURL` is query-supplied; reject a non-http(s) scheme (open-redirect /
   // javascript:-scheme XSS) before building + assigning the completion URL.
   if (!httpUrlOrNull(returnURL)) {
-    closeOrFallback(fallback);
+    completeInPlace(fallback);
     return;
   }
   let url = returnURL;

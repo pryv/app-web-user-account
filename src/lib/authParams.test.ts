@@ -41,6 +41,12 @@ describe("[ARQS] access-request context", () => {
     expect(p.get("returnURL")).toBeNull();
   });
 
+  it("[CHN6c] keeps the hand-off page to continue to (next) with the request", () => {
+    const next = "/cmc-accept?capabilityUrl=https%3A%2F%2Fcap%40req.test%2F&scopeStreamId=s1";
+    const p = new URLSearchParams(accessRequestSearch(REQ + "&next=" + encodeURIComponent(next)));
+    expect(p.get("next")).toBe(next);
+  });
+
   it("[ARQS3] returns '' without a pending request", () => {
     expect(accessRequestSearch("?pryvServiceInfoUrl=https%3A%2F%2Fx.test%2Finfo")).toBe("");
     expect(accessRequestSearch("")).toBe("");

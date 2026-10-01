@@ -290,6 +290,140 @@ test.describe("/cmc-accept popup mode", () => {
   });
 });
 
+/**
+ * `/auth` with `next=/cmc-accept?…`: one pop-up, two decisions. The app (on its
+ * own origin) opens `/auth`; once the access is granted, the pop-up continues
+ * to the consent offer in the same window, and the offer's outcome reaches the
+ * app's page. After that hop the referrer is the account app itself, so the
+ * result must be pinned to `returnUrl`'s origin (the app), never to the
+ * referrer's: a wrong pin drops the message silently, which is what [CHN2]
+ * catches.
+ */
+test.describe("[CHN] /auth continues to /cmc-accept in the same window", () => {
+  const POLL = "https://reg.example.test/reg/access/chain1";
+  const OPENER = "https://app.example.test/opener";
+  const PERMS = [{ streamId: "diary", defaultName: "Diary", level: "read" }];
+
+  async function mockAccessRequest(context: BrowserContext, posted: Array<Record<string, unknown>>) {
+    await context.route(POLL, (route) => {
+      if (route.request().method() === "POST") {
+        posted.push(route.request().postDataJSON() as Record<string, unknown>);
+        return json(route, { status: "ACCEPTED" });
+      }
+      return json(route, { status: "NEED_SIGNIN", requestingAppId: "chain-app", requestedPermissions: PERMS });
+    });
+    await context.route("https://alice.example.test/accesses/check-app", (route) =>
+      json(route, { meta: META, checkedPermissions: PERMS }),
+    );
+    await context.route("https://alice.example.test/accesses", (route) =>
+      json(route, { meta: META, access: { id: "app-access-1", token: "app-token-1", type: "app", permissions: PERMS } }),
+    );
+    // The app's page: records every message it receives.
+    await context.route(OPENER, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body:
+          "<!doctype html><title>The app</title><script>window.cmcMessages = [];" +
+          "window.addEventListener('message', (e) => window.cmcMessages.push({ origin: e.origin, data: e.data }));</script>",
+      }),
+    );
+  }
+
+  /** From the app's page, open `/auth` chained to the offer, and grant the access. */
+  async function grantInPopup(page: Page, context: BrowserContext, baseURL: string): Promise<Page> {
+    const next =
+      "/cmc-accept?" +
+      new URLSearchParams({
+        capabilityUrl: CAPABILITY_URL,
+        scopeStreamId: SCOPE_STREAM_ID,
+        mode: "popup",
+        returnUrl: "https://app.example.test/",
+      }).toString();
+    const authUrl =
+      new URL("/auth", baseURL).toString() +
+      "?" +
+      new URLSearchParams({ poll: POLL, pryvServiceInfoUrl: "https://reg.example.test/service/info", next }).toString();
+    await page.goto(OPENER);
+    const [popup] = await Promise.all([
+      context.waitForEvent("page"),
+      page.evaluate((url) => {
+        window.open(url, "prYv Sign-in", "width=400,height=620");
+      }, authUrl),
+    ]);
+    // The stored session stands for the sign-in.
+    await popup.getByRole("button", { name: "Continue as alice" }).click();
+    await expect(popup.getByText(/is requesting permission/)).toBeVisible();
+    await popup.getByRole("button", { name: "Accept" }).click();
+    await popup.waitForURL(/\/cmc-accept\?/);
+    return popup;
+  }
+
+  function received(page: Page) {
+    return page.evaluate(() => (window as unknown as { cmcMessages: unknown[] }).cmcMessages);
+  }
+
+  test("[CHN2] grant, then the offer in the same pop-up: Approve reaches the app's page", async ({ page, context, baseURL }) => {
+    const mock = await mockCmcPlatform(context);
+    const posted: Array<Record<string, unknown>> = [];
+    await mockAccessRequest(context, posted);
+    const popup = await grantInPopup(page, context, baseURL!);
+
+    // The access was granted and handed over before the hop.
+    expect(posted).toHaveLength(1);
+    expect(posted[0].status).toBe("ACCEPTED");
+    // The offer page carries its own query only: no `next`, no poll URL.
+    const landed = new URL(popup.url()).searchParams;
+    expect(landed.get("next")).toBeNull();
+    expect(landed.get("poll")).toBeNull();
+    expect(landed.get("capabilityUrl")).toBe(CAPABILITY_URL);
+    await expectOfferShown(popup);
+
+    // Control: after the hop the referrer is the account app itself, and a
+    // result pinned to the referrer's origin (the pin before this rule) never
+    // reaches the app's page. Only the result of Approve may arrive below.
+    const appOrigin = new URL(baseURL!).origin;
+    const referrer = await popup.evaluate(() => document.referrer);
+    expect(new URL(referrer).origin).toBe(appOrigin);
+    await popup.evaluate((origin) => {
+      window.opener.postMessage({ type: "control-referrer-pin" }, origin);
+    }, appOrigin);
+
+    const closed = popup.waitForEvent("close");
+    await popup.getByRole("button", { name: "Approve" }).click();
+    await closed;
+
+    await expect.poll(() => received(page)).toHaveLength(1);
+    const [msg] = (await received(page)) as Array<{ origin: string; data: Record<string, unknown> }>;
+    expect(msg.data).toEqual({ type: "cmc-accept-result", ok: true, acceptEventId: ACCEPT_EVENT_ID });
+    expect(msg.origin).toBe(new URL(baseURL!).origin);
+    expect(page.url()).toBe(OPENER);
+    expect(mock.accepterCalls.some((c) => c.method === "events.create" && c.params.type === "consent/accept-cmc")).toBe(true);
+  });
+
+  test("[CHN7] Decline on the offer: the app access stays granted and the app reads declined-by-user", async ({ page, context, baseURL }) => {
+    const mock = await mockCmcPlatform(context);
+    const posted: Array<Record<string, unknown>> = [];
+    await mockAccessRequest(context, posted);
+    const popup = await grantInPopup(page, context, baseURL!);
+    await expectOfferShown(popup);
+
+    const closed = popup.waitForEvent("close");
+    await popup.getByRole("button", { name: "Decline" }).click();
+    await closed;
+
+    await expect.poll(() => received(page)).toHaveLength(1);
+    const [msg] = (await received(page)) as Array<{ data: Record<string, unknown> }>;
+    expect(msg.data).toEqual({ type: "cmc-accept-result", ok: false, reason: "declined-by-user" });
+    // Two decisions: the app access was handed over (ACCEPTED, once) and never undone.
+    expect(posted).toHaveLength(1);
+    expect(posted[0].status).toBe("ACCEPTED");
+    expect(posted[0].token).toBe("app-token-1");
+    const creates = mock.accepterCalls.filter((c) => c.method === "events.create");
+    expect(creates.map((c) => c.params.type)).toEqual(["consent/refuse-cmc"]);
+  });
+});
+
 test.describe("/cmc-accept without opener or returnUrl", () => {
   // Nothing to hand the result to, so the page stays open and the user reads
   // the outcome there.

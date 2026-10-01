@@ -280,3 +280,25 @@ describe("[SSRT] SSO return context", () => {
     expect(restored.get("pryvServiceInfoUrl")).toBe(REAL_SI);
   });
 });
+
+describe("[SSRT] a chained next never rides through the core", () => {
+  it("[SSRT18] only a bare hand-off route is carried; a chained next with a capability URL stays in the stash", () => {
+    const cap = "https://secret-token@core.example/";
+    const chained = "/cmc-accept?capabilityUrl=" + encodeURIComponent(cap) + "&mode=popup";
+    const built = buildSsoReturn("?next=" + encodeURIComponent(chained) + "&state=s1");
+    expect(built.value).not.toBeNull();
+    expect(built.value).not.toContain("secret-token");
+    expect(new URLSearchParams(built.value!).get("next")).toBeNull();
+    expect(new URLSearchParams(built.value!).get("state")).toBe("s1");
+
+    const bare = buildSsoReturn("?next=" + encodeURIComponent("/cmc-accept"));
+    expect(new URLSearchParams(bare.value!).get("next")).toBe("/cmc-accept");
+
+    // A crafted return context (no stash) cannot bring a chained next back.
+    sessionStorage.clear();
+    const crafted = new URLSearchParams({ next: chained, state: "s2", h: "x" }).toString();
+    const restored = new URLSearchParams(restoreSsoReturn(crafted, "?pryvServiceInfoUrl=" + encodeURIComponent(REAL_SI)));
+    expect(restored.get("next")).toBeNull();
+    expect(restored.get("state")).toBe("s2");
+  });
+});

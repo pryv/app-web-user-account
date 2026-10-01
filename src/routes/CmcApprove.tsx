@@ -74,7 +74,9 @@ function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
   }
   if (window.opener) {
     // Pin to the REAL opener (referrer) first; `returnUrl` is only a fallback
-    // pin hint. With no derivable origin the outcome (no credential) goes to '*'.
+    // pin hint, and the one used after `/auth` continued here in the same
+    // window (the referrer is then this app itself, not the opener). With no
+    // derivable origin the outcome (no credential) goes to '*'.
     const pinOrigin = trustedOpenerOrigin(params.returnUrl, document.referrer);
     window.opener.postMessage({ type: "cmc-accept-result", ...payload }, pinOrigin ?? "*");
     window.close();

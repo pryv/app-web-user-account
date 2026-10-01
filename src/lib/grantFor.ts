@@ -35,6 +35,17 @@ export function offersTargets(
 }
 
 /**
+ * Whether the app named who the access may be for (`actAs` sent: `"allow"` or
+ * a username). The core echoes `actAs` only when the request sent it, so a
+ * request that says nothing reads as absent here. Only then does the step show
+ * with a single choice and offer to create an account for someone the user
+ * looks after: apps that never serve managed accounts gain no step.
+ */
+export function namesActAs(actAs: ActAs | null): boolean {
+  return typeof actAs === "string" && actAs !== "" && actAs !== "deny";
+}
+
+/**
  * The choices: the signed-in account first, then every ACTIVE controlled
  * account. Pending and unavailable relationships grant nothing.
  */

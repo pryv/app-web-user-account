@@ -44,10 +44,18 @@ export function httpUrlOrNull(raw: string | null | undefined): URL | null {
  * a last-resort PIN HINT, never a trust anchor: only non-secret results may be
  * sent through it (the hand-off results carry no credential). Returns `null`
  * when neither yields a valid http(s) origin.
+ *
+ * A referrer on this page's own origin (`selfOrigin`) counts as absent: it is
+ * not the opener but this app, as after `/auth` continued to the hand-off page
+ * in the same window. Pinning to it would send the result to an origin the
+ * opener does not have, and the app would never receive it.
  */
 export function trustedOpenerOrigin(
   returnUrl: string | null | undefined,
   referrer: string | null | undefined,
+  selfOrigin: string | null = typeof window !== "undefined" ? window.location.origin : null,
 ): string | null {
-  return httpUrlOrNull(referrer)?.origin ?? httpUrlOrNull(returnUrl)?.origin ?? null;
+  const referrerOrigin = httpUrlOrNull(referrer)?.origin ?? null;
+  const opener = referrerOrigin != null && referrerOrigin !== selfOrigin ? referrerOrigin : null;
+  return opener ?? httpUrlOrNull(returnUrl)?.origin ?? null;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
 import { Pryv } from "../lib/pryvClient";
 import { Card, Button, Alert } from "../components/ui";
@@ -16,6 +17,7 @@ import {
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
+import { chainedHandoffPath } from "../lib/handoffReturn";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -24,8 +26,10 @@ import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
+import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
+  namesActAs,
   grantTargets,
   preselectedTarget,
   unavailableActAs,
@@ -122,6 +126,9 @@ function parseAuthQuery(search: string): AuthQuery {
  * (or update a mismatching prior one in place) and POST the result back
  * to `pollUrl`; finally we either close the popup or redirect to
  * `returnURL` with the legacy `prYv*` params the lib-js consumer reads.
+ * A request carrying a page-only `next` (a hand-off page such as
+ * `/cmc-accept?…`, see `chainedHandoffPath`) continues to it in this window
+ * after an accept, when there is no `returnURL` and not in CLI mode.
  *
  * Sign-in, permission render and Accept/Reject come from the shared
  * consent kit (`components/consent/`); this container keeps only the
@@ -185,16 +192,24 @@ export default function Auth() {
   const [finishing, setFinishing] = useState<"accept" | "refuse" | null>(null);
 
   // "Who is this for?": offered after sign-in when the platform runs account
-  // delegation, the app allows it, and the user controls other accounts.
-  // `owner` keeps the signed-in account's own credentials while it is open.
+  // delegation, the app allows it, and the user controls other accounts (or,
+  // when the app named `actAs`, even without one: the step then offers to
+  // create an account for someone the user looks after).
+  // `owner` keeps the signed-in account's own credentials while it is open:
+  // its connection and delegation client are the user's OWN session, never a
+  // delegate token.
   const [targets, setTargets] = useState<GrantTarget[] | null>(null);
+  const [listFailed, setListFailed] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
   const [owner, setOwner] = useState<{
     username: string;
     endpoint: string;
     token: string;
-    client: { getToken(u: string): Promise<{ token: string; apiEndpoint: string }> };
+    connection: PryvConnection;
+    client: Delegation;
   } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createdNotice, setCreatedNotice] = useState<string | null>(null);
   // Set when granting on a controlled account. `personalToken` then holds a
   // delegate token for that account: in memory only, never stored and never
   // made the session.
@@ -204,7 +219,12 @@ export default function Auth() {
   const [requestDone, setRequestDone] = useState(false);
   // After the decision: a tab the page cannot close goes back to the app when
   // it gave a way back (`backUrl`), else shows the complete card.
-  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true) };
+  const closeFallback = { backUrl: parseBackTo(search).url, onStillOpen: () => setRequestDone(true), next: null };
+  // Once the access is granted, a request with a hand-off page (`next`, a
+  // consent offer) continues to it in this window instead of closing. Accept
+  // only: Cancel and Reject end the flow, and a decided request re-opened does
+  // not start the next step again.
+  const acceptFallback = { ...closeFallback, next: inAppHref(chainedHandoffPath(search)) };
 
   // The consent form, present only when the app sent a `consent` sidecar
   // AND this server understood it. Without one the legacy contract applies:
@@ -432,16 +452,47 @@ export default function Auth() {
       if (offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs)) {
         const client = Delegation.fromConnection(connection, { pryv: Pryv });
         const listed = await runFlow(() => client.listControlled());
-        const choices = listed.ok ? grantTargets(asUser, listed.value) : [];
-        if (choices.length > 1) {
-          setOwner({ username: asUser, endpoint, token, client });
+        // A failed listing still offers the creation when the app named `actAs`
+        // (with the user's own account as the only choice), and says why the
+        // managed accounts are missing, rather than skipping the step silently.
+        const offerDespiteFailure = !listed.ok && namesActAs(accessState.actAs) && actingAs == null;
+        const choices = listed.ok || offerDespiteFailure ? grantTargets(asUser, listed.ok ? listed.value : []) : [];
+        setListFailed(offerDespiteFailure);
+        // A single choice (the user's own account) is still shown when the app
+        // named `actAs`, for the creation offer below it (never offered to a
+        // session acting for another account, so not shown there either).
+        const forCreation = choices.length === 1 && namesActAs(accessState.actAs) && actingAs == null;
+        if (choices.length > 1 || forCreation) {
+          setOwner({ username: asUser, endpoint, token, connection, client });
           setTargets(choices);
           setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);
+          // The app named an account the user does not manage yet: open the
+          // creation form, pre-filled with that name.
+          setCreateOpen(unavailableActAs(choices, accessState.actAs) != null);
+          setCreatedNotice(null);
           return;
         }
       }
     }
     await runCheckApp(endpoint, token, asUser);
+  }
+
+  /**
+   * An account created from the step (with the user's own session): it is
+   * active at birth, so it joins the choices, selected. Nothing continues on
+   * its own: the user sees what was created, then presses "Continue for …".
+   */
+  function onManagedCreated(created: CreatedAccount) {
+    setTargets((prev) => {
+      if (prev == null) return prev;
+      if (prev.some((c) => c.username === created.username)) return prev;
+      const added: GrantTarget = { username: created.username, self: false };
+      if (created.hostSlug) added.hostSlug = created.hostSlug;
+      return [...prev, added];
+    });
+    setSelectedTarget(created.username);
+    setCreateOpen(false);
+    setCreatedNotice(t("consent.createManagedCreated", { username: created.username }));
   }
 
   /** Continue with the account picked in the selector. */
@@ -581,7 +632,7 @@ export default function Auth() {
     markRequestDone(query.pollUrl);
     // The delegate token has done its job: drop it before handing over.
     if (grantFor != null || hint != null) setPersonalToken(null);
-    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, closeFallback);
+    closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, acceptFallback);
     return null;
   }
 
@@ -726,12 +777,17 @@ export default function Auth() {
   if (targets != null && owner != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
     const unavailable = unavailableActAs(targets, accessState.actAs);
+    // Creation is offered when the app named `actAs`, and never from a session
+    // acting for another account: the new account's delegate is the user.
+    const offersCreation = namesActAs(accessState.actAs) && actingAs == null;
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           {tNodes("consent.grantHeading", { app: <strong>{appName}</strong> })}
         </h1>
-        {unavailable != null && (
+        {listFailed ? (
+          <Alert tone="info">{t("consent.grantListFailed")}</Alert>
+        ) : unavailable != null && (
           <Alert tone="info">
             {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>
@@ -752,6 +808,34 @@ export default function Auth() {
             </label>
           ))}
         </fieldset>
+        {createdNotice && <Alert tone="success">{createdNotice}</Alert>}
+        {offersCreation && (
+          <div className="mb-4">
+            <button
+              type="button"
+              aria-expanded={createOpen}
+              aria-controls="grant-create-managed"
+              onClick={() => setCreateOpen(!createOpen)}
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {createOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+              {t("consent.createManagedToggle")}
+            </button>
+            {createOpen && (
+              <div id="grant-create-managed" className="mt-3">
+                <CreateManagedAccount
+                  connection={owner.connection}
+                  client={owner.client}
+                  reload={async () => {}}
+                  onNotice={setCreatedNotice}
+                  onCreated={(_msg, created) => onManagedCreated(created)}
+                  initialUsername={unavailable ?? undefined}
+                  embedded
+                />
+              </div>
+            )}
+          </div>
+        )}
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
           {busy ? t("consent.checking") : t("consent.continueFor", { username: selectedTarget ?? owner.username })}
@@ -966,6 +1050,12 @@ export default function Auth() {
       )}
     />
   );
+}
+
+/** An in-app path (`/cmc-accept?…`) as a URL path under the app's base (`build:pages` serves it under a sub-path). */
+function inAppHref(path: string | null): string | null {
+  if (path == null) return null;
+  return import.meta.env.BASE_URL.replace(/\/$/, "") + path;
 }
 
 /**

@@ -182,6 +182,47 @@ Every route accepts these query parameters:
   request and the way back, so the user returns to the consent screen after
   creating an account.
 
+  **Continue to a consent offer in the same window (`next`).** When your app
+  also needs the user's decision on a consent offer (a `@pryv/cmc` invite), put
+  the `/cmc-accept` link in `next` on your `authUrl`, URL-encoded as one
+  parameter, with the offer page's own query inside it:
+
+  ```
+  https://<this-app>/auth?next=%2Fcmc-accept%3FcapabilityUrl%3D…%26scopeStreamId%3D…%26mode%3Dpopup%26returnUrl%3Dhttps%253A%252F%252Fyour-app.example
+  ```
+
+  After the user accepts the access request and the outcome is posted, the
+  window continues to that page (`/cmc-accept?capabilityUrl=…&scopeStreamId=…&mode=popup&returnUrl=…`,
+  without `next`) instead of closing; it reuses the session the user just
+  signed in with, shows the offer with its own Approve and Decline, and reports
+  its outcome as `/cmc-accept` always does. Two decisions: declining the offer
+  leaves the app access in place. The rules:
+  - `next` must be exactly `/cmc-accept` or `/cmc-scope-update`, followed only
+    by its query; any other path, a URL or `//host` is ignored and the window
+    closes as usual. It is page-only: the access request knows nothing of it.
+  - Accept only: Cancel and Reject end the flow and never follow `next`; a
+    `returnURL` on the request (or a multi-core redirection) keeps precedence;
+    in CLI mode `next` is ignored.
+  - It survives "Create account", "Forgot password?" and the sign-in, like
+    `backUrl`.
+  - In a pop-up, pass `mode=popup&returnUrl=<your origin>` inside `next`: after
+    the in-window hop the referrer is this app, not yours, so `/cmc-accept`
+    pins the result it posts to your opener page to `returnUrl`'s origin (a
+    referrer from another origin still comes first). The pop-up keeps its
+    `window.opener` across the hop.
+  - The offer is decided by the session this app holds: the account that
+    signed in, even when the access was granted on an account the user manages
+    (`actAs` below), or, when the account pages were acting for a managed
+    account, that account's delegated session (which the core refuses until a
+    delegate may accept a consent for the account it manages).
+  - The core keeps the `/auth` query of your `authUrl` with the pending access
+    request and returns it on every poll while the request waits for the
+    user, so the capability URL
+    in `next` is readable by whoever holds the poll URL for as long as the
+    request lives (up to an hour). Harmless for an invite published as an open
+    link; for a single-use invite it is a bearer link until the request
+    expires.
+
   **Accounts the user manages (`actAs`).** On a platform running account
   delegation (`features.delegation` in its service info), a signed-in user who
   actively manages other accounts is asked which account the access is for:
@@ -191,8 +232,18 @@ Every route accepts these query parameters:
   or a username to preselect. When the user does not actively manage the
   account named, the choice (when one is offered) says so and preselects as if
   no account had been named (the account the account pages were acting for,
-  else the user's own); a user who manages no other account is offered no
-  choice and grants on their own account. Your app receives an
+  else the user's own). A user who manages no other account is offered no
+  choice and grants on their own account, unless your request sends `actAs`
+  (`"allow"` or a username): the step is then shown even with the user's own
+  account as the only choice, with "Create an account for someone you look
+  after" below it (the creation form and full-control warning of
+  `/account/delegation`, submitted with the user's own session; not offered to
+  a session acting for another account). The account created joins the
+  choices, selected, and the user presses "Continue for {account}" (nothing
+  continues on its own). When `actAs` names an account the user does not
+  manage yet, the form opens pre-filled with that username. A request that
+  does not send `actAs` keeps the step only for users who manage accounts, so
+  apps that never serve managed accounts gain no step. Your app receives an
   ordinary app access on the chosen account; when that is a managed account, the
   `ACCEPTED` answer also carries `delegation` (`isDelegatedAccess`,
   `controlledUsername`, `delegate.username`) for display (the authoritative
