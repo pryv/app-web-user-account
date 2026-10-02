@@ -362,5 +362,7 @@ describe("[DKP1] consents a delegate gave, for the detach review", () => {
     const refused = Object.assign(new Error("refused"), { innerObject: { id: INVALID_KEEP_LIST_ID, message: "refused" } });
     expect(delegationErrorId(refused)).toBe(INVALID_KEEP_LIST_ID);
     expect(delegationErrorMessage(refused)).toMatch(/no longer belong to this delegate/i);
+    // As @pryv/delegation 3.15.0 wraps it: a DelegationError carrying the id.
+    expect(delegationErrorMessage(err(INVALID_KEEP_LIST_ID))).toMatch(/no longer belong to this delegate/i);
   });
 });
