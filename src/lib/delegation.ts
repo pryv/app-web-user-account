@@ -403,9 +403,8 @@ export function approvedByUsername(event: unknown): string | null {
 
 /**
  * Detach a delegate, keeping the consent grants in `keepAccessIds`. Without a
- * keep list this is the client's plain detach. `@pryv/delegation` passes the
- * keep list through from 3.15.0; until then the same API call is made on the
- * client's connection (a refusal still carries its `delegation-*` id).
+ * keep list this is the client's plain detach (nothing kept). A refused keep
+ * list carries its `delegation-*` id.
  */
 export async function detachDelegate(
   client: Delegation,
@@ -416,5 +415,5 @@ export async function detachDelegate(
     await client.detachDelegate(username);
     return;
   }
-  await client.connection.apiOne("delegations.detachDelegate", { username, keepAccessIds: [...keepAccessIds] });
+  await client.detachDelegate(username, { keepAccessIds: [...keepAccessIds] });
 }

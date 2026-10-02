@@ -351,9 +351,11 @@ describe("[DKP1] consents a delegate gave, for the detach review", () => {
     await detachDelegate(client as never, "parent");
     await detachDelegate(client as never, "parent", []);
     expect(client.detachDelegate).toHaveBeenCalledTimes(2);
-    expect(client.connection.apiOne).not.toHaveBeenCalled();
+    expect(client.detachDelegate).toHaveBeenNthCalledWith(1, "parent");
+    expect(client.detachDelegate).toHaveBeenNthCalledWith(2, "parent");
     await detachDelegate(client as never, "parent", ["g1", "g2"]);
-    expect(client.connection.apiOne).toHaveBeenCalledWith("delegations.detachDelegate", { username: "parent", keepAccessIds: ["g1", "g2"] });
+    expect(client.detachDelegate).toHaveBeenNthCalledWith(3, "parent", { keepAccessIds: ["g1", "g2"] });
+    expect(client.connection.apiOne).not.toHaveBeenCalled();
   });
 
   it("explains a refused keep list", () => {
