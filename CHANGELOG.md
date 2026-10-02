@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Removing a delegate with a keep list now goes through `@pryv/delegation`'s
+  `detachDelegate(username, { keepAccessIds })` (3.15.0) instead of a raw API
+  call; `pryv` and `@pryv/delegation` move to `^3.15.0`. Same request, same
+  behaviour.
+
 ## 0.11.0 - 2026-10-01
 
 ### Added
