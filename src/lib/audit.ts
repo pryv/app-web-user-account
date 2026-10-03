@@ -39,6 +39,26 @@ export interface AuditEvent {
   };
 }
 
+/**
+ * An access as the access details page loads it (`accesses.get` with
+ * `includeExpired`). Also the `access` prop of the `AccessExtras` extension.
+ */
+export interface AccessDetails {
+  id: string;
+  name?: string;
+  type?: string;
+  deviceName?: string;
+  permissions?: Array<{ streamId?: string; tag?: string; feature?: string; level?: string; setting?: string }>;
+  created?: number;
+  createdBy?: string;
+  modified?: number;
+  modifiedBy?: string;
+  lastUsed?: number;
+  expires?: number | null;
+  expired?: boolean;
+  clientData?: Record<string, unknown>;
+}
+
 /** Build the `events.get` params for one page of an access's audit trail. */
 export function buildAuditGetParams(q: AuditQuery): Record<string, unknown> {
   const accessStream = AUDIT_ACCESS_STREAM_PREFIX + q.accessId;

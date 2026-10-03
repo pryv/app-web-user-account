@@ -16,28 +16,14 @@ import {
   filterEventsByAccess,
   eventRelation,
   DATA_BATCH_LIMIT,
+  type AccessDetails,
   type AuditEvent,
   type DataEvent,
 } from "../../lib/audit";
 import { MarkdownLite } from "../../lib/markdownLite";
 import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
 import { delegationManagedKind } from "../../lib/delegation";
-
-interface AccessDetails {
-  id: string;
-  name?: string;
-  type?: string;
-  deviceName?: string;
-  permissions?: Array<{ streamId?: string; tag?: string; feature?: string; level?: string; setting?: string }>;
-  created?: number;
-  createdBy?: string;
-  modified?: number;
-  modifiedBy?: string;
-  lastUsed?: number;
-  expires?: number | null;
-  expired?: boolean;
-  clientData?: Record<string, unknown>;
-}
+import AccessExtras from "../../extensions/AccessExtras";
 
 const PAGE_SIZE = 15;
 
@@ -401,6 +387,14 @@ export default function AuditAccess() {
             </div>
           )}
       </Card>
+
+      {connection && details && (
+        <AccessExtras
+          connection={connection}
+          access={details}
+          isSelf={details.id === selfAccessId}
+        />
+      )}
 
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">{t("audit.auditTrail")}</div>

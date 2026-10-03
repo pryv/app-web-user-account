@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **Extension slot on the access details page**
+  ([#12](https://github.com/pryv/app-web-user-account/issues/12)):
+  `src/extensions/AccessExtras.tsx`, rendered on
+  `/account/audit-access/:accessId` between the access details card and the
+  audit trail card once the access is loaded, with
+  `{ connection, access, isSelf }`. Renders nothing upstream; a fork replaces
+  it to show what its integration knows about an access (see "Extension
+  points" in the README). The `AccessDetails` type moves to `src/lib/audit.ts`
+  so the slot can import it.
+
 ### Changed
 
 - Removing a delegate with a keep list now goes through `@pryv/delegation`'s
