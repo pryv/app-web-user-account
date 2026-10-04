@@ -10,8 +10,11 @@ import type { AccessDetails } from "../lib/audit";
  * example which form or study a consent belongs to).
  *
  * `access` is the access as the page loaded it; `isSelf` is true when it is
- * the access the current session runs on. The slot only adds content: it
- * cannot change the details card, the revoke button or the audit trail.
+ * the access the current session runs on. `isSelf` is resolved by a separate
+ * request: it can be `false` on the first render and become `true` later (it
+ * stays `false` if that request fails), so read it on every render rather than
+ * once on mount. The slot only adds content: it cannot change the details card,
+ * the revoke button or the audit trail.
  */
 export default function AccessExtras(_props: {
   connection: PryvConnection;

@@ -9,14 +9,21 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
  * the loaded access and whether it is the session's own.
  */
 
-const conn = vi.hoisted(() => ({
-  accesses: [] as Array<Record<string, unknown>>,
-  selfId: "self-1",
-  api: vi.fn(),
-  accessInfo: vi.fn(),
-}));
+const conn = vi.hoisted(() => {
+  const c = {
+    accesses: [] as Array<Record<string, unknown>>,
+    selfId: "self-1",
+    api: vi.fn(),
+    accessInfo: vi.fn(),
+    // One stable connection object, as the real session provides: a new one
+    // per render would re-run every effect keyed on the connection.
+    connection: {} as { api: unknown; accessInfo: unknown },
+  };
+  c.connection = { api: c.api, accessInfo: c.accessInfo };
+  return c;
+});
 vi.mock("../../lib/session", () => ({
-  useSession: () => ({ connection: { api: conn.api, accessInfo: conn.accessInfo }, setConnection: vi.fn() }),
+  useSession: () => ({ connection: conn.connection, setConnection: vi.fn() }),
   signinPath: () => "/signin",
 }));
 vi.mock("../../extensions/AccessExtras", () => ({
@@ -64,6 +71,9 @@ describe("[AXSP] access details extension slot", () => {
     const trail = screen.getByText("Audit trail");
     expect(details.compareDocumentPosition(ext) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(ext.compareDocumentPosition(trail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The page settles: no refetch loop (a fresh connection per render would cause one).
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(conn.api.mock.calls.length).toBeLessThan(10);
   });
 
   it("[AXS2] tells the slot when the access is the session's own", async () => {
