@@ -32,6 +32,25 @@
   than 2.0.0-rc.35 that accepts the field: an older core refuses a request
   whose entry carries it (`400 invalid-parameters`), so the page never sees it
   there. An entry without it behaves as before.
+- **`/auth`: a request can ask for an account the user manages only**
+  ([#16](https://github.com/pryv/app-web-user-account/issues/16)). When the
+  poll state echoes `actAsManagedOnly: true`, "who is this for?" never offers
+  the signed-in account: it lists the active managed accounts, preselects the
+  one `actAs` names (else the one the account pages were acting for), else
+  none, and Continue waits for a choice. With no managed account yet, the
+  creation form opens directly (pre-filled with the `actAs` username) and the
+  account created is selected; a session acting for a managed account keeps
+  it preselected. When no managed account can be used (no delegation on the
+  platform, a listing that failed with no creation possible, or none from an
+  acting session), the page says why and offers Cancel only:
+  `REFUSED` with `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message`
+  naming the cause. `for: "target"` invites are then always answered on the
+  managed account. Needs an open-pryv.io release newer than 2.0.0-rc.35 that
+  echoes the field; an older core drops it, and the page behaves per `actAs`
+  as before (the user's own account offered with `"allow"`).
+  `grantTargets` takes `{ managedOnly }`, `preselectedTarget` returns `null`
+  when nothing applies, and `grantStep` in `src/lib/grantFor.ts` now decides
+  what follows the sign-in.
 
 ### Changed
 

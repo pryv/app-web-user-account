@@ -327,6 +327,30 @@ Every route accepts these query parameters:
   `controlledUsername`, `delegate.username`) for display (the authoritative
   answer is `delegation` in the token's `access-info`). A `username` hint
   names who signs in, not the account the access is for: use `actAs` for that.
+
+  **Only an account the user manages (`actAsManagedOnly`).** For a request
+  that only makes sense for someone the user looks after (registering a child,
+  say), send `actAsManagedOnly: true` next to `actAs` (`"allow"` or a
+  username; the core refuses it without `actAs` or with `"deny"`). The step
+  then never offers the signed-in account: it lists the active managed
+  accounts only, preselects the account `actAs` names (else the one the
+  account pages were acting for), otherwise none, and Continue waits until
+  one is chosen. With no managed account yet, "Create an account for someone
+  you look after" opens directly (pre-filled with the `actAs` username when
+  it names one); the account created is selected. A session acting for a
+  managed account keeps it preselected, with no creation offer. When no
+  managed account can be used (the platform does not run delegation, the
+  managed accounts could not be listed and none can be created, or a session
+  acting for another account manages none), the page says why and offers
+  Cancel only, which answers `REFUSED` with
+  `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message` naming the cause.
+  `for: "target"` invites are then always answered on the managed account
+  chosen, never with `acceptedFor: "self"`. The page reads the field from the
+  core's echo on the poll state: it needs an open-pryv.io release newer than
+  2.0.0-rc.35. An older core drops the field and does not echo it, so the
+  page behaves per `actAs` (the user's own account included with `"allow"`);
+  so does an older version of this page on a newer core. Check the field on
+  the core's `201` answer to know whether it was understood.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

@@ -49,9 +49,11 @@ import { isSessionRejected } from "../lib/sessionErrors";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
-  namesActAs,
-  grantTargets,
-  preselectedTarget,
+  grantStep,
+  managedOnlyOf,
+  offersCreation as offersCreationFor,
+  creationPrefill,
+  MANAGED_ACCOUNT_UNAVAILABLE,
   unavailableActAs,
   delegationHint,
   isDelegatedChild,
@@ -61,6 +63,7 @@ import {
   wasRequestDone,
   type GrantTarget,
   type DelegationHint,
+  type ManagedUnavailableCause,
 } from "../lib/grantFor";
 import {
   loadAccessState,
@@ -293,6 +296,11 @@ export default function Auth() {
   } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createdNotice, setCreatedNotice] = useState<string | null>(null);
+  // The app asked for an account the user manages (`actAsManagedOnly`): the
+  // signed-in account is never offered, and when no managed account can be
+  // used the page says why and offers Cancel only.
+  const managedOnly = managedOnlyOf(accessState);
+  const [managedUnavailable, setManagedUnavailable] = useState<ManagedUnavailableCause | null>(null);
   // Set when granting on a controlled account. `personalToken` then holds a
   // delegate token for that account: in memory only, never stored and never
   // made the session.
@@ -605,37 +613,53 @@ export default function Auth() {
     asUser: string,
     connection: PryvConnection | null,
   ) {
-    if (connection && accessState) {
+    if (!accessState) return;
+    // Whether the step applies (null: the platform's info could not be read),
+    // and the accounts the user controls (null: not listed, or the listing failed).
+    let offers: boolean | null = null;
+    let listed: Awaited<ReturnType<Delegation["listControlled"]>> | null = null;
+    let client: Delegation | null = null;
+    if (connection) {
       let info: unknown = null;
       try {
         info = await connection.service.info();
       } catch {
         info = null;
       }
-      if (offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs)) {
-        const client = Delegation.fromConnection(connection, { pryv: Pryv });
-        const listed = await runFlow(() => client.listControlled());
-        // A failed listing still offers the creation when the app named `actAs`
-        // (with the user's own account as the only choice), and says why the
-        // managed accounts are missing, rather than skipping the step silently.
-        const offerDespiteFailure = !listed.ok && namesActAs(accessState.actAs) && actingAs == null;
-        const choices = listed.ok || offerDespiteFailure ? grantTargets(asUser, listed.ok ? listed.value : []) : [];
-        setListFailed(offerDespiteFailure);
-        // A single choice (the user's own account) is still shown when the app
-        // named `actAs`, for the creation offer below it (never offered to a
-        // session acting for another account, so not shown there either).
-        const forCreation = choices.length === 1 && namesActAs(accessState.actAs) && actingAs == null;
-        if (choices.length > 1 || forCreation) {
-          setOwner({ username: asUser, endpoint, token, connection, client });
-          setTargets(choices);
-          setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);
-          // The app named an account the user does not manage yet: open the
-          // creation form, pre-filled with that name.
-          setCreateOpen(unavailableActAs(choices, accessState.actAs) != null);
-          setCreatedNotice(null);
-          return;
-        }
+      offers = info == null ? null : offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs);
+      if (offers) {
+        client = Delegation.fromConnection(connection, { pryv: Pryv });
+        const result = await runFlow(() => client!.listControlled());
+        listed = result.ok ? result.value : null;
       }
+    }
+    // See `grantStep`: a failed listing still offers the creation when the app
+    // named `actAs` and says why the managed accounts are missing; a single
+    // choice (the user's own account) is still shown for that offer; with
+    // `managedOnly` the signed-in account is never the answer.
+    const step = grantStep({
+      offers,
+      listed,
+      selfUsername: asUser,
+      actAs: accessState.actAs,
+      managedOnly,
+      acting: actingAs != null,
+      preferred: actingPreselect,
+    });
+    if (step.kind === "unavailable") {
+      setManagedUnavailable(step.cause);
+      return;
+    }
+    if (step.kind === "choose" && connection && client) {
+      setOwner({ username: asUser, endpoint, token, connection, client });
+      setListFailed(step.listFailed);
+      setTargets(step.targets);
+      setSelectedTarget(step.selected);
+      // The app named an account the user does not manage yet (or, for a
+      // managed account, there is none): the creation form opens at once.
+      setCreateOpen(step.createOpen);
+      setCreatedNotice(null);
+      return;
     }
     await runCheckApp(endpoint, token, asUser);
   }
@@ -661,7 +685,9 @@ export default function Auth() {
   /** Continue with the account picked in the selector. */
   async function continueWithTarget() {
     if (!owner || !targets) return;
-    const target = targets.find((c) => c.username === selectedTarget) ?? targets[0];
+    // With `managedOnly` nothing is granted until a managed account is chosen.
+    const target = targets.find((c) => c.username === selectedTarget) ?? (managedOnly ? null : targets[0]);
+    if (target == null || (managedOnly && target.self)) return;
     setBusy(true);
     setError(null);
     try {
@@ -1057,6 +1083,20 @@ export default function Auth() {
     await refuseWith("REFUSED_BY_USER", "The user refused to give access to the requested permissions");
   }
 
+  /** Cancel when the app needs a managed account and none can be used: REFUSED, naming the cause. */
+  async function refuseManagedUnavailable(cause: ManagedUnavailableCause) {
+    if (!accessState || !query.pollUrl) return;
+    setFinishing("refuse");
+    setError(null);
+    const why =
+      cause === "delegation-off"
+        ? "acting for another account is not available on this platform"
+        : cause === "list-failed"
+          ? "the accounts the user manages could not be listed"
+          : "the user manages no active account, and none can be created from this session";
+    await refuseWith(MANAGED_ACCOUNT_UNAVAILABLE, "The app asked for an account the user manages, and none can be used: " + why);
+  }
+
   /** Post REFUSED with this reason and hand over (close, go back, or the complete card). */
   async function refuseWith(reasonId: string, message: string) {
     if (!accessState || !query.pollUrl) return;
@@ -1105,26 +1145,63 @@ export default function Auth() {
     );
   }
 
+  // The app needs an account the user manages and none can be used here:
+  // say why; the user can only cancel (nothing is granted on their own account).
+  if (managedUnavailable != null) {
+    const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
+    const causeKey =
+      managedUnavailable === "delegation-off"
+        ? "consent.managedUnavailableDelegationOff"
+        : managedUnavailable === "list-failed"
+          ? "consent.managedUnavailableListFailed"
+          : "consent.managedUnavailableNone";
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="mb-2 text-sm">{tNodes("consent.managedUnavailable", { app: <strong>{appName}</strong> })}</p>
+        <Alert tone="info">{t(causeKey)}</Alert>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => void refuseManagedUnavailable(managedUnavailable)}
+          disabled={finishing !== null}
+          className="mt-3"
+        >
+          {t("common.cancel")}
+        </Button>
+      </Card>
+    );
+  }
+
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
     const unavailable = unavailableActAs(targets, accessState.actAs);
-    // Creation is offered when the app named `actAs`, and never from a session
-    // acting for another account: the new account's delegate is the user.
-    const offersCreation = namesActAs(accessState.actAs) && actingAs == null;
+    // Creation is offered when the app named `actAs` or asked for a managed
+    // account, and never from a session acting for another account: the new
+    // account's delegate is the user.
+    const offersCreation = offersCreationFor(accessState.actAs, managedOnly, actingAs != null);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           {tNodes("consent.grantHeading", { app: <strong>{appName}</strong> })}
         </h1>
+        {managedOnly && (
+          <p className="mb-3 text-sm" data-testid="grant-managed-only">
+            {tNodes("consent.grantManagedOnly", { app: <strong>{appName}</strong> })}
+          </p>
+        )}
         {listFailed ? (
-          <Alert tone="info">{t("consent.grantListFailed")}</Alert>
+          <Alert tone="info">{t(managedOnly ? "consent.grantListFailedManaged" : "consent.grantListFailed")}</Alert>
         ) : unavailable != null && (
           <Alert tone="info">
             {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>
         )}
-        <fieldset className="mb-4 space-y-2">
+        {targets.length === 0 && !listFailed && (
+          <p className="mb-3 text-sm text-muted">{t("consent.grantManagedNone")}</p>
+        )}
+        {targets.length > 0 && <fieldset className="mb-4 space-y-2">
           <legend className="sr-only">{t("consent.grantLegend")}</legend>
           {targets.map((choice) => (
             <label key={choice.username} className="flex items-center gap-2 text-sm">
@@ -1139,7 +1216,7 @@ export default function Auth() {
               <span className="text-muted">{choice.self ? t("consent.grantTargetSelf") : t("consent.grantTargetVia", { username: owner.username })}</span>
             </label>
           ))}
-        </fieldset>
+        </fieldset>}
         {createdNotice && <Alert tone="success">{createdNotice}</Alert>}
         {offersCreation && (
           <div className="mb-4">
@@ -1161,7 +1238,7 @@ export default function Auth() {
                   reload={async () => {}}
                   onNotice={setCreatedNotice}
                   onCreated={(_msg, created) => onManagedCreated(created)}
-                  initialUsername={unavailable ?? undefined}
+                  initialUsername={creationPrefill(targets, accessState.actAs, owner.username) ?? undefined}
                   embedded
                 />
               </div>
@@ -1169,8 +1246,15 @@ export default function Auth() {
           </div>
         )}
         {error && <Alert>{error}</Alert>}
-        <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
-          {busy ? t("consent.checking") : t("consent.continueFor", { username: selectedTarget ?? owner.username })}
+        {selectedTarget == null && targets.length > 0 && (
+          <p className="mb-3 text-sm text-muted">{t("consent.grantChooseManaged")}</p>
+        )}
+        <Button type="button" onClick={() => void continueWithTarget()} disabled={busy || selectedTarget == null}>
+          {busy
+            ? t("consent.checking")
+            : selectedTarget != null
+              ? t("consent.continueFor", { username: selectedTarget })
+              : t("consent.continue")}
         </Button>
         <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
           {t("common.cancel")}

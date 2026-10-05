@@ -84,6 +84,12 @@ export interface AccessState {
    * preselect. Absent: as "allow".
    */
   actAs?: string;
+  /**
+   * The app asked that the access be granted for an account the user manages,
+   * never the signed-in one. Echoed on the NEED_SIGNIN poll only when `true`,
+   * by a core that knows it; read with `managedOnlyOf` (lib/grantFor).
+   */
+  actAsManagedOnly?: boolean;
   /** Display hint posted with ACCEPTED when granted on a controlled account. */
   delegation?: {
     isDelegatedAccess: true;

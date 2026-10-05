@@ -410,7 +410,15 @@
     "signinPromptApp": "Sign in to grant access to {{app}}.",
     "alreadyGranted": "This app already holds this access. It is kept as it is.",
     "invitesPending": "Approve or decline every consent invite above to continue.",
-    "inviteMandatoryFailed": "A required consent invite could not be accepted ({{reason}}). The request was refused and the app was given no access."
+    "inviteMandatoryFailed": "A required consent invite could not be accepted ({{reason}}). The request was refused and the app was given no access.",
+    "grantManagedOnly": "{{app}} needs access for someone you look after, not for your own account.",
+    "grantManagedNone": "You do not look after anyone on this platform yet: create their account below.",
+    "grantListFailedManaged": "The accounts you manage could not be listed. You can still create one below.",
+    "grantChooseManaged": "Choose the account of the person you look after to continue.",
+    "managedUnavailable": "{{app}} needs access for someone you look after, not for your own account.",
+    "managedUnavailableDelegationOff": "Acting for someone you look after is not available here. Cancel to go back to the app.",
+    "managedUnavailableListFailed": "The accounts you manage could not be listed. Cancel to go back to the app, then try again later.",
+    "managedUnavailableNone": "You do not manage an account that can be used here, and one cannot be created from this session. Cancel to go back to the app."
   },
   "oauth": {
     "invalidTitle": "Invalid authorization request",

@@ -478,6 +478,41 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect("accessName" in optsByUrl[CAP_B]).toBe(false);
   });
 
+  it("[ACI25] the app asks for a managed account: a for: 'target' invite is answered with the account chosen, never as self", async () => {
+    deleg.serviceInfo = { features: { delegation: true } };
+    deleg.listControlled.mockResolvedValue([
+      { relId: "r1", controlled: { username: "kid-a", hostSlug: "core-b" }, status: "active", requestedAt: 1 },
+    ]);
+    deleg.getToken.mockResolvedValue({ token: PAT, apiEndpoint: "https://kid-a.core.test/" });
+    flow.loadAccessState.mockResolvedValue(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "target" }], { actAs: "allow", actAsManagedOnly: true }),
+    );
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/access to:/);
+    expect(screen.queryByRole("radio", { name: /\(me\)/ })).toBeNull();
+    (screen.getByDisplayValue("kid-a") as HTMLInputElement).click();
+    (await screen.findByRole("button", { name: /continue for kid-a/i })).click();
+    await screen.findByText(/is requesting permission/);
+    const [block] = await inviteBlocks(1);
+    expect(within(block).getByTestId("cmc-invite-for").textContent).toBe("For kid-a, whom you look after");
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect((cmcMock.acceptInvite.mock.calls[0][0] as { apiEndpoint: string }).apiEndpoint).toBe(
+      "https://" + PAT + "@kid-a.core.test/",
+    );
+    expect(posted().username).toBe("kid-a");
+    expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }]);
+  });
+
   it("[ACI9] an unreadable invite can only be declined", async () => {
     cmcMock.readOffer.mockImplementation(async (url: string) => {
       if (url === CAP_B) throw new Error("capability gone");
