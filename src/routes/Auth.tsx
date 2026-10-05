@@ -633,7 +633,9 @@ export default function Auth() {
 
   /**
    * After sign-in: offer "who is this for?" when it applies, else go straight
-   * to the consent step for the signed-in account.
+   * to the consent step for the signed-in account. Returns `runCheckApp`'s
+   * outcome when it ran ("refused": the register refused the access the app
+   * already holds, the error is set), else null.
    */
   async function afterSignIn(
     endpoint: string,
@@ -1573,7 +1575,15 @@ export default function Auth() {
         if (s.endpoint) {
           setConnection(s.connection as PryvConnection, flowSvcInfoUrl);
         }
-        await afterSignIn(endpoint, s.personalToken, s.username, (s.connection as PryvConnection) ?? null);
+        const outcome = await afterSignIn(endpoint, s.personalToken, s.username, (s.connection as PryvConnection) ?? null);
+        if (outcome === "refused") {
+          // As after "Continue as": the person stays signed in (they just gave
+          // their password, the session is kept), and the reason shows on the
+          // Welcome back card that session now opens on. Without a stored
+          // session (no endpoint), this form shows it instead.
+          setPersonalToken(null);
+          setApiEndpoint(null);
+        }
       }}
       onCancel={() => void refuse()}
       cancelDisabled={finishing !== null || busy}

@@ -322,6 +322,31 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     expect(flow.closeOrRedirect).not.toHaveBeenCalled();
   });
 
+  it("[AGF14] a register refusal of the access the signed-in account holds, after \"Continue for parent\": back to the choice", async () => {
+    flow.checkAppAccess.mockResolvedValueOnce({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    (screen.getByDisplayValue("parent") as HTMLInputElement).click();
+    screen.getByRole("button", { name: /continue for parent/i }).click();
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/access to:/)).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    expect(flow.checkAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://parent.core.test/", "parent-token"]);
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  it("[AGF15] a register refusal right after the sign-in form: the Welcome back card of the session just opened, with the reason", async () => {
+    flow.checkAppAccess.mockResolvedValueOnce({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await signIn(needSignin({ actAs: "deny" }));
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/welcome back/i)).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    expect(await screen.findByRole("button", { name: /continue as parent/i })).toBeTruthy();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
   // Cancel and completion hand `closeOrRedirect` the page's way back to the app
   // (`backUrl`) and a callback that shows the complete card, so a tab that
   // cannot be closed does not stay on a dead page.

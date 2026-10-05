@@ -98,7 +98,9 @@
   app already holds, after "Continue for" now brings back "who is this for?"
   with its choices and the reason, on the signed-in account's own credentials
   (the delegate token dropped), instead of the sign-in form. A register
-  refusal after "Continue as" shows the reason on the Welcome back card.
+  refusal after "Continue as", or right after signing in with the form, shows
+  the reason on the Welcome back card of the session (kept: the person did
+  sign in), so this visit and the next one open on the same card.
 - **Dates follow the page's language.** `formatSince` (the "since" dates of
   the delegation pages and the "Already given on" date of `/auth`) formats in
   the i18n language instead of the browser's; a language the runtime cannot
