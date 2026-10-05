@@ -10,9 +10,12 @@
   "10/5/2026" for 5 October, read as 10 May outside the US. Every date the
   pages show (the "since" dates of the delegation pages, "Already given on"
   on `/auth`, the access details and audit trail, a session's last use) now
-  writes the month as a short name: "Oct 5, 2026" in English, "5 oct. 2026" in
-  French, "5. Okt. 2026" in German. A language the runtime cannot format in
-  falls back to the browser's, in the same style. The helpers are `formatDate`
+  asks for the month's short name: "Oct 5, 2026" in English, "5 oct. 2026" in
+  French, "5. Okt. 2026" in German. A few languages have none in that pattern
+  and stay numeric (Finnish, Czech, Lithuanian), in their own day-first or
+  year-first order. Date and time keep the seconds, as the audit trail did
+  ("Oct 5, 2026, 2:00:07 PM"). A language the runtime cannot format in falls
+  back to the browser's, in the same style. The helpers are `formatDate`
   and `formatDateTime` in `src/lib/dates.ts`; `formatSince` stays, built on
   `formatDate`.
 
