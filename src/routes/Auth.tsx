@@ -392,23 +392,23 @@ export default function Auth() {
       if (cancelled) return;
       setInviteViews((prev) => prev.map((v, j) => (j === i ? view : v)));
     };
-    // One listing per account (token-bearing endpoint), shared by its invites.
-    const listings = new Map<string, Promise<GrantLike[]>>();
+    // One listing per account (token-bearing endpoint), shared by its invites;
+    // null when it failed (said once, here), and its invites show as usual.
+    const listings = new Map<string, Promise<GrantLike[] | null>>();
     const givenFor = async (i: number, offerEventId: string | null): Promise<GivenConsent | null> => {
       const { credentials } = inviteCredentials(i);
       if (offerEventId == null || credentials == null) return null;
       const api = buildApiEndpointWithToken(credentials.endpoint, credentials.token);
       let listing = listings.get(api);
       if (listing == null) {
-        listing = listGrants(api);
+        listing = listGrants(api).catch((err: unknown) => {
+          console.warn("auth: could not check whether a consent invite was already given:", loggableError(err));
+          return null;
+        });
         listings.set(api, listing);
       }
-      try {
-        return givenConsentOf(await listing, offerEventId);
-      } catch (err: unknown) {
-        console.warn("auth: could not check whether a consent invite was already given:", loggableError(err));
-        return null;
-      }
+      const accesses = await listing;
+      return accesses == null ? null : givenConsentOf(accesses, offerEventId);
     };
     invites.forEach((inv, i) => {
       if (inv.capabilityUrl === "") return;

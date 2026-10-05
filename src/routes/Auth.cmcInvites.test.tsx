@@ -564,6 +564,19 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     }
   });
 
+  it("[ACI28] a listing that fails is said once, however many invites share it", async () => {
+    scopeMock.listGrants.mockRejectedValue(new Error("403"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    for (const b of blocks) expect(within(b).getByRole("button", { name: "Approve" })).toBeTruthy();
+    const said = warn.mock.calls.filter((c) => String(c[0]).includes("already given"));
+    warn.mockRestore();
+    expect(said).toHaveLength(1);
+  });
+
   it("[ACI9] an unreadable invite can only be declined", async () => {
     cmcMock.readOffer.mockImplementation(async (url: string) => {
       if (url === CAP_B) throw new Error("capability gone");

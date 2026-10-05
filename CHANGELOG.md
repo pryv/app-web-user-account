@@ -81,7 +81,9 @@
   secret as one line (the platform error id and message, through
   `loggableError` in `src/lib/apiError.ts`), with URLs and `token@host` parts
   redacted, so a token-bearing endpoint or capability URL never reaches the
-  console.
+  console. The redaction reads at most the first 2000 characters, in linear
+  time, so an over-long message from a remote platform cannot stall the page;
+  a failed accesses listing is logged once, not once per invite.
 
 ## 0.12.0 - 2026-10-04
 

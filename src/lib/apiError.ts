@@ -38,11 +38,19 @@ export function loggableError(err: unknown): string {
   return id != null ? redactUrls(id) + ": " + text : text;
 }
 
-/** `text` with URLs and `userinfo@host` parts replaced, cut at 300 characters. */
+/** Longest part of a message `redactUrls` looks at (it may come from a remote platform, unbounded). */
+const MAX_SCANNED_LENGTH = 2000;
+
+/**
+ * `text` with URLs and `userinfo@host` parts replaced, cut at 300 characters.
+ * The text is cut before matching and every quantifier that can backtrack is
+ * bounded, so a hostile message costs linear time.
+ */
 export function redactUrls(text: string): string {
   return text
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi, "<url>")
-    .replace(/[^\s"'<>@/:]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s"'<>]*/gi, "<redacted>")
+    .slice(0, MAX_SCANNED_LENGTH)
+    .replace(/[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"'<>]*/gi, "<url>")
+    .replace(/[^\s"'<>@/:]{1,512}@[a-z0-9-][^\s"'<>]*/gi, "<redacted>")
     .slice(0, 300);
 }
 

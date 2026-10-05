@@ -22,4 +22,29 @@ describe("[APIL] errors as they are logged", () => {
     expect(loggableError({ url: "https://tok3n@alice.core.test/" })).toBe("unknown error");
     expect(loggableError(null)).toBe("unknown error");
   });
+
+  it("[APIL3] a hostile, unbounded message is handled in linear time and still redacted", () => {
+    const hostile = [
+      "a".repeat(200_000),
+      "a.".repeat(100_000),
+      "a+".repeat(100_000),
+      "a".repeat(100_000) + "@",
+      "a:".repeat(100_000),
+    ];
+    for (const text of hostile) {
+      const start = performance.now();
+      redactUrls(text);
+      expect(performance.now() - start, text.slice(0, 4)).toBeLessThan(50);
+    }
+    expect(redactUrls("CMC accept failed: https://tok@alice.core.test/ " + "x".repeat(200_000))).toMatch(/^CMC accept failed: <url> x+$/);
+  });
+
+  it("[APIL4] a dotless host, an over-long scheme or userinfo: still redacted, from the bounded part on", () => {
+    expect(redactUrls("tok@localhost/x failed")).toBe("<redacted> failed");
+    expect(redactUrls("at tok@localhost")).toBe("at <redacted>");
+    // A scheme is at most 32 characters: a longer run keeps its head, the URL is still replaced.
+    expect(redactUrls("s".repeat(40) + "://tok@host/")).toBe("s".repeat(8) + "<url>");
+    // Userinfo is at most 512 characters before the "@".
+    expect(redactUrls("u".repeat(600) + "@host")).toBe("u".repeat(88) + "<redacted>");
+  });
 });
