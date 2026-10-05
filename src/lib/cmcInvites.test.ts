@@ -7,6 +7,8 @@ import {
   acceptedOutcome,
   boundedReason,
   scopeFromOffer,
+  givenConsentOf,
+  givenOutcome,
 } from "./cmcInvites";
 
 describe("[ACI13] consent invites: pure helpers", () => {
@@ -71,5 +73,41 @@ describe("[ACI13] consent invites: pure helpers", () => {
     expect(scopeFromOffer({ originStreamId: ":_cmc:apps:demo::x" })).toBeNull();
     expect(scopeFromOffer({ originStreamId: ":_cmc:apps:" + Array(10).fill("a".repeat(60)).join(":") })).toBeNull();
     expect(scopeFromOffer(null)).toBeNull();
+  });
+});
+
+describe("[ACIG] consent invites: a consent already given", () => {
+  const grant = (over: Record<string, unknown> = {}, cmc: Record<string, unknown> = {}) => ({
+    id: "g1",
+    created: 200,
+    clientData: { cmc: { role: "counterparty", offerEventId: "offer-1", acceptEventId: "acc-1", ...cmc } },
+    ...over,
+  });
+
+  it("[ACIG1] finds the live grant minted from the offer", () => {
+    expect(givenConsentOf([grant()], "offer-1", 1000)).toEqual({ accessId: "g1", acceptEventId: "acc-1", created: 200 });
+  });
+
+  it("[ACIG2] only a counterparty grant of this very offer, alive, with its accept event id", () => {
+    expect(givenConsentOf([grant({}, { offerEventId: "offer-2" })], "offer-1", 1000)).toBeNull();
+    expect(givenConsentOf([grant({}, { role: "requester" })], "offer-1", 1000)).toBeNull();
+    expect(givenConsentOf([grant({}, { acceptEventId: null })], "offer-1", 1000)).toBeNull();
+    expect(givenConsentOf([grant({ deleted: 300 })], "offer-1", 1000)).toBeNull();
+    expect(givenConsentOf([grant({ expires: 999 })], "offer-1", 1000)).toBeNull();
+    expect(givenConsentOf([grant({ expires: 2000 })], "offer-1", 1000)?.accessId).toBe("g1");
+    expect(givenConsentOf([{ id: "x", clientData: null }, null as never, grant()], "offer-1", 1000)?.accessId).toBe("g1");
+    expect(givenConsentOf([grant()], "", 1000)).toBeNull();
+    expect(givenConsentOf(null, "offer-1", 1000)).toBeNull();
+  });
+
+  it("[ACIG3] with several grants of one offer, the earliest", () => {
+    const later = grant({ id: "g2", created: 500 }, { acceptEventId: "acc-2" });
+    expect(givenConsentOf([later, grant()], "offer-1", 1000)?.accessId).toBe("g1");
+  });
+
+  it("[ACIG4] reported as the core validates an accepted outcome", () => {
+    const given = { accessId: "g1", acceptEventId: "acc-1", created: 200 };
+    expect(givenOutcome(given, false)).toEqual({ acceptEventId: "acc-1", dataGrantAccessId: "g1" });
+    expect(givenOutcome(given, true)).toEqual({ acceptEventId: "acc-1", dataGrantAccessId: "g1", acceptedFor: "self" });
   });
 });

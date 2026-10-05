@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`/auth`: each consent invite says whose consent it is**
+  ([#13](https://github.com/pryv/app-web-user-account/issues/13)). When the
+  request went through "who is this for?", each invite block's heading names
+  the account it applies to, by the same rule its accept follows: "For you
+  ({username})" for the signed-in account, "For {username}, whom you look
+  after" for the managed account chosen there (a `for: "target"` invite reads
+  "For you" when the carer picked their own account). Without that step the
+  headings are unchanged.
+- **`/auth`: a consent already given shows as given**
+  ([#14](https://github.com/pryv/app-web-user-account/issues/14)). Once an
+  invite's offer is read, the page looks on the account the invite applies to
+  for a live grant minted from that offer (`clientData.cmc.role:
+  "counterparty"` with the offer event's id in `clientData.cmc.offerEventId`).
+  When there is one, the block reads "Already given on {date}" without Approve
+  or Decline, counts as accepted (it satisfies `mandatory`), nothing is
+  written, and its outcome is `{ acceptEventId, dataGrantAccessId }` from that
+  grant (with `acceptedFor: "self"` when a `for: "target"` invite applies to
+  the signed-in account). A withdrawn grant does not count; when the account's
+  accesses cannot be listed, the invite is shown as before.
+
+### Changed
+
+- **`/auth` after "Create account": no "Welcome back"**
+  ([#17](https://github.com/pryv/app-web-user-account/issues/17)). An account
+  created from `/auth` in the same window now goes straight on to the request
+  with its new session; `/register` tells `/auth` with a one-shot marker in the
+  navigation's state, cleared once read. The card stays for a session stored
+  before the request, where "Not me" protects a shared browser.
+- **`/auth`: an access the app already holds lists friendly stream names**
+  ([#18](https://github.com/pryv/app-web-user-account/issues/18)). Its
+  permissions, read back from the account without display names, take the
+  `defaultName` the request gives the same stream, so a returning person sees
+  the same names as a new one. Display only: the access is unchanged.
+- `readOfferRef` in `src/lib/cmcInvites.ts` returns an offer's scope and event
+  id in one read; `readOfferScope` stays, built on it. `CmcOfferBlock` takes an
+  optional `given` text that replaces its actions.
+
 ## 0.12.0 - 2026-10-04
 
 ### Added

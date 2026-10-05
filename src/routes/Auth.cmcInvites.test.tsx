@@ -33,7 +33,7 @@ vi.mock("../lib/pryvClient", async (importOriginal) => {
   return { ...actual, cmc: { ...actual.cmc, ...cmcMock } };
 });
 
-const scopeMock = vi.hoisted(() => ({ readOfferScope: vi.fn() }));
+const scopeMock = vi.hoisted(() => ({ readOfferRef: vi.fn(), readGivenConsent: vi.fn() }));
 vi.mock("../lib/cmcInvites", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/cmcInvites")>()),
   ...scopeMock,
@@ -177,8 +177,13 @@ describe("[ACI] /auth: consent invites in the access request", () => {
       n += 1;
       return { acceptEventId: "ev-" + n, dataGrantAccessId: "grant-" + n, counterparty: null, features: {} };
     });
-    scopeMock.readOfferScope.mockReset();
-    scopeMock.readOfferScope.mockResolvedValue(":_cmc:apps:carer");
+    scopeMock.readOfferRef.mockReset();
+    scopeMock.readOfferRef.mockImplementation(async (url: string) => ({
+      scope: ":_cmc:apps:carer",
+      offerEventId: url === CAP_A ? "offer-a" : "offer-b",
+    }));
+    scopeMock.readGivenConsent.mockReset();
+    scopeMock.readGivenConsent.mockResolvedValue(null);
     deleg.listControlled.mockReset();
     deleg.getToken.mockReset();
     deleg.serviceInfo = { features: {} };
@@ -306,7 +311,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
   });
 
   it("[ACI16] an offer that names no scope: Approve disabled, Decline available, said so; nothing to refuse with", async () => {
-    scopeMock.readOfferScope.mockResolvedValue(null);
+    scopeMock.readOfferRef.mockResolvedValue({ scope: null, offerEventId: "offer-a" });
     await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }]));
     const [block] = await inviteBlocks(1);
     within(block).getByText(/does not say where its consent belongs/);
@@ -481,7 +486,8 @@ describe("[ACI] /auth: consent invites in the access request", () => {
       token: "app-token",
     });
     expect(cmcMock.readOffer).not.toHaveBeenCalled();
-    expect(scopeMock.readOfferScope).not.toHaveBeenCalled();
+    expect(scopeMock.readOfferRef).not.toHaveBeenCalled();
+    expect(scopeMock.readGivenConsent).not.toHaveBeenCalled();
   });
 
   it("[ACI10] (guard) an access the app already holds is not handed over before the invites are answered", async () => {
@@ -498,5 +504,135 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(flow.createAppAccess).not.toHaveBeenCalled();
     expect(posted().token).toBe("existing-token");
     expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }]);
+  });
+
+  /** Through "who is this for?", continuing for `pick` (the controlled kid-a, or the signed-in parent). */
+  async function reachViaGrantFor(cmcInvites: unknown[], pick: "kid-a" | "parent") {
+    deleg.serviceInfo = { features: { delegation: true } };
+    deleg.listControlled.mockResolvedValue([
+      { relId: "r1", controlled: { username: "kid-a", hostSlug: "core-b" }, status: "active", requestedAt: 1 },
+    ]);
+    deleg.getToken.mockResolvedValue({ token: PAT, apiEndpoint: "https://kid-a.core.test/" });
+    flow.loadAccessState.mockResolvedValue(needSignin(cmcInvites, { actAs: "kid-a" }));
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    await screen.findByText(/access to:/);
+    if (pick === "parent") (screen.getByRole("radio", { name: /\(me\)/ }) as HTMLInputElement).click();
+    (await screen.findByRole("button", { name: new RegExp("continue for " + pick, "i") })).click();
+    await screen.findByText(/is requesting permission/);
+  }
+
+  it("[ACI17] after \"who is this for?\", each block names the account its consent is for", async () => {
+    await reachViaGrantFor(
+      [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
+      "kid-a",
+    );
+    const blocks = await inviteBlocks(2);
+    expect(within(blocks[0]).getByTestId("cmc-invite-for").textContent).toBe("For kid-a, whom you look after");
+    expect(within(blocks[1]).getByTestId("cmc-invite-for").textContent).toBe("For you (parent)");
+    // Part of the heading, so the block is announced with it.
+    expect(within(blocks[0]).getByRole("heading").textContent).toContain("For kid-a, whom you look after");
+  });
+
+  it("[ACI18] the carer picked their own account: a for: 'target' block reads \"For you\"", async () => {
+    await reachViaGrantFor([{ capabilityUrl: CAP_A, mandatory: true, for: "target" }], "parent");
+    const [block] = await inviteBlocks(1);
+    expect(within(block).getByTestId("cmc-invite-for").textContent).toBe("For you (parent)");
+  });
+
+  it("[ACI19] (guard) without \"who is this for?\", the headings name no account", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "target" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    for (const b of blocks) expect(within(b).queryByTestId("cmc-invite-for")).toBeNull();
+  });
+
+  it("[ACI20] an offer this account already accepted shows as given: no Approve/Decline, counts as accepted, nothing written", async () => {
+    scopeMock.readGivenConsent.mockImplementation(async (_api: string, offerEventId: string) =>
+      offerEventId === "offer-a" ? { accessId: "grant-old", acceptEventId: "accept-old", created: 1_700_000_000 } : null,
+    );
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    await within(blocks[0]).findByTestId("cmc-offer-given");
+    expect(within(blocks[0]).getByTestId("cmc-offer-given").textContent).toMatch(/^Already given on .+\. It is kept as it is\.$/);
+    expect(within(blocks[0]).queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(within(blocks[0]).queryByRole("button", { name: "Decline" })).toBeNull();
+    expect(within(blocks[0]).queryByRole("button", { name: "Change" })).toBeNull();
+    // Checked on the account the invite applies to, for this offer.
+    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://parent-token@parent.core.test/", "offer-a");
+    // The given (mandatory) invite counts as decided: only the other one is waited for.
+    expect(continueButton().disabled).toBe(true);
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("ACCEPTED");
+    expect(cmcMock.acceptInvite).toHaveBeenCalledTimes(1);
+    expect(cmcMock.acceptInvite.mock.calls[0][1]).toBe(CAP_B);
+    expect(cmcMock.refuseInvite).not.toHaveBeenCalled();
+    expect(posted().cmcInvites).toEqual([
+      { acceptEventId: "accept-old", dataGrantAccessId: "grant-old" },
+      { acceptEventId: "ev-1", dataGrantAccessId: "grant-1" },
+    ]);
+  });
+
+  it("[ACI21] a for: 'target' invite is checked on the controlled account, with its delegate token", async () => {
+    scopeMock.readGivenConsent.mockImplementation(async (api: string) =>
+      api === "https://" + PAT + "@kid-a.core.test/" ? { accessId: "g-kid", acceptEventId: "a-kid", created: null } : null,
+    );
+    await reachViaGrantFor(
+      [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
+      "kid-a",
+    );
+    const blocks = await inviteBlocks(2);
+    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://" + PAT + "@kid-a.core.test/", "offer-a");
+    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://parent-token@parent.core.test/", "offer-b");
+    expect((await within(blocks[0]).findByTestId("cmc-offer-given")).textContent).toBe("Already given. It is kept as it is.");
+    // The parent's own invite was not given on the parent's account: a full block.
+    expect(within(blocks[1]).getByRole("button", { name: "Approve" })).toBeTruthy();
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect((posted().cmcInvites as unknown[])[0]).toEqual({ acceptEventId: "a-kid", dataGrantAccessId: "g-kid" });
+    expect(cmcMock.acceptInvite.mock.calls.map((c) => c[1])).toEqual([CAP_B]);
+  });
+
+  it("[ACI22] when the accesses cannot be listed, the invite is shown as usual", async () => {
+    scopeMock.readGivenConsent.mockRejectedValue(new Error("403"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    expect(within(block).queryByTestId("cmc-offer-given")).toBeNull();
+    expect((within(block).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(continueButton().disabled).toBe(true);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(cmcMock.acceptInvite).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("[ACI23] the access the app already holds is listed with the names the request gave its streams", async () => {
+    flow.checkAppAccess.mockResolvedValue({
+      // Read back from the account: no display names.
+      matchingAccess: { id: "m1", token: "existing-token", type: "app", permissions: [{ streamId: "diary", level: "read" }] },
+    });
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }]));
+    await inviteBlocks(1);
+    screen.getByText("This app already holds this access. It is kept as it is.");
+    // The app-access rows, not the invite's (which carry their own list).
+    expect(screen.getAllByText("Read “Journal”").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Read “diary”", { exact: false, ignore: "[data-testid=cmc-invite] *" })).toBeNull();
   });
 });

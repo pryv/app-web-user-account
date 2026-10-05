@@ -41,6 +41,11 @@ export interface CmcOfferBlockProps {
   onChange?: () => void;
   /** Rendered first (a page that lists several offers names each one). */
   heading?: ReactNode;
+  /**
+   * The account already gave this consent: this text replaces the actions
+   * (there is nothing to decide).
+   */
+  given?: string | null;
 }
 
 /**
@@ -66,6 +71,7 @@ export function CmcOfferBlock({
   decided = null,
   onChange,
   heading,
+  given = null,
 }: CmcOfferBlockProps) {
   const { t } = useTranslation();
   return (
@@ -95,7 +101,11 @@ export function CmcOfferBlock({
           <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
         </>
       )}
-      {decided != null ? (
+      {given != null ? (
+        <p className="text-sm" data-testid="cmc-offer-given">
+          {given}
+        </p>
+      ) : decided != null ? (
         <div className="flex items-center justify-between gap-3 text-sm" data-testid="cmc-offer-decision">
           <span>{decided === "approve" ? t("cmc.inviteWillApprove") : t("cmc.inviteWillDecline")}</span>
           {onChange && (

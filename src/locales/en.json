@@ -488,7 +488,11 @@
     "inviteWillApprove": "Approved: it is accepted when you continue.",
     "inviteWillDecline": "Declined: the requester is told when you continue.",
     "inviteChange": "Change",
-    "inviteNoScope": "This invite does not say where its consent belongs, so it cannot be approved here. You can decline it."
+    "inviteNoScope": "This invite does not say where its consent belongs, so it cannot be approved here. You can decline it.",
+    "inviteForSelf": "For you ({{username}})",
+    "inviteForManaged": "For {{username}}, whom you look after",
+    "inviteAlreadyGivenOn": "Already given on {{date}}. It is kept as it is.",
+    "inviteAlreadyGiven": "Already given. It is kept as it is."
   },
   "emailVerification": {
     "pageTitle": "Verify your email address",

@@ -11,8 +11,9 @@
  * declined mandatory invite ends the request REFUSED with
  * `REFUSED_MANDATORY_CONSENT` before anything is written.
  *
- * Pure helpers, plus the one read the page cannot get from `cmc.readOffer`
- * (where the accept belongs, `readOfferScope`).
+ * Pure helpers, plus the reads the page cannot get from `cmc.readOffer`
+ * (where the accept belongs and the offer's id, `readOfferRef`; whether this
+ * account already gave the consent, `readGivenConsent`).
  */
 
 import { Pryv } from "./pryvClient";
@@ -30,8 +31,11 @@ export type CmcInviteOutcome =
   | { declined: true }
   | { reason: string };
 
-/** What the user chose for one invite block. */
-export type InviteDecision = "approve" | "decline";
+/**
+ * What the user chose for one invite block, or `given` when this account
+ * already accepted the offer (nothing to decide, nothing written).
+ */
+export type InviteDecision = "approve" | "decline" | "given";
 
 /** `reasonId` of the REFUSED answer when the user declined a mandatory invite (reserved by the core). */
 export const REFUSED_MANDATORY_CONSENT = "REFUSED_MANDATORY_CONSENT";
@@ -130,21 +134,114 @@ export function scopeFromOffer(content: unknown): string | null {
   return null;
 }
 
+/** What the page needs from an offer besides `cmc.readOffer`: where its accept belongs, and the offer event's id. */
+export interface OfferRef {
+  /** See `scopeFromOffer`; null when the offer names none. */
+  scope: string | null;
+  /** The offer event's id, as stamped on every grant minted from it (`clientData.cmc.offerEventId`). */
+  offerEventId: string | null;
+}
+
 /**
- * Read the offer behind a capability URL and return its scope (see
- * `scopeFromOffer`). `cmc.readOffer` does not return it, so the offer event is
- * read once more through the capability access, the way `readOffer` does.
- * Null when it cannot be read or carries no usable scope.
+ * Read the offer behind a capability URL once more through the capability
+ * access, the way `cmc.readOffer` does, for what it does not return: the
+ * offer's scope and its event id. Both null when it cannot be read.
  */
-export async function readOfferScope(capabilityUrl: string): Promise<string | null> {
+export async function readOfferRef(capabilityUrl: string): Promise<OfferRef> {
   try {
     const cap = new Pryv.Connection(capabilityUrl);
     const events = (await cap.apiOne("events.get", { types: ["consent/request-cmc"], limit: 1 }, "events")) as Array<{
+      id?: unknown;
       content?: unknown;
     }>;
-    if (!Array.isArray(events) || events.length !== 1) return null;
-    return scopeFromOffer(events[0]?.content);
+    if (!Array.isArray(events) || events.length !== 1) return { scope: null, offerEventId: null };
+    const id = events[0]?.id;
+    return {
+      scope: scopeFromOffer(events[0]?.content),
+      offerEventId: typeof id === "string" && id !== "" ? id : null,
+    };
   } catch {
-    return null;
+    return { scope: null, offerEventId: null };
   }
+}
+
+/**
+ * Read the offer behind a capability URL and return its scope (see
+ * `scopeFromOffer`), or null when it cannot be read or carries no usable scope.
+ */
+export async function readOfferScope(capabilityUrl: string): Promise<string | null> {
+  return (await readOfferRef(capabilityUrl)).scope;
+}
+
+/** A consent this account already gave to an offer: the live grant minted from it. */
+export interface GivenConsent {
+  /** The grant (`dataGrantAccessId` in the outcome). */
+  accessId: string;
+  /** The accept event that minted it, as stamped on the grant. */
+  acceptEventId: string;
+  /** When the grant was created (seconds), shown as "already given on". */
+  created: number | null;
+}
+
+/** The fields of an access `givenConsentOf` reads. */
+interface GrantLike {
+  id?: unknown;
+  created?: unknown;
+  expires?: unknown;
+  deleted?: unknown;
+  clientData?: { cmc?: unknown } | null;
+}
+
+/**
+ * The live grant this account holds for the offer `offerEventId`, or null.
+ * A grant is the access the core mints on accept, stamped
+ * `clientData.cmc.role: 'counterparty'` with the offer's event id and the
+ * accept event's id. The access is what proves a live consent (the accept
+ * event outlives a withdrawn grant), so a deleted or expired one does not
+ * count, nor one without the accept event id an outcome must carry. With
+ * several (an open-link offer accepted twice), the earliest.
+ */
+export function givenConsentOf(
+  accesses: readonly GrantLike[] | null | undefined,
+  offerEventId: string,
+  nowSeconds: number = Date.now() / 1000,
+): GivenConsent | null {
+  if (!Array.isArray(accesses) || offerEventId === "") return null;
+  let found: GivenConsent | null = null;
+  for (const a of accesses) {
+    if (a == null || typeof a !== "object") continue;
+    const cmc = (a.clientData?.cmc ?? null) as { role?: unknown; offerEventId?: unknown; acceptEventId?: unknown } | null;
+    if (cmc == null || cmc.role !== "counterparty" || cmc.offerEventId !== offerEventId) continue;
+    if (!isBoundedId(a.id) || !isBoundedId(cmc.acceptEventId)) continue;
+    if (a.deleted != null) continue;
+    if (typeof a.expires === "number" && a.expires <= nowSeconds) continue;
+    const created = typeof a.created === "number" && Number.isFinite(a.created) ? a.created : null;
+    if (found == null || (created != null && (found.created == null || created < found.created))) {
+      found = { accessId: a.id, acceptEventId: cmc.acceptEventId, created };
+    }
+  }
+  return found;
+}
+
+function isBoundedId(value: unknown): value is string {
+  return typeof value === "string" && value !== "" && value.length <= MAX_FIELD_LENGTH;
+}
+
+/**
+ * The live grant the account behind `apiEndpoint` (token-bearing) holds for
+ * the offer `offerEventId`, or null. Throws when the accesses cannot be
+ * listed: the page then shows the invite as it would without this check.
+ */
+export async function readGivenConsent(apiEndpoint: string, offerEventId: string): Promise<GivenConsent | null> {
+  const conn = new Pryv.Connection(apiEndpoint);
+  const accesses = (await conn.apiOne("accesses.get", {}, "accesses")) as GrantLike[];
+  return givenConsentOf(accesses, offerEventId);
+}
+
+/**
+ * The outcome of an invite whose offer this account already accepted: the
+ * grant in place, reported as an accept would be (nothing is written).
+ */
+export function givenOutcome(given: GivenConsent, acceptedForSelf: boolean): CmcInviteOutcome {
+  return acceptedOutcome({ acceptEventId: given.acceptEventId, dataGrantAccessId: given.accessId }, acceptedForSelf);
 }

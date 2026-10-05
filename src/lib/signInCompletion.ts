@@ -59,3 +59,21 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
   if (handoff) return { kind: "internal", path: handoff };
   return { kind: "internal", path: accountPath("/account/profile", search, serviceInfoUrl) };
 }
+
+/**
+ * Router state `Register` hands to `/auth` after creating and signing in an
+ * account in this window: `/auth` then continues to the request with that
+ * session instead of greeting a returning visitor. One-shot: `/auth` clears it
+ * from the history entry once read, so a reload or a later visit shows the
+ * card again.
+ */
+export function registeredState(username: string): { registeredAs: string } {
+  return { registeredAs: username };
+}
+
+/** The account a `registeredState` names, or null for any other state. */
+export function registeredAs(state: unknown): string | null {
+  if (state == null || typeof state !== "object") return null;
+  const value = (state as { registeredAs?: unknown }).registeredAs;
+  return typeof value === "string" && value !== "" ? value : null;
+}

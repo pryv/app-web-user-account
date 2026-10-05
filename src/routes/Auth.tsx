@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
 import { Pryv, cmc, cmcErrorIds } from "../lib/pryvClient";
@@ -15,10 +15,13 @@ import {
   acceptOrder,
   acceptedOutcome,
   boundedReason,
-  readOfferScope,
+  readOfferRef,
+  readGivenConsent,
+  givenOutcome,
   REFUSED_MANDATORY_CONSENT,
   MANDATORY_CONSENT_FAILED,
   type CmcInviteOutcome,
+  type GivenConsent,
   type InviteDecision,
 } from "../lib/cmcInvites";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
@@ -27,19 +30,21 @@ import {
   grantedPermissions,
   initialFlags,
   permissionKey,
+  withRequestedNames,
   type OfferPermission,
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { chainedHandoffPath } from "../lib/handoffReturn";
+import { registeredAs } from "../lib/signInCompletion";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
-import { runFlow, delegationErrorMessage } from "../lib/delegation";
+import { runFlow, delegationErrorMessage, formatSince } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
@@ -123,6 +128,8 @@ interface InviteView {
   /** Why the invite cannot be approved here (unreadable link, no scope); Decline stays available. */
   error: string | null;
   scope: string | null;
+  /** The live grant this account already holds for the offer: shown as given, nothing to decide. */
+  given: GivenConsent | null;
 }
 
 /** An access the app already holds, kept as it is when the request carries consent invites. */
@@ -195,8 +202,26 @@ function parseAuthQuery(search: string): AuthQuery {
  */
 export default function Auth() {
   const { t } = useTranslation();
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search } = location;
+  const navigate = useNavigate();
   const query = useMemo(() => parseAuthQuery(search), [search]);
+  // Reached right after creating (and signing in) an account in this window:
+  // the stored session is that account, so the request continues with it
+  // without the "Welcome back" card meant for a returning visitor. Read once,
+  // then cleared from the history entry, so a reload shows the card again.
+  const [justRegistered] = useState(() => registeredAs(location.state));
+  // "waiting" until the request and the stored session are known, "running"
+  // while it continues, "off" otherwise (the card then shows as usual).
+  const [autoContinue, setAutoContinue] = useState<"waiting" | "running" | "off">(
+    justRegistered != null ? "waiting" : "off",
+  );
+  useEffect(() => {
+    if (registeredAs(location.state) != null) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { connection: sessionConnection, setConnection, actingAs } = useSession();
   // While the account pages act for a controlled account, grant from the
   // session of the account acting: the selector then offers the controlled
@@ -333,7 +358,10 @@ export default function Auth() {
 
   // The invites' offers, read once the consent step is reached (after the
   // platform check and the sign-in), through each capability, as
-  // `/cmc-accept` reads its one offer.
+  // `/cmc-accept` reads its one offer. An offer this account already accepted
+  // (a live grant minted from it, on the account the invite applies to) is
+  // shown as given, with nothing to decide; when that cannot be checked, the
+  // invite is shown as usual.
   const consentStepReached = check?.checkedPermissions != null;
   useEffect(() => {
     if (invites == null || !consentStepReached) return;
@@ -342,28 +370,43 @@ export default function Auth() {
     setInviteViews(
       invites.map((inv) =>
         inv.capabilityUrl === ""
-          ? { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null }
-          : { offer: null, loading: true, error: null, scope: null },
+          ? { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null, given: null }
+          : { offer: null, loading: true, error: null, scope: null, given: null },
       ),
     );
     const settle = (i: number, view: InviteView) => {
       if (cancelled) return;
       setInviteViews((prev) => prev.map((v, j) => (j === i ? view : v)));
     };
+    const givenFor = async (i: number, offerEventId: string | null): Promise<GivenConsent | null> => {
+      const { credentials } = inviteCredentials(i);
+      if (offerEventId == null || credentials == null) return null;
+      try {
+        return await readGivenConsent(buildApiEndpointWithToken(credentials.endpoint, credentials.token), offerEventId);
+      } catch (err: unknown) {
+        console.warn("auth: could not check whether a consent invite was already given", err);
+        return null;
+      }
+    };
     invites.forEach((inv, i) => {
       if (inv.capabilityUrl === "") return;
-      Promise.all([cmc.readOffer(inv.capabilityUrl), readOfferScope(inv.capabilityUrl)])
-        .then(([offer, scope]) =>
+      Promise.all([cmc.readOffer(inv.capabilityUrl), readOfferRef(inv.capabilityUrl)])
+        .then(async ([offer, ref]) => {
+          const given = await givenFor(i, ref.offerEventId);
+          if (given != null && !cancelled) {
+            setInviteDecisions((prev) => prev.map((d, j) => (j === i ? "given" : d)));
+          }
           settle(i, {
             offer: offer as CmcOfferView,
             loading: false,
-            error: scope == null ? t("cmc.inviteNoScope") : null,
-            scope,
-          }),
-        )
+            error: given == null && ref.scope == null ? t("cmc.inviteNoScope") : null,
+            scope: ref.scope,
+            given,
+          });
+        })
         .catch((err: unknown) => {
           console.warn("auth: could not read a consent invite's offer", err);
-          settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null });
+          settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null, given: null });
         });
     });
     return () => {
@@ -412,6 +455,21 @@ export default function Auth() {
       clearTimeout(giveUp);
     };
   }, [storedUsable, storedConnection]);
+  // After a registration in this window: continue as the card's button would,
+  // once the request is loaded (and, on a restricted deployment, its platform
+  // resolved, which happens first). Without a usable session (or for a request
+  // already decided) there is nothing to continue: the page shows as usual.
+  useEffect(() => {
+    if (autoContinue !== "waiting" || accessState == null || justRegistered == null) return;
+    if (!storedUsable || requestDone || accessState.status === "ACCEPTED" || accessState.status === "REFUSED") {
+      setAutoContinue("off");
+      return;
+    }
+    setAutoContinue("running");
+    void continueAsStored(justRegistered).finally(() => setAutoContinue("off"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoContinue, accessState, storedUsable, requestDone]);
+
   // The app named who should sign in (`username` hint). When a stored session
   // belongs to someone else, the sign-in form (pre-filled with the hint) comes
   // first and that session becomes a secondary "Continue as X instead". An
@@ -426,7 +484,12 @@ export default function Auth() {
     knownResolved &&
     usernameHint.toLowerCase() !== (knownUsername ?? "").toLowerCase();
 
-  async function continueAsStored() {
+  /**
+   * Continue with the stored session. With `expected` (the account just
+   * created in this window), only when the session is that account: otherwise
+   * nothing happens and the card is shown.
+   */
+  async function continueAsStored(expected?: string) {
     if (!storedConnection) return;
     const conn = storedConnection as unknown as { token?: string; endpoint: string };
     if (!conn.token) {
@@ -439,6 +502,7 @@ export default function Auth() {
       // The consent-completion payload needs the username; the form was
       // skipped, so resolve it from the stored session.
       const asUser = knownUsername ?? (await storedConnection.username());
+      if (expected != null && asUser.toLowerCase() !== expected.toLowerCase()) return;
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
@@ -789,8 +853,25 @@ export default function Auth() {
     const own = grantFor != null
       ? (owner != null ? { endpoint: owner.endpoint, token: owner.token } : null)
       : { endpoint: apiEndpoint, token: personalToken };
-    const asTarget = invites[i].for === "target" && grantFor != null;
+    const asTarget = invitesAsTarget(i);
     return { credentials: asTarget ? { endpoint: apiEndpoint, token: personalToken } : own, asTarget };
+  }
+
+  /** Whether invite `i` applies to the account the access is granted for (a controlled one), see `inviteCredentials`. */
+  function invitesAsTarget(i: number): boolean {
+    return invites != null && invites[i].for === "target" && grantFor != null;
+  }
+
+  /**
+   * Whose consent invite `i` is, by the same rule as `inviteCredentials`;
+   * said only when the request went through "who is this for?" (without that
+   * step every invite is the signed-in account's).
+   */
+  function inviteAccountLabel(i: number): string | null {
+    if (owner == null) return null;
+    return invitesAsTarget(i)
+      ? t("cmc.inviteForManaged", { username })
+      : t("cmc.inviteForSelf", { username: owner.username });
   }
 
   /**
@@ -820,9 +901,12 @@ export default function Auth() {
     // Unreachable (accept() checks the same), but an empty list would be
     // refused by the core: take the refusal path rather than post it.
     if (invites == null || !apiEndpoint || !personalToken) return null;
-    const outcomes: Array<CmcInviteOutcome | null> = invites.map((_, i) =>
-      inviteDecisions[i] === "decline" ? { declined: true } : null,
-    );
+    // A consent already given is reported from the grant in place; nothing is written.
+    const outcomes: Array<CmcInviteOutcome | null> = invites.map((invite, i) => {
+      if (inviteDecisions[i] === "decline") return { declined: true };
+      const given = inviteDecisions[i] === "given" ? inviteViews[i]?.given : null;
+      return given != null ? givenOutcome(given, invite.for === "target" && !invitesAsTarget(i)) : null;
+    });
     // Declined invites are answered first, before any accept or grant.
     await refuseDeclinedInvites();
     for (const i of acceptOrder(invites, inviteDecisions)) {
@@ -1102,7 +1186,10 @@ export default function Auth() {
     const consentMsg = consentMessage(accessState.clientData);
     // An access the app already holds is shown as it is, all rows locked.
     const panelEntries = reuse != null
-      ? consentEntries(reuse.access.permissions as OfferPermission[], { labelFor })
+      ? consentEntries(
+          withRequestedNames(reuse.access.permissions as OfferPermission[], accessState.requestedPermissions),
+          { labelFor },
+        )
       : entries;
     const panelChoice = allowsChoice && reuse == null;
     const invitesPending = invites != null && !allDecided(inviteDecisions, invites.length);
@@ -1164,6 +1251,8 @@ export default function Auth() {
             <div className="mb-4">
               {invites.map((invite, i) => {
                 const view = inviteViews[i];
+                const decision = inviteDecisions[i];
+                const accountLabel = inviteAccountLabel(i);
                 return (
                   <section
                     key={i}
@@ -1178,6 +1267,11 @@ export default function Auth() {
                           <span className="text-sm font-normal text-muted">
                             {invite.mandatory ? t("cmc.inviteMandatory") : t("cmc.inviteOptional")}
                           </span>
+                          {accountLabel != null && (
+                            <span data-testid="cmc-invite-for" className="mt-1 block text-sm">
+                              {accountLabel}
+                            </span>
+                          )}
                         </h2>
                       }
                       offer={view?.offer ?? null}
@@ -1189,8 +1283,15 @@ export default function Auth() {
                       approveDisabled={view?.offer == null || view.scope == null}
                       onApprove={() => decide(i, "approve")}
                       onDecline={() => decide(i, "decline")}
-                      decided={inviteDecisions[i] ?? null}
+                      decided={decision === "approve" || decision === "decline" ? decision : null}
                       onChange={() => decide(i, null)}
+                      given={
+                        view?.given != null
+                          ? view.given.created != null
+                            ? t("cmc.inviteAlreadyGivenOn", { date: formatSince(view.given.created) })
+                            : t("cmc.inviteAlreadyGiven")
+                          : null
+                      }
                     />
                   </section>
                 );
@@ -1204,6 +1305,16 @@ export default function Auth() {
           )}
           {error && <Alert>{error}</Alert>}
         </ConsentPanel>
+      </Card>
+    );
+  }
+
+  // Continuing with the account just created in this window: no card.
+  if (autoContinue !== "off") {
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="text-sm text-muted">{t("consent.loading")}</p>
       </Card>
     );
   }

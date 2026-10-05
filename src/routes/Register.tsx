@@ -6,7 +6,7 @@ import { getService } from "../lib/service";
 import { getLegalSettings } from "../lib/deployedSettings";
 import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
-import { signedInTarget } from "../lib/signInCompletion";
+import { signedInTarget, registeredState } from "../lib/signInCompletion";
 import { useSession, type PryvConnection } from "../lib/session";
 import { brand } from "../brand";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../lib/username";
@@ -174,9 +174,12 @@ export default function Register() {
         // Same decision as every other sign-in: a pending access request goes
         // back to /auth, then returnURL, then the hand-off page, then profile.
         const target = signedInTarget(search, connection.endpoint);
+        const pending = hasPendingAccessRequest(search);
         if (target.kind === "external") window.location.href = target.href;
         // Replace, so /auth can still close this tab (popup mode) afterwards.
-        else navigate(target.path, { replace: hasPendingAccessRequest(search) });
+        // /auth is told the account was just created here, so it continues
+        // with it rather than greeting a returning visitor.
+        else navigate(target.path, pending ? { replace: true, state: registeredState(username) } : { replace: false });
         return;
       } catch {
         // Account exists but auto-sign-in failed (e.g. platform-side MFA
