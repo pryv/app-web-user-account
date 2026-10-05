@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 - 2026-10-05
+
+Works with open-pryv.io 2.0.0-rc.35: `cmcInvites[].accessName` (#15) and
+`actAsManagedOnly` (#16) take effect once the platform runs a release that
+supports them (newer than 2.0.0-rc.35); until then the page behaves as before
+for those two.
 
 ### Added
 
