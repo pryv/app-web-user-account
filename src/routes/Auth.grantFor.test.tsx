@@ -275,6 +275,19 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     expect(flow.checkAppAccess.mock.calls[0][1]).toBe("parent-token");
   });
 
+  it("[AGF11] after \"Continue for\", a checking card while check-app runs, not the sign-in form", async () => {
+    let answer: (v: unknown) => void = () => {};
+    flow.checkAppAccess.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await waitFor(() => expect(flow.checkAppAccess).toHaveBeenCalled());
+    expect(await screen.findByText("Checking…")).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    answer({ checkedPermissions: PERMS });
+    await screen.findByText(/is requesting permission/);
+  });
+
   // Cancel and completion hand `closeOrRedirect` the page's way back to the app
   // (`backUrl`) and a callback that shows the complete card, so a tab that
   // cannot be closed does not stay on a dead page.

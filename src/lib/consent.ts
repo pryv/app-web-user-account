@@ -88,6 +88,33 @@ export function consentEntries(
   });
 }
 
+/**
+ * Stream permissions read back from a stored access carry no display names
+ * (the core keeps only what an access grants). Give each the `defaultName`
+ * the current request sent for the same stream, so an access the app already
+ * holds reads like the access it would get. Display only: what each entry
+ * grants is unchanged, and a name the entry already has is kept.
+ */
+export function withRequestedNames(
+  permissions: readonly OfferPermission[],
+  requested: readonly unknown[] | null | undefined,
+): OfferPermission[] {
+  const names = new Map<string, string>();
+  for (const r of requested ?? []) {
+    if (r == null || typeof r !== "object") continue;
+    const { streamId, defaultName, name } = r as { streamId?: unknown; defaultName?: unknown; name?: unknown };
+    if (typeof streamId !== "string" || names.has(streamId)) continue;
+    const label = typeof defaultName === "string" && defaultName !== "" ? defaultName : name;
+    if (typeof label === "string" && label !== "") names.set(streamId, label);
+  }
+  return permissions.map((p) => {
+    if (!("streamId" in p) || typeof p.streamId !== "string") return p;
+    if (p.name != null || p.defaultName != null) return p;
+    const label = names.get(p.streamId);
+    return label == null ? p : { ...p, defaultName: label };
+  });
+}
+
 /** The tick state a consent list opens in, positionally matching `entries`. */
 export function initialFlags(entries: ConsentEntry[]): boolean[] {
   return entries.map((e) => e.initiallyTicked);

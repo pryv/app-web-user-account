@@ -4,7 +4,9 @@ import {
   grantedPermissions,
   initialFlags,
   permissionLabel,
+  permissionKey,
   pickText,
+  withRequestedNames,
   type OfferPermission,
 } from "./consent";
 
@@ -183,5 +185,43 @@ describe("[CSLB] consentEntries with a stream-label resolver", () => {
   it("[CSL4] keeps the locking rules when a resolver is passed", () => {
     const entries = consentEntries(perms, { allowUserChoice: true, labelFor: () => null });
     expect(entries.map((e) => e.locked)).toEqual([false, false, false]);
+  });
+});
+
+describe("[CSRN] withRequestedNames: an access read back gets the request's stream names", () => {
+  const requested = [
+    { streamId: "diary", level: "read", defaultName: "Journal" },
+    { streamId: "notes", level: "manage", name: "Notes" },
+    { feature: "selfRevoke", setting: "forbidden" },
+  ];
+
+  it("[CSRN1] folds the request's defaultName into the entries by streamId", () => {
+    const stored: OfferPermission[] = [
+      { streamId: "diary", level: "read" },
+      { streamId: "notes", level: "manage" },
+      { streamId: "other", level: "read" },
+      { feature: "selfRevoke", setting: "forbidden" },
+    ];
+    expect(consentEntries(withRequestedNames(stored, requested)).map((e) => e.label)).toEqual([
+      "Read “Journal”",
+      "Fully manage “Notes”",
+      "Read “other”",
+      "The app cannot revoke its own access (only you can)",
+    ]);
+  });
+
+  it("[CSRN2] display only: what each entry grants is unchanged, an existing name is kept", () => {
+    const stored: OfferPermission[] = [{ streamId: "diary", level: "contribute", name: "My diary" }];
+    expect(withRequestedNames(stored, requested)).toEqual(stored);
+    const [p] = withRequestedNames([{ streamId: "diary", level: "contribute" }], requested);
+    expect(permissionKey(p)).toBe("s|diary|contribute");
+    expect(withRequestedNames([{ streamId: "diary", level: "read" }], null)).toEqual([{ streamId: "diary", level: "read" }]);
+  });
+
+  it("[CSRN3] a stream-label resolver still wins", () => {
+    const [e] = consentEntries(withRequestedNames([{ streamId: "diary", level: "read" }], requested), {
+      labelFor: (id) => (id === "diary" ? "Daily diary" : null),
+    });
+    expect(e.label).toBe("Read “Daily diary”");
   });
 });

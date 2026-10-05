@@ -32,8 +32,13 @@ const ENTRY =
   `&returnURL=${encodeURIComponent("https://app.test/cb")}&pryvServiceInfoUrl=${encodeURIComponent(SI)}`;
 
 function Where() {
-  const { pathname, search } = useLocation();
-  return <p data-testid="where">{pathname + search}</p>;
+  const { pathname, search, state } = useLocation();
+  return (
+    <>
+      <p data-testid="where">{pathname + search}</p>
+      <p data-testid="where-state">{JSON.stringify(state ?? null)}</p>
+    </>
+  );
 }
 
 function renderAt(entry: string) {
@@ -81,5 +86,35 @@ describe("[RGAR] register with a pending access request", () => {
     const where = (await screen.findByTestId("where")).textContent!;
     expect(where.startsWith("/auth?")).toBe(true);
     expect(queryOf(where).get("poll")).toBe(POLL);
+  });
+
+  it("[RGAR3] /auth is told the account was just created here (so it skips \"Welcome back\")", async () => {
+    service.info.mockResolvedValue({});
+    service.createUser.mockResolvedValue({});
+    service.login.mockResolvedValue({ endpoint: "https://alice1.core.test/", token: "t" });
+    renderAt(ENTRY);
+
+    fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "alice1" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass-1" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "secret-pass-1" } });
+    fireEvent.submit(screen.getByLabelText("Username").closest("form")!);
+
+    await screen.findByTestId("where");
+    expect(JSON.parse(screen.getByTestId("where-state").textContent!)).toEqual({ registeredAs: "alice1" });
+  });
+
+  it("[RGAR4] (guard) without an access request, nothing is handed over", async () => {
+    service.info.mockResolvedValue({});
+    service.createUser.mockResolvedValue({});
+    service.login.mockResolvedValue({ endpoint: "https://alice1.core.test/", token: "t" });
+    renderAt(`/register?pryvServiceInfoUrl=${encodeURIComponent(SI)}`);
+
+    fireEvent.change(await screen.findByLabelText("Username"), { target: { value: "alice1" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass-1" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "secret-pass-1" } });
+    fireEvent.submit(screen.getByLabelText("Username").closest("form")!);
+
+    expect((await screen.findByTestId("where")).textContent!.startsWith("/auth")).toBe(false);
+    expect(screen.getByTestId("where-state").textContent).toBe("null");
   });
 });

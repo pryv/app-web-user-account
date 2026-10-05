@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
 import { Pryv, cmc, cmcErrorIds } from "../lib/pryvClient";
@@ -15,10 +15,16 @@ import {
   acceptOrder,
   acceptedOutcome,
   boundedReason,
-  readOfferScope,
+  readOfferRef,
+  listGrants,
+  givenConsentOf,
+  settledDecisions,
+  givenOutcome,
   REFUSED_MANDATORY_CONSENT,
   MANDATORY_CONSENT_FAILED,
   type CmcInviteOutcome,
+  type GivenConsent,
+  type GrantLike,
   type InviteDecision,
 } from "../lib/cmcInvites";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
@@ -27,26 +33,31 @@ import {
   grantedPermissions,
   initialFlags,
   permissionKey,
+  withRequestedNames,
   type OfferPermission,
 } from "../lib/consent";
 import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { chainedHandoffPath } from "../lib/handoffReturn";
+import { registeredAs } from "../lib/signInCompletion";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
 import { MarkdownLite } from "../lib/markdownLite";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
-import { runFlow, delegationErrorMessage } from "../lib/delegation";
+import { runFlow, delegationErrorMessage, formatSince } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
+import { loggableError } from "../lib/apiError";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
-  namesActAs,
-  grantTargets,
-  preselectedTarget,
+  grantStep,
+  managedOnlyOf,
+  offersCreation as offersCreationFor,
+  creationPrefill,
+  MANAGED_ACCOUNT_UNAVAILABLE,
   unavailableActAs,
   delegationHint,
   isDelegatedChild,
@@ -56,6 +67,7 @@ import {
   wasRequestDone,
   type GrantTarget,
   type DelegationHint,
+  type ManagedUnavailableCause,
 } from "../lib/grantFor";
 import {
   loadAccessState,
@@ -123,6 +135,8 @@ interface InviteView {
   /** Why the invite cannot be approved here (unreadable link, no scope); Decline stays available. */
   error: string | null;
   scope: string | null;
+  /** The live grant this account already holds for the offer: shown as given, nothing to decide. */
+  given: GivenConsent | null;
 }
 
 /** An access the app already holds, kept as it is when the request carries consent invites. */
@@ -195,8 +209,26 @@ function parseAuthQuery(search: string): AuthQuery {
  */
 export default function Auth() {
   const { t } = useTranslation();
-  const { search } = useLocation();
+  const location = useLocation();
+  const { search } = location;
+  const navigate = useNavigate();
   const query = useMemo(() => parseAuthQuery(search), [search]);
+  // Reached right after creating (and signing in) an account in this window:
+  // the stored session is that account, so the request continues with it
+  // without the "Welcome back" card meant for a returning visitor. Read once,
+  // then cleared from the history entry, so a reload shows the card again.
+  const [justRegistered] = useState(() => registeredAs(location.state));
+  // "waiting" until the request and the stored session are known, "running"
+  // while it continues, "off" otherwise (the card then shows as usual).
+  const [autoContinue, setAutoContinue] = useState<"waiting" | "running" | "off">(
+    justRegistered != null ? "waiting" : "off",
+  );
+  useEffect(() => {
+    if (registeredAs(location.state) != null) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { connection: sessionConnection, setConnection, actingAs } = useSession();
   // While the account pages act for a controlled account, grant from the
   // session of the account acting: the selector then offers the controlled
@@ -248,6 +280,8 @@ export default function Auth() {
   // its own (the invites still need an answer): it is kept and handed over
   // after them.
   const [reuse, setReuse] = useState<ReusedAccess | null>(null);
+  // The decisions as they stand (see `settledDecisions`): what Continue and the flow go by.
+  const decisions = settledDecisions(inviteDecisions, inviteViews);
 
   // "Who is this for?": offered after sign-in when the platform runs account
   // delegation, the app allows it, and the user controls other accounts (or,
@@ -268,6 +302,11 @@ export default function Auth() {
   } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createdNotice, setCreatedNotice] = useState<string | null>(null);
+  // The app asked for an account the user manages (`actAsManagedOnly`): the
+  // signed-in account is never offered, and when no managed account can be
+  // used the page says why and offers Cancel only.
+  const managedOnly = managedOnlyOf(accessState);
+  const [managedUnavailable, setManagedUnavailable] = useState<ManagedUnavailableCause | null>(null);
   // Set when granting on a controlled account. `personalToken` then holds a
   // delegate token for that account: in memory only, never stored and never
   // made the session.
@@ -333,7 +372,10 @@ export default function Auth() {
 
   // The invites' offers, read once the consent step is reached (after the
   // platform check and the sign-in), through each capability, as
-  // `/cmc-accept` reads its one offer.
+  // `/cmc-accept` reads its one offer. An offer this account already accepted
+  // (a live grant minted from it, on the account the invite applies to) is
+  // shown as given, with nothing to decide; when that cannot be checked, the
+  // invite is shown as usual.
   const consentStepReached = check?.checkedPermissions != null;
   useEffect(() => {
     if (invites == null || !consentStepReached) return;
@@ -342,28 +384,51 @@ export default function Auth() {
     setInviteViews(
       invites.map((inv) =>
         inv.capabilityUrl === ""
-          ? { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null }
-          : { offer: null, loading: true, error: null, scope: null },
+          ? { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null, given: null }
+          : { offer: null, loading: true, error: null, scope: null, given: null },
       ),
     );
     const settle = (i: number, view: InviteView) => {
       if (cancelled) return;
       setInviteViews((prev) => prev.map((v, j) => (j === i ? view : v)));
     };
+    // One listing per account (token-bearing endpoint), shared by its invites;
+    // null when it failed (said once, here), and its invites show as usual.
+    const listings = new Map<string, Promise<GrantLike[] | null>>();
+    const givenFor = async (i: number, offerEventId: string | null): Promise<GivenConsent | null> => {
+      const { credentials } = inviteCredentials(i);
+      if (offerEventId == null || credentials == null) return null;
+      const api = buildApiEndpointWithToken(credentials.endpoint, credentials.token);
+      let listing = listings.get(api);
+      if (listing == null) {
+        listing = listGrants(api).catch((err: unknown) => {
+          console.warn("auth: could not check whether a consent invite was already given:", loggableError(err));
+          return null;
+        });
+        listings.set(api, listing);
+      }
+      const accesses = await listing;
+      return accesses == null ? null : givenConsentOf(accesses, offerEventId);
+    };
     invites.forEach((inv, i) => {
       if (inv.capabilityUrl === "") return;
-      Promise.all([cmc.readOffer(inv.capabilityUrl), readOfferScope(inv.capabilityUrl)])
-        .then(([offer, scope]) =>
+      Promise.all([cmc.readOffer(inv.capabilityUrl), readOfferRef(inv.capabilityUrl)])
+        .then(async ([offer, ref]) => {
+          const given = await givenFor(i, ref.offerEventId);
+          if (given != null && !cancelled) {
+            setInviteDecisions((prev) => prev.map((d, j) => (j === i ? "given" : d)));
+          }
           settle(i, {
             offer: offer as CmcOfferView,
             loading: false,
-            error: scope == null ? t("cmc.inviteNoScope") : null,
-            scope,
-          }),
-        )
+            error: given == null && ref.scope == null ? t("cmc.inviteNoScope") : null,
+            scope: ref.scope,
+            given,
+          });
+        })
         .catch((err: unknown) => {
-          console.warn("auth: could not read a consent invite's offer", err);
-          settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null });
+          console.warn("auth: could not read a consent invite's offer:", loggableError(err));
+          settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null, given: null });
         });
     });
     return () => {
@@ -412,6 +477,21 @@ export default function Auth() {
       clearTimeout(giveUp);
     };
   }, [storedUsable, storedConnection]);
+  // After a registration in this window: continue as the card's button would,
+  // once the request is loaded (and, on a restricted deployment, its platform
+  // resolved, which happens first). Without a usable session (or for a request
+  // already decided) there is nothing to continue: the page shows as usual.
+  useEffect(() => {
+    if (autoContinue !== "waiting" || accessState == null || justRegistered == null) return;
+    if (!storedUsable || requestDone || accessState.status === "ACCEPTED" || accessState.status === "REFUSED") {
+      setAutoContinue("off");
+      return;
+    }
+    setAutoContinue("running");
+    void continueAsStored(justRegistered).finally(() => setAutoContinue("off"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoContinue, accessState, storedUsable, requestDone]);
+
   // The app named who should sign in (`username` hint). When a stored session
   // belongs to someone else, the sign-in form (pre-filled with the hint) comes
   // first and that session becomes a secondary "Continue as X instead". An
@@ -426,7 +506,12 @@ export default function Auth() {
     knownResolved &&
     usernameHint.toLowerCase() !== (knownUsername ?? "").toLowerCase();
 
-  async function continueAsStored() {
+  /**
+   * Continue with the stored session. With `expected` (the account just
+   * created in this window), only when the session is that account: otherwise
+   * nothing happens and the card is shown.
+   */
+  async function continueAsStored(expected?: string) {
     if (!storedConnection) return;
     const conn = storedConnection as unknown as { token?: string; endpoint: string };
     if (!conn.token) {
@@ -439,6 +524,10 @@ export default function Auth() {
       // The consent-completion payload needs the username; the form was
       // skipped, so resolve it from the stored session.
       const asUser = knownUsername ?? (await storedConnection.username());
+      if (expected != null && asUser.toLowerCase() !== expected.toLowerCase()) {
+        console.warn("auth: the stored session is not the account just created; showing the sign-in card");
+        return;
+      }
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
@@ -541,37 +630,59 @@ export default function Auth() {
     asUser: string,
     connection: PryvConnection | null,
   ) {
-    if (connection && accessState) {
+    if (!accessState) return;
+    // Whether the step applies (null: the platform's info could not be read),
+    // and the accounts the user controls (null: not listed, or the listing failed).
+    let offers: boolean | null = null;
+    let listed: Awaited<ReturnType<Delegation["listControlled"]>> | null = null;
+    let client: Delegation | null = null;
+    if (connection) {
       let info: unknown = null;
       try {
         info = await connection.service.info();
       } catch {
         info = null;
       }
-      if (offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs)) {
-        const client = Delegation.fromConnection(connection, { pryv: Pryv });
-        const listed = await runFlow(() => client.listControlled());
-        // A failed listing still offers the creation when the app named `actAs`
-        // (with the user's own account as the only choice), and says why the
-        // managed accounts are missing, rather than skipping the step silently.
-        const offerDespiteFailure = !listed.ok && namesActAs(accessState.actAs) && actingAs == null;
-        const choices = listed.ok || offerDespiteFailure ? grantTargets(asUser, listed.ok ? listed.value : []) : [];
-        setListFailed(offerDespiteFailure);
-        // A single choice (the user's own account) is still shown when the app
-        // named `actAs`, for the creation offer below it (never offered to a
-        // session acting for another account, so not shown there either).
-        const forCreation = choices.length === 1 && namesActAs(accessState.actAs) && actingAs == null;
-        if (choices.length > 1 || forCreation) {
-          setOwner({ username: asUser, endpoint, token, connection, client });
-          setTargets(choices);
-          setSelectedTarget(preselectedTarget(choices, accessState.actAs, actingPreselect).username);
-          // The app named an account the user does not manage yet: open the
-          // creation form, pre-filled with that name.
-          setCreateOpen(unavailableActAs(choices, accessState.actAs) != null);
-          setCreatedNotice(null);
-          return;
-        }
+      offers = info == null ? null : offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs);
+      if (offers) {
+        client = Delegation.fromConnection(connection, { pryv: Pryv });
+        const result = await runFlow(() => client!.listControlled());
+        listed = result.ok ? result.value : null;
       }
+    }
+    // See `grantStep`: a failed listing still offers the creation when the app
+    // named `actAs` and says why the managed accounts are missing; a single
+    // choice (the user's own account) is still shown for that offer; with
+    // `managedOnly` the signed-in account is never the answer.
+    const step = grantStep({
+      offers,
+      listed,
+      selfUsername: asUser,
+      actAs: accessState.actAs,
+      managedOnly,
+      acting: actingAs != null,
+      preferred: actingPreselect,
+    });
+    if (step.kind === "unavailable") {
+      setManagedUnavailable(step.cause);
+      return;
+    }
+    if (step.kind === "choose" && connection && client) {
+      setOwner({ username: asUser, endpoint, token, connection, client });
+      setListFailed(step.listFailed);
+      setTargets(step.targets);
+      setSelectedTarget(step.selected);
+      // The app named an account the user does not manage yet (or, for a
+      // managed account, there is none): the creation form opens at once.
+      setCreateOpen(step.createOpen);
+      setCreatedNotice(null);
+      return;
+    }
+    // Never the signed-in account when the app asked for a managed one, whatever
+    // the step above concluded.
+    if (managedOnly) {
+      setManagedUnavailable("list-failed");
+      return;
     }
     await runCheckApp(endpoint, token, asUser);
   }
@@ -597,7 +708,9 @@ export default function Auth() {
   /** Continue with the account picked in the selector. */
   async function continueWithTarget() {
     if (!owner || !targets) return;
-    const target = targets.find((c) => c.username === selectedTarget) ?? targets[0];
+    // With `managedOnly` nothing is granted until a managed account is chosen.
+    const target = targets.find((c) => c.username === selectedTarget) ?? (managedOnly ? null : targets[0]);
+    if (target == null || (managedOnly && target.self)) return;
     setBusy(true);
     setError(null);
     try {
@@ -715,7 +828,7 @@ export default function Auth() {
       } catch (e) {
         // Fall back to inline delivery, but leave a trace: a create that keeps
         // failing (e.g. shared secrets disabled) is worth seeing in the console.
-        console.warn("credential hand-off secret creation failed; delivering inline", e);
+        console.warn("credential hand-off secret creation failed; delivering inline:", loggableError(e));
         handoffKey = null;
       }
     }
@@ -789,8 +902,25 @@ export default function Auth() {
     const own = grantFor != null
       ? (owner != null ? { endpoint: owner.endpoint, token: owner.token } : null)
       : { endpoint: apiEndpoint, token: personalToken };
-    const asTarget = invites[i].for === "target" && grantFor != null;
+    const asTarget = invitesAsTarget(i);
     return { credentials: asTarget ? { endpoint: apiEndpoint, token: personalToken } : own, asTarget };
+  }
+
+  /** Whether invite `i` applies to the account the access is granted for (a controlled one), see `inviteCredentials`. */
+  function invitesAsTarget(i: number): boolean {
+    return invites != null && invites[i].for === "target" && grantFor != null;
+  }
+
+  /**
+   * Whose consent invite `i` is, by the same rule as `inviteCredentials`;
+   * said only when the request went through "who is this for?" (without that
+   * step every invite is the signed-in account's).
+   */
+  function inviteAccountLabel(i: number): string | null {
+    if (owner == null) return null;
+    return invitesAsTarget(i)
+      ? t("cmc.inviteForManaged", { username })
+      : t("cmc.inviteForSelf", { username: owner.username });
   }
 
   /**
@@ -802,7 +932,7 @@ export default function Auth() {
   async function refuseDeclinedInvites(): Promise<void> {
     if (invites == null) return;
     for (let i = 0; i < invites.length; i++) {
-      if (inviteDecisions[i] !== "decline") continue;
+      if (decisions[i] !== "decline") continue;
       const scope = inviteViews[i]?.scope;
       const { credentials } = inviteCredentials(i);
       // Unreadable or without a scope: nothing to answer with.
@@ -811,7 +941,7 @@ export default function Auth() {
         const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
         await cmc.refuseInvite(conn, invites[i].capabilityUrl, { scopeStreamId: scope });
       } catch (err: unknown) {
-        console.warn("auth: could not send a consent invite's refusal", err);
+        console.warn("auth: could not send a consent invite's refusal:", loggableError(err));
       }
     }
   }
@@ -820,19 +950,30 @@ export default function Auth() {
     // Unreachable (accept() checks the same), but an empty list would be
     // refused by the core: take the refusal path rather than post it.
     if (invites == null || !apiEndpoint || !personalToken) return null;
-    const outcomes: Array<CmcInviteOutcome | null> = invites.map((_, i) =>
-      inviteDecisions[i] === "decline" ? { declined: true } : null,
-    );
+    // A consent already given is reported from the grant in place; nothing is written.
+    const outcomes: Array<CmcInviteOutcome | null> = invites.map((invite, i) => {
+      if (decisions[i] === "decline") return { declined: true };
+      const given = decisions[i] === "given" ? inviteViews[i]?.given : null;
+      return given != null ? givenOutcome(given, invite.for === "target" && !invitesAsTarget(i)) : null;
+    });
+    const order = acceptOrder(invites, decisions);
+    // Every invite must end with an outcome: one that is neither declined,
+    // given nor to be accepted stops the flow before anything is written.
+    if (outcomes.some((o, i) => o == null && !order.includes(i))) throw new Error(t("consent.errorCouldNotAccept"));
     // Declined invites are answered first, before any accept or grant.
     await refuseDeclinedInvites();
-    for (const i of acceptOrder(invites, inviteDecisions)) {
+    for (const i of order) {
       const invite = invites[i];
       const { credentials, asTarget } = inviteCredentials(i);
       try {
         const scope = inviteViews[i]?.scope;
         if (credentials == null || scope == null) throw new Error("cmc-invite-not-acceptable");
         const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
-        const res = await cmc.acceptInvite(conn, invite.capabilityUrl, { scopeStreamId: scope });
+        // The grant's name on the accepting account, when the request gave one (as `/cmc-accept` does).
+        const res = await cmc.acceptInvite(conn, invite.capabilityUrl, {
+          scopeStreamId: scope,
+          ...(invite.accessName != null ? { accessName: invite.accessName } : {}),
+        });
         outcomes[i] = acceptedOutcome(res, invite.for === "target" && !asTarget);
       } catch (err: unknown) {
         const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
@@ -851,12 +992,14 @@ export default function Auth() {
         outcomes[i] = { reason: boundedReason(failure.reason) };
       }
     }
-    return outcomes as CmcInviteOutcome[];
+    const answered = outcomes.filter((o): o is CmcInviteOutcome => o != null);
+    if (answered.length !== invites.length) throw new Error(t("consent.errorCouldNotAccept"));
+    return answered;
   }
 
   async function accept() {
     if (!accessState || !apiEndpoint || !personalToken || !check) return;
-    if (invites != null && !allDecided(inviteDecisions, invites.length)) return;
+    if (invites != null && !allDecided(decisions, invites.length)) return;
     setFinishing("accept");
     setError(null);
     // Once the outcome is handed over, the buttons stay disabled: the window
@@ -865,7 +1008,7 @@ export default function Auth() {
     try {
       // Decide: a declined mandatory invite refuses the whole request before
       // anything is written (no invite accepted, no access created).
-      if (invites != null && declinedMandatory(invites, inviteDecisions) >= 0) {
+      if (invites != null && declinedMandatory(invites, decisions) >= 0) {
         // Every declined requester is told no; nothing is accepted or granted.
         await refuseDeclinedInvites();
         await refuseWith(
@@ -969,6 +1112,20 @@ export default function Auth() {
     await refuseWith("REFUSED_BY_USER", "The user refused to give access to the requested permissions");
   }
 
+  /** Cancel when the app needs a managed account and none can be used: REFUSED, naming the cause. */
+  async function refuseManagedUnavailable(cause: ManagedUnavailableCause) {
+    if (!accessState || !query.pollUrl) return;
+    setFinishing("refuse");
+    setError(null);
+    const why: Record<ManagedUnavailableCause, string> = {
+      "delegation-off": "acting for another account is not available on this platform",
+      "info-unreadable": "the platform's information could not be read",
+      "list-failed": "the accounts the user manages could not be listed",
+      none: "the user manages no active account, and none can be created from this session",
+    };
+    await refuseWith(MANAGED_ACCOUNT_UNAVAILABLE, "The app asked for an account the user manages, and none can be used: " + why[cause]);
+  }
+
   /** Post REFUSED with this reason and hand over (close, go back, or the complete card). */
   async function refuseWith(reasonId: string, message: string) {
     if (!accessState || !query.pollUrl) return;
@@ -1017,26 +1174,66 @@ export default function Auth() {
     );
   }
 
+  // The app needs an account the user manages and none can be used here:
+  // say why; the user can only cancel (nothing is granted on their own account).
+  if (managedUnavailable != null) {
+    const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
+    const causeKey: Record<ManagedUnavailableCause, string> = {
+      "delegation-off": "consent.managedUnavailableDelegationOff",
+      "info-unreadable": "consent.managedUnavailableInfoUnreadable",
+      "list-failed": "consent.managedUnavailableListFailed",
+      none: "consent.managedUnavailableNone",
+    };
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="mb-2 text-sm">{tNodes("consent.managedUnavailable", { app: <strong>{appName}</strong> })}</p>
+        <Alert tone="info">{t(causeKey[managedUnavailable])}</Alert>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={() => void refuseManagedUnavailable(managedUnavailable)}
+          disabled={finishing !== null}
+          className="mt-3"
+        >
+          {t("common.cancel")}
+        </Button>
+      </Card>
+    );
+  }
+
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
-    const unavailable = unavailableActAs(targets, accessState.actAs);
-    // Creation is offered when the app named `actAs`, and never from a session
-    // acting for another account: the new account's delegate is the user.
-    const offersCreation = namesActAs(accessState.actAs) && actingAs == null;
+    // The account the app named, when not a choice; not said of the signed-in
+    // account itself (left out with `managedOnly`, not "an account you can act for").
+    const named = unavailableActAs(targets, accessState.actAs);
+    const unavailable = named !== owner.username ? named : null;
+    // Creation is offered when the app named `actAs` or asked for a managed
+    // account, and never from a session acting for another account: the new
+    // account's delegate is the user.
+    const offersCreation = offersCreationFor(accessState.actAs, managedOnly, actingAs != null);
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
           {tNodes("consent.grantHeading", { app: <strong>{appName}</strong> })}
         </h1>
+        {managedOnly && (
+          <p className="mb-3 text-sm" data-testid="grant-managed-only">
+            {tNodes("consent.grantManagedOnly", { app: <strong>{appName}</strong> })}
+          </p>
+        )}
         {listFailed ? (
-          <Alert tone="info">{t("consent.grantListFailed")}</Alert>
+          <Alert tone="info">{t(managedOnly ? "consent.grantListFailedManaged" : "consent.grantListFailed")}</Alert>
         ) : unavailable != null && (
           <Alert tone="info">
             {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>
         )}
-        <fieldset className="mb-4 space-y-2">
+        {targets.length === 0 && !listFailed && (
+          <p className="mb-3 text-sm text-muted">{t("consent.grantManagedNone")}</p>
+        )}
+        {targets.length > 0 && <fieldset className="mb-4 space-y-2">
           <legend className="sr-only">{t("consent.grantLegend")}</legend>
           {targets.map((choice) => (
             <label key={choice.username} className="flex items-center gap-2 text-sm">
@@ -1051,7 +1248,7 @@ export default function Auth() {
               <span className="text-muted">{choice.self ? t("consent.grantTargetSelf") : t("consent.grantTargetVia", { username: owner.username })}</span>
             </label>
           ))}
-        </fieldset>
+        </fieldset>}
         {createdNotice && <Alert tone="success">{createdNotice}</Alert>}
         {offersCreation && (
           <div className="mb-4">
@@ -1073,7 +1270,7 @@ export default function Auth() {
                   reload={async () => {}}
                   onNotice={setCreatedNotice}
                   onCreated={(_msg, created) => onManagedCreated(created)}
-                  initialUsername={unavailable ?? undefined}
+                  initialUsername={creationPrefill(targets, accessState.actAs, owner.username) ?? undefined}
                   embedded
                 />
               </div>
@@ -1081,8 +1278,20 @@ export default function Auth() {
           </div>
         )}
         {error && <Alert>{error}</Alert>}
-        <Button type="button" onClick={() => void continueWithTarget()} disabled={busy}>
-          {busy ? t("consent.checking") : t("consent.continueFor", { username: selectedTarget ?? owner.username })}
+        {selectedTarget == null && targets.length > 0 && (
+          <p id="grant-choose-hint" className="mb-3 text-sm text-muted">{t("consent.grantChooseManaged")}</p>
+        )}
+        <Button
+          type="button"
+          onClick={() => void continueWithTarget()}
+          disabled={busy || selectedTarget == null}
+          aria-describedby={selectedTarget == null && targets.length > 0 ? "grant-choose-hint" : undefined}
+        >
+          {busy
+            ? t("consent.checking")
+            : selectedTarget != null
+              ? t("consent.continueFor", { username: selectedTarget })
+              : t("consent.continue")}
         </Button>
         <Button variant="ghost" type="button" onClick={() => void refuse()} disabled={busy || finishing !== null} className="mt-3">
           {t("common.cancel")}
@@ -1102,10 +1311,13 @@ export default function Auth() {
     const consentMsg = consentMessage(accessState.clientData);
     // An access the app already holds is shown as it is, all rows locked.
     const panelEntries = reuse != null
-      ? consentEntries(reuse.access.permissions as OfferPermission[], { labelFor })
+      ? consentEntries(
+          withRequestedNames(reuse.access.permissions as OfferPermission[], accessState.requestedPermissions),
+          { labelFor },
+        )
       : entries;
     const panelChoice = allowsChoice && reuse == null;
-    const invitesPending = invites != null && !allDecided(inviteDecisions, invites.length);
+    const invitesPending = invites != null && !allDecided(decisions, invites.length);
     const decide = (i: number, d: InviteDecision | null) =>
       setInviteDecisions((prev) => prev.map((v, j) => (j === i ? d : v)));
     return (
@@ -1164,6 +1376,8 @@ export default function Auth() {
             <div className="mb-4">
               {invites.map((invite, i) => {
                 const view = inviteViews[i];
+                const decision = inviteDecisions[i];
+                const accountLabel = inviteAccountLabel(i);
                 return (
                   <section
                     key={i}
@@ -1178,6 +1392,11 @@ export default function Auth() {
                           <span className="text-sm font-normal text-muted">
                             {invite.mandatory ? t("cmc.inviteMandatory") : t("cmc.inviteOptional")}
                           </span>
+                          {accountLabel != null && (
+                            <span data-testid="cmc-invite-for" className="mt-1 block text-sm">
+                              {accountLabel}
+                            </span>
+                          )}
                         </h2>
                       }
                       offer={view?.offer ?? null}
@@ -1189,8 +1408,15 @@ export default function Auth() {
                       approveDisabled={view?.offer == null || view.scope == null}
                       onApprove={() => decide(i, "approve")}
                       onDecline={() => decide(i, "decline")}
-                      decided={inviteDecisions[i] ?? null}
+                      decided={decision === "approve" || decision === "decline" ? decision : null}
                       onChange={() => decide(i, null)}
+                      given={
+                        view?.given != null
+                          ? view.given.created != null
+                            ? t("cmc.inviteAlreadyGivenOn", { date: formatSince(view.given.created) })
+                            : t("cmc.inviteAlreadyGiven")
+                          : null
+                      }
                     />
                   </section>
                 );
@@ -1204,6 +1430,20 @@ export default function Auth() {
           )}
           {error && <Alert>{error}</Alert>}
         </ConsentPanel>
+      </Card>
+    );
+  }
+
+  // Continuing with the account just created in this window: no card. And
+  // while a signed-in continue runs ("Continue as", "Continue for"), the
+  // request is being checked: not the sign-in form, which the page would
+  // otherwise fall back to until check-app answers.
+  const continuing = busy && personalToken != null;
+  if (autoContinue !== "off" || continuing) {
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
+        <p className="text-sm text-muted">{t(continuing ? "consent.checking" : "consent.loading")}</p>
       </Card>
     );
   }

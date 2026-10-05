@@ -46,11 +46,29 @@ export function namesActAs(actAs: ActAs | null): boolean {
 }
 
 /**
- * The choices: the signed-in account first, then every ACTIVE controlled
- * account. Pending and unavailable relationships grant nothing.
+ * Whether the app asked that the access be granted for an account the user
+ * manages, never the signed-in one (`actAsManagedOnly: true` on the poll
+ * state). A core that does not know the field drops it and does not echo it:
+ * the page then behaves per `actAs`. Anything but `true` reads as not asked.
  */
-export function grantTargets(selfUsername: string, controlled: ControlledRecord[]): GrantTarget[] {
-  const targets: GrantTarget[] = [{ username: selfUsername, self: true }];
+export function managedOnlyOf(state: { actAsManagedOnly?: unknown } | null | undefined): boolean {
+  return state?.actAsManagedOnly === true;
+}
+
+/** `reasonId` of the REFUSED answer when the app needs a managed account and none can be used here. */
+export const MANAGED_ACCOUNT_UNAVAILABLE = "MANAGED_ACCOUNT_UNAVAILABLE";
+
+/**
+ * The choices: the signed-in account first, then every ACTIVE controlled
+ * account. Pending and unavailable relationships grant nothing. With
+ * `managedOnly`, the signed-in account is not offered.
+ */
+export function grantTargets(
+  selfUsername: string,
+  controlled: ControlledRecord[],
+  options: { managedOnly?: boolean } = {},
+): GrantTarget[] {
+  const targets: GrantTarget[] = options.managedOnly === true ? [] : [{ username: selfUsername, self: true }];
   for (const rec of controlled) {
     if (rec.status !== "active") continue;
     targets.push({ username: rec.controlled.username, self: false, hostSlug: rec.controlled.hostSlug });
@@ -61,9 +79,10 @@ export function grantTargets(selfUsername: string, controlled: ControlledRecord[
 /**
  * The choice to preselect: the account the app named, when offered; else
  * `preferred` (the account the account pages were acting for), when offered;
- * else the signed-in one.
+ * else the signed-in one, when offered (not with `managedOnly`): else none,
+ * and the user picks.
  */
-export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferred?: string | null): GrantTarget {
+export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferred?: string | null): GrantTarget | null {
   if (actAs != null && actAs !== "allow" && actAs !== "deny") {
     const named = targets.find((t) => t.username === actAs);
     if (named) return named;
@@ -72,7 +91,7 @@ export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferre
     const acting = targets.find((t) => t.username === preferred && !t.self);
     if (acting) return acting;
   }
-  return targets[0];
+  return targets.find((t) => t.self) ?? null;
 }
 
 /**
@@ -83,6 +102,92 @@ export function preselectedTarget(targets: GrantTarget[], actAs: ActAs, preferre
 export function unavailableActAs(targets: GrantTarget[], actAs: ActAs): string | null {
   if (actAs == null || actAs === "allow" || actAs === "deny" || actAs === "") return null;
   return targets.some((t) => t.username === actAs) ? null : actAs;
+}
+
+/**
+ * Whether the step offers to create an account for someone the user looks
+ * after: when the app named `actAs` or asked for a managed account, and never
+ * from a session acting for another account (the new account's delegate is
+ * the user).
+ */
+export function offersCreation(actAs: ActAs | null, managedOnly: boolean, acting: boolean): boolean {
+  return (managedOnly || namesActAs(actAs)) && !acting;
+}
+
+/** Why no managed account can be used, when the app asked for one. */
+export type ManagedUnavailableCause = "delegation-off" | "info-unreadable" | "list-failed" | "none";
+
+/** What follows the sign-in: see `grantStep`. */
+export type GrantStep =
+  /** Straight to the consent step, for the signed-in account. */
+  | { kind: "consent" }
+  /** "Who is this for?". `selected` null: nothing preselected, Continue waits for a choice. */
+  | { kind: "choose"; targets: GrantTarget[]; selected: string | null; listFailed: boolean; createOpen: boolean }
+  /** The app asked for a managed account and none can be used: the user can only cancel. */
+  | { kind: "unavailable"; cause: ManagedUnavailableCause };
+
+/**
+ * What follows the sign-in.
+ * - `offers`: `offersTargets` for the platform's service info, or null when
+ *   that info could not be read.
+ * - `listed`: the accounts the user controls, or null when they could not be
+ *   listed (or were not, because nothing is offered).
+ * - `acting`: the session acts for another account (`preferred`, when the
+ *   pages were acting for it).
+ *
+ * Without `managedOnly` (the step as before): shown when the user controls an
+ * active account, or when the app named `actAs` (for the creation offer, even
+ * after a failed listing); else the consent step for the signed-in account.
+ *
+ * With `managedOnly`, the signed-in account is never a choice: the step lists
+ * the active managed accounts, preselected as `preselectedTarget` says (else
+ * nothing); with none, the creation form opens directly. When no managed
+ * account can be used (delegation not offered, a listing that failed or found
+ * none without the creation offer), the answer is `unavailable`, never the
+ * signed-in account.
+ */
+export function grantStep(input: {
+  offers: boolean | null;
+  listed: ControlledRecord[] | null;
+  selfUsername: string;
+  actAs: ActAs | null;
+  managedOnly: boolean;
+  acting: boolean;
+  preferred?: string | null;
+}): GrantStep {
+  const { offers, listed, selfUsername, actAs, managedOnly, acting, preferred } = input;
+  if (offers !== true) {
+    if (!managedOnly) return { kind: "consent" };
+    return { kind: "unavailable", cause: offers == null ? "info-unreadable" : "delegation-off" };
+  }
+  const creation = offersCreation(actAs, managedOnly, acting);
+  if (listed == null && !creation) return managedOnly ? { kind: "unavailable", cause: "list-failed" } : { kind: "consent" };
+  const targets = grantTargets(selfUsername, listed ?? [], { managedOnly });
+  if (managedOnly) {
+    if (targets.length === 0 && !creation) return { kind: "unavailable", cause: "none" };
+  } else if (targets.length < 2 && !creation) {
+    return { kind: "consent" };
+  }
+  const prefill = creationPrefill(targets, actAs ?? undefined, selfUsername);
+  return {
+    kind: "choose",
+    targets,
+    selected: preselectedTarget(targets, actAs ?? undefined, preferred)?.username ?? null,
+    listFailed: listed == null,
+    // Open at once when the app named an account the user does not manage
+    // yet, or when there is nothing else to choose.
+    createOpen: creation && (prefill != null || targets.length === 0),
+  };
+}
+
+/**
+ * The username to pre-fill the creation form with: the account the app named
+ * when it is not among the choices (`unavailableActAs`), unless it is the
+ * signed-in account itself (not a choice with `managedOnly`, and taken).
+ */
+export function creationPrefill(targets: GrantTarget[], actAs: ActAs, selfUsername: string): string | null {
+  const named = unavailableActAs(targets, actAs);
+  return named != null && named !== selfUsername ? named : null;
 }
 
 /** The display hint posted with ACCEPTED when the access was granted on a controlled account. */

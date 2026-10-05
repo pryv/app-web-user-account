@@ -111,11 +111,14 @@ describe("[PCS] /auth continue with the stored session", () => {
     expect(flow.checkAppAccess).toHaveBeenCalledTimes(2);
   });
 
-  it("[PCS5] while the stored session is checked, the sign-in form cannot start a second sign-in", async () => {
+  it("[PCS5] while the stored session is checked, a checking card: no sign-in form, nothing to start twice", async () => {
     flow.checkAppAccess.mockReturnValue(new Promise(() => {}));
     await openAuth();
-    const signIn = (await screen.findByRole("button", { name: /^sign in$/i })) as HTMLButtonElement;
-    expect(signIn.disabled).toBe(true);
+    await waitFor(() => expect(flow.checkAppAccess).toHaveBeenCalled());
+    expect(await screen.findByText("Checking…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^sign in$/i })).toBeNull();
+    expect(document.querySelector("input[type=password]")).toBeNull();
+    expect(screen.queryByText(/welcome back/i)).toBeNull();
   });
 
   it("[PCS6] while a password sign-in runs, \"Continue as ... instead\" cannot start a second one", async () => {

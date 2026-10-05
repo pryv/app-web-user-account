@@ -1,5 +1,90 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`/auth`: each consent invite says whose consent it is**
+  ([#13](https://github.com/pryv/app-web-user-account/issues/13)). When the
+  request went through "who is this for?", each invite block's heading names
+  the account it applies to, by the same rule its accept follows: "For you
+  ({username})" for the signed-in account, "For {username}, whom you look
+  after" for the managed account chosen there (a `for: "target"` invite reads
+  "For you" when the carer picked their own account). Without that step the
+  headings are unchanged.
+- **`/auth`: a consent already given shows as given**
+  ([#14](https://github.com/pryv/app-web-user-account/issues/14)). Once an
+  invite's offer is read, the page looks on the account the invite applies to
+  for a live grant minted from that offer (`clientData.cmc.role:
+  "counterparty"` with the offer event's id in `clientData.cmc.offerEventId`).
+  When there is one, the block reads "Already given on {date}" without Approve
+  or Decline, counts as accepted (it satisfies `mandatory`), nothing is
+  written, and its outcome is `{ acceptEventId, dataGrantAccessId }` from that
+  grant (with `acceptedFor: "self"` when a `for: "target"` invite applies to
+  the signed-in account). A withdrawn grant does not count; when the account's
+  accesses cannot be listed, the invite is shown as before.
+- **`/auth`: an invite can name the grant it creates**
+  ([#15](https://github.com/pryv/app-web-user-account/issues/15)). A
+  `cmcInvites` entry may carry `accessName` (1 to 256 characters); the page
+  passes it to `@pryv/cmc` `acceptInvite`, as `/cmc-accept` does with its
+  `accessName` query parameter, so the grant on the accepting account carries
+  that name instead of the default one. Needs an open-pryv.io release newer
+  than 2.0.0-rc.35 that accepts the field: an older core refuses a request
+  whose entry carries it (`400 invalid-parameters`), so the page never sees it
+  there. An entry without it behaves as before.
+- **`/auth`: a request can ask for an account the user manages only**
+  ([#16](https://github.com/pryv/app-web-user-account/issues/16)). When the
+  poll state echoes `actAsManagedOnly: true`, "who is this for?" never offers
+  the signed-in account: it lists the active managed accounts, preselects the
+  one `actAs` names (else the one the account pages were acting for), else
+  none, and Continue waits for a choice. With no managed account yet, the
+  creation form opens directly (pre-filled with the `actAs` username) and the
+  account created is selected; a session acting for a managed account keeps
+  it preselected. When no managed account can be used (no delegation on the
+  platform, the platform's info unreadable, a listing that failed with no
+  creation possible, or none from an acting session), the page says why and
+  offers Cancel only:
+  `REFUSED` with `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message`
+  naming the cause. `for: "target"` invites are then always answered on the
+  managed account. Needs an open-pryv.io release newer than 2.0.0-rc.35 that
+  echoes the field; an older core drops it, and the page behaves per `actAs`
+  as before (the user's own account offered with `"allow"`).
+  `grantTargets` takes `{ managedOnly }`, `preselectedTarget` returns `null`
+  when nothing applies, and `grantStep` in `src/lib/grantFor.ts` now decides
+  what follows the sign-in.
+
+### Changed
+
+- **`/auth` after "Create account": no "Welcome back"**
+  ([#17](https://github.com/pryv/app-web-user-account/issues/17)). An account
+  created from `/auth` in the same window now goes straight on to the request
+  with its new session; `/register` tells `/auth` with a one-shot marker in the
+  navigation's state, cleared once read. The card stays for a session stored
+  before the request, where "Not me" protects a shared browser.
+- **`/auth`: an access the app already holds lists friendly stream names**
+  ([#18](https://github.com/pryv/app-web-user-account/issues/18)). Its
+  permissions, read back from the account without display names, take the
+  `defaultName` the request gives the same stream, so a returning person sees
+  the same names as a new one. Display only: the access is unchanged.
+- `readOfferRef` in `src/lib/cmcInvites.ts` returns an offer's scope and event
+  id in one read; `readOfferScope` stays, built on it. `CmcOfferBlock` takes an
+  optional `given` text that replaces its actions. `listGrants` lists an
+  account's accesses once for all the invites answered on it.
+
+### Fixed
+
+- **`/auth`: no sign-in form while "Continue as" or "Continue for" runs.**
+  Until check-app answered, the page fell back to the sign-in form (disabled,
+  its links still active); it now shows a "Checking…" card.
+- **Console warnings no longer log raw error objects.** `/auth` and
+  `/cmc-accept` log a failed offer read, grant check, refusal or hand-off
+  secret as one line (the platform error id and message, through
+  `loggableError` in `src/lib/apiError.ts`), with URLs and `token@host` parts
+  redacted, so a token-bearing endpoint or capability URL never reaches the
+  console. The redaction reads at most the first 2000 characters, in linear
+  time, so an over-long message from a remote platform cannot stall the page;
+  a failed accesses listing is logged once, not once per invite.
+
 ## 0.12.0 - 2026-10-04
 
 ### Added

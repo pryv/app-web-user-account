@@ -190,7 +190,8 @@ Every route accepts these query parameters:
   request is complete". A pop-up is never sent to `backUrl`. "Create account"
   and "Forgot password?" on `/auth` open in the same window and keep the
   request and the way back, so the user returns to the consent screen after
-  creating an account.
+  creating an account, signed in as that account and without the "Welcome
+  back" card (which stays for a session stored before the request).
 
   **Continue to a consent offer in the same window (`next`).** When your app
   also needs the user's decision on a consent offer (a `@pryv/cmc` invite), put
@@ -237,9 +238,13 @@ Every route accepts these query parameters:
   second page, your app can put the consent invites it needs answered in the
   access request body itself (`POST {register}/access`, needs a core that
   echoes `cmcInvites` on its `201` answer):
-  `cmcInvites: [{ capabilityUrl, mandatory?, for? }]`, 1 to 8 entries,
-  `mandatory` `false` by default, `for` `"self"` (default) or `"target"` (the
-  account the access is granted for, see `actAs` below). After the user signs
+  `cmcInvites: [{ capabilityUrl, mandatory?, for?, accessName? }]`, 1 to 8
+  entries, `mandatory` `false` by default, `for` `"self"` (default) or
+  `"target"` (the account the access is granted for, see `actAs` below),
+  `accessName` the name of the grant the accept creates on the accepting
+  account (1 to 256 characters; without it, the default name; needs an
+  open-pryv.io release newer than 2.0.0-rc.35, an older core refuses an entry
+  carrying it). After the user signs
   in, the consent screen shows the app access first, then one block per invite
   (who asks, their consent text, what they ask for) with its own Approve and
   Decline; the app access's Accept becomes "Continue", enabled once every
@@ -256,7 +261,8 @@ Every route accepts these query parameters:
     written (no invite accepted, no access created);
   - accepts every approved invite (mandatory ones first) with `@pryv/cmc`
     `acceptInvite`, on the scope the requester stamped on its offer
-    (`originStreamId`, else `:_cmc:apps:<its app id>`): `for: "self"` with
+    (`originStreamId`, else `:_cmc:apps:<its app id>`), with the entry's
+    `accessName` when it has one: `for: "self"` with
     the signed-in person's own session, `for: "target"` with the delegate token
     on the managed account the access is granted for (with no such account,
     with the person's own session, and the outcome says `acceptedFor: "self"`);
@@ -279,7 +285,19 @@ Every route accepts these query parameters:
   this page, not re-checked by the core. An invite whose offer cannot be read,
   or that names no scope, can only be declined. An access the app already holds
   is not handed over before the invites are answered: it is shown, kept as it
-  is, and handed over with the outcomes. The capability URLs stay in the
+  is (its streams named as the request names them), and handed over with the
+  outcomes.
+
+  When the request went through "who is this for?", each block says whose
+  consent it is, by the same rule its accept follows: "For you (username)" for
+  the signed-in account, "For username, whom you look after" for the managed
+  account chosen there. An invite whose offer the account it applies to
+  already accepted (a live grant on that account carrying the offer's event id
+  in `clientData.cmc.offerEventId`) shows as "Already given on {date}", with no
+  Approve or Decline: it counts as accepted (it satisfies `mandatory`), nothing
+  is written, and its outcome is `{ acceptEventId, dataGrantAccessId }` from
+  that grant. A withdrawn grant does not count; if the account's accesses
+  cannot be listed, the invite is shown as usual. The capability URLs stay in the
   request, readable by whoever holds the poll URL while it lives, as for
   `next` above.
 
@@ -309,6 +327,31 @@ Every route accepts these query parameters:
   `controlledUsername`, `delegate.username`) for display (the authoritative
   answer is `delegation` in the token's `access-info`). A `username` hint
   names who signs in, not the account the access is for: use `actAs` for that.
+
+  **Only an account the user manages (`actAsManagedOnly`).** For a request
+  that only makes sense for someone the user looks after (registering a child,
+  say), send `actAsManagedOnly: true` next to `actAs` (`"allow"` or a
+  username; the core refuses it without `actAs` or with `"deny"`). The step
+  then never offers the signed-in account: it lists the active managed
+  accounts only, preselects the account `actAs` names (else the one the
+  account pages were acting for), otherwise none, and Continue waits until
+  one is chosen. With no managed account yet, "Create an account for someone
+  you look after" opens directly (pre-filled with the `actAs` username when
+  it names one); the account created is selected. A session acting for a
+  managed account keeps it preselected, with no creation offer. When no
+  managed account can be used (the platform does not run delegation, its
+  info could not be read, the managed accounts could not be listed and none
+  can be created, or a session
+  acting for another account manages none), the page says why and offers
+  Cancel only, which answers `REFUSED` with
+  `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message` naming the cause.
+  `for: "target"` invites are then always answered on the managed account
+  chosen, never with `acceptedFor: "self"`. The page reads the field from the
+  core's echo on the poll state: it needs an open-pryv.io release newer than
+  2.0.0-rc.35. An older core drops the field and does not echo it, so the
+  page behaves per `actAs` (the user's own account included with `"allow"`);
+  so does an older version of this page on a newer core. Check the field on
+  the core's `201` answer to know whether it was understood.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and
