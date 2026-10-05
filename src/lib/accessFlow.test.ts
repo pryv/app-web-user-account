@@ -13,8 +13,7 @@ import {
 } from "./accessFlow";
 
 /**
- * closeOrRedirect navigates to query-supplied URLs (`returnURL`,
- * `redirectUrl`). These guard against open-redirect / javascript:-scheme XSS
+ * closeOrRedirect navigates to a query-supplied URL (`returnURL`). These guard against open-redirect / javascript:-scheme XSS
  * in the auth origin — a non-http(s) scheme must never reach
  * `window.location.href`.
  */
@@ -50,21 +49,6 @@ describe("closeOrRedirect redirect-target scheme guard", () => {
   it("navigates to a valid http(s) returnURL", () => {
     closeOrRedirect("https://poll", { status: "ACCEPTED", returnURL: "https://app.test/cb" } as AccessState, false);
     expect(hrefSet).toMatch(/^https:\/\/app\.test\/cb\?/);
-  });
-
-  it("fails closed on a javascript: REDIRECTED redirectUrl (does not follow it)", () => {
-    closeOrRedirect(
-      "https://poll",
-      { status: "REDIRECTED", redirectUrl: "javascript:alert(1)", returnURL: "false" } as AccessState,
-      false,
-    );
-    expect(hrefSet).toBe(null); // bad redirectUrl not followed; returnURL 'false' → close
-    expect(closed).toBe(true);
-  });
-
-  it("follows a valid http(s) REDIRECTED redirectUrl", () => {
-    closeOrRedirect("https://poll", { status: "REDIRECTED", redirectUrl: "https://core2.pryv.me/handoff" } as AccessState, false);
-    expect(hrefSet).toBe("https://core2.pryv.me/handoff");
   });
 });
 
@@ -528,12 +512,6 @@ describe("[CHN] closeOrRedirect continues to the hand-off page", () => {
   it("[CHN3] a returnURL wins over next", () => {
     closeOrRedirect("https://poll", { status: "ACCEPTED", returnURL: "https://app.test/cb" } as AccessState, false, { backUrl: null, next: NEXT });
     expect(hrefSet).toMatch(/^https:\/\/app\.test\/cb\?/);
-    expect(replaced).toBe(null);
-  });
-
-  it("[CHN3] a REDIRECTED hand-off wins over next", () => {
-    closeOrRedirect("https://poll", { status: "REDIRECTED", redirectUrl: "https://core2.test/handoff" } as AccessState, false, { backUrl: null, next: NEXT });
-    expect(hrefSet).toBe("https://core2.test/handoff");
     expect(replaced).toBe(null);
   });
 
