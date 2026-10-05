@@ -5,6 +5,7 @@ import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-r
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { formatDateTime } from "../../lib/dates";
 import { useSession } from "../../lib/useSession";
 
 interface Access {
@@ -462,7 +463,7 @@ export default function Security() {
                 </div>
                 <div className="text-xs text-muted">
                   {s.lastUsed
-                    ? t("security.lastUsedLabel") + new Date(s.lastUsed * 1000).toLocaleString()
+                    ? t("security.lastUsedLabel") + formatDateTime(s.lastUsed)
                     : t("security.neverUsed")}
                 </div>
               </div>

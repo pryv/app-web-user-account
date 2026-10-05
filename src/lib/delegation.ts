@@ -15,6 +15,7 @@
 
 import { DelegationError, delegationErrorIds as errorIds, delegationStatus as STATUS } from "./pryvClient";
 import i18n from "../i18n";
+import { formatDate } from "./dates";
 import type {
   Delegation,
   DelegateRecord,
@@ -191,19 +192,9 @@ export function statusLabel(status: RelationshipStatus | string): string {
   }
 }
 
-/**
- * Format a Pryv epoch-seconds timestamp as a short date in the page's language
- * (the i18n one, not the browser's), or "" when absent. A language the
- * runtime cannot format in falls back to the browser's.
- */
+/** A Pryv epoch-seconds timestamp as a date with the month written out, or "" when absent (see `formatDate`). */
 export function formatSince(ts?: number | null): string {
-  if (ts == null || !Number.isFinite(ts)) return "";
-  const date = new Date(ts * 1000);
-  try {
-    return date.toLocaleDateString(i18n.language || undefined);
-  } catch {
-    return date.toLocaleDateString();
-  }
+  return formatDate(ts);
 }
 
 /** View-model for a "My delegates" (B-side) row. */

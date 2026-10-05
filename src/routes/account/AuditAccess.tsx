@@ -24,6 +24,7 @@ import {
 import { MarkdownLite } from "../../lib/markdownLite";
 import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
 import { delegationManagedKind } from "../../lib/delegation";
+import { formatDateTime } from "../../lib/dates";
 import AccessExtras from "../../extensions/AccessExtras";
 
 const PAGE_SIZE = 15;
@@ -35,7 +36,8 @@ const RELATION_KEYS: Record<ReturnType<typeof eventRelation>, string> = {
 };
 
 function fmtTime(t?: number | null): string {
-  return t ? new Date(t * 1000).toLocaleString() : "—";
+  // No value: a dash (as before).
+  return t ? formatDateTime(t) : "\u2014";
 }
 
 /**
