@@ -916,7 +916,11 @@ export default function Auth() {
         const scope = inviteViews[i]?.scope;
         if (credentials == null || scope == null) throw new Error("cmc-invite-not-acceptable");
         const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
-        const res = await cmc.acceptInvite(conn, invite.capabilityUrl, { scopeStreamId: scope });
+        // The grant's name on the accepting account, when the request gave one (as `/cmc-accept` does).
+        const res = await cmc.acceptInvite(conn, invite.capabilityUrl, {
+          scopeStreamId: scope,
+          ...(invite.accessName != null ? { accessName: invite.accessName } : {}),
+        });
         outcomes[i] = acceptedOutcome(res, invite.for === "target" && !asTarget);
       } catch (err: unknown) {
         const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));

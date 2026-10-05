@@ -111,3 +111,22 @@ describe("[ACIG] consent invites: a consent already given", () => {
     expect(givenOutcome(given, true)).toEqual({ acceptEventId: "acc-1", dataGrantAccessId: "g1", acceptedFor: "self" });
   });
 });
+
+describe("[ACIN] consent invites: the name the grant carries", () => {
+  it("[ACIN1] keeps accessName when a non-empty string, as sent, cut at 256 characters", () => {
+    const invites = invitesOf({
+      cmcInvites: [
+        { capabilityUrl: "https://c@r.test/", accessName: " Study 2026 " },
+        { capabilityUrl: "https://c@r.test/", accessName: "n".repeat(300) },
+        { capabilityUrl: "https://c@r.test/", accessName: "" },
+        { capabilityUrl: "https://c@r.test/", accessName: 42 },
+        { capabilityUrl: "https://c@r.test/", accessName: null },
+        { capabilityUrl: "https://c@r.test/" },
+      ],
+    })!;
+    expect(invites[0].accessName).toBe(" Study 2026 ");
+    expect(invites[1].accessName).toBe("n".repeat(256));
+    // Absent, not undefined: an entry without a usable name has no such key.
+    for (const inv of invites.slice(2)) expect("accessName" in inv).toBe(false);
+  });
+});

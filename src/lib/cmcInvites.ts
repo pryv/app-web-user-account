@@ -23,6 +23,14 @@ export interface CmcInvite {
   capabilityUrl: string;
   mandatory: boolean;
   for: "self" | "target";
+  /**
+   * The name the app wants the grant to carry on the accepting account,
+   * passed to `cmc.acceptInvite` (the core stores and echoes it, nothing
+   * more). Present only when the request sent one; without it the grant takes
+   * the default name. A core that does not know the field refuses the request,
+   * so it never reaches a page through one.
+   */
+  accessName?: string;
 }
 
 /** The outcome posted for one invite with ACCEPTED, in the request's order. */
@@ -50,7 +58,9 @@ const MAX_FIELD_LENGTH = 256;
  * defensively (the core normalises them, but the page never trusts a shape it
  * did not check). Every entry is kept, so the outcomes match the request one
  * for one: an entry without an http(s) capability URL gets an empty one, which
- * the page shows as unreadable (it can only be declined).
+ * the page shows as unreadable (it can only be declined). `accessName` is kept
+ * only when it is a non-empty string, as sent (not trimmed), cut at 256
+ * characters.
  */
 export function invitesOf(state: { cmcInvites?: unknown } | null | undefined): CmcInvite[] | null {
   const raw = state?.cmcInvites;
@@ -58,7 +68,9 @@ export function invitesOf(state: { cmcInvites?: unknown } | null | undefined): C
   return raw.map((entry: unknown) => {
     const e = (entry != null && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
     const url = typeof e.capabilityUrl === "string" && /^https?:\/\//i.test(e.capabilityUrl) ? e.capabilityUrl : "";
-    return { capabilityUrl: url, mandatory: e.mandatory === true, for: e.for === "target" ? "target" : "self" };
+    const invite: CmcInvite = { capabilityUrl: url, mandatory: e.mandatory === true, for: e.for === "target" ? "target" : "self" };
+    if (typeof e.accessName === "string" && e.accessName !== "") invite.accessName = e.accessName.slice(0, MAX_FIELD_LENGTH);
+    return invite;
   });
 }
 

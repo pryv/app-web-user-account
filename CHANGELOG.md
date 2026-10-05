@@ -23,6 +23,15 @@
   grant (with `acceptedFor: "self"` when a `for: "target"` invite applies to
   the signed-in account). A withdrawn grant does not count; when the account's
   accesses cannot be listed, the invite is shown as before.
+- **`/auth`: an invite can name the grant it creates**
+  ([#15](https://github.com/pryv/app-web-user-account/issues/15)). A
+  `cmcInvites` entry may carry `accessName` (1 to 256 characters); the page
+  passes it to `@pryv/cmc` `acceptInvite`, as `/cmc-accept` does with its
+  `accessName` query parameter, so the grant on the accepting account carries
+  that name instead of the default one. Needs an open-pryv.io release newer
+  than 2.0.0-rc.35 that accepts the field: an older core refuses a request
+  whose entry carries it (`400 invalid-parameters`), so the page never sees it
+  there. An entry without it behaves as before.
 
 ### Changed
 

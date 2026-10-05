@@ -458,6 +458,26 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1", acceptedFor: "self" }]);
   });
 
+  it("[ACI24] an invite's accessName names the grant: passed to the accept; none without one", async () => {
+    await reachConsent(
+      needSignin([
+        { capabilityUrl: CAP_A, mandatory: true, for: "self", accessName: "Diary study 2026" },
+        { capabilityUrl: CAP_B, mandatory: false, for: "self" },
+      ]),
+    );
+    const blocks = await inviteBlocks(2);
+    decide(blocks[0], "Approve");
+    decide(blocks[1], "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const optsByUrl = Object.fromEntries(
+      cmcMock.acceptInvite.mock.calls.map((c) => [c[1] as string, c[2] as Record<string, unknown>]),
+    );
+    expect(optsByUrl[CAP_A]).toEqual({ scopeStreamId: ":_cmc:apps:carer", accessName: "Diary study 2026" });
+    expect("accessName" in optsByUrl[CAP_B]).toBe(false);
+  });
+
   it("[ACI9] an unreadable invite can only be declined", async () => {
     cmcMock.readOffer.mockImplementation(async (url: string) => {
       if (url === CAP_B) throw new Error("capability gone");

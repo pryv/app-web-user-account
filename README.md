@@ -238,9 +238,13 @@ Every route accepts these query parameters:
   second page, your app can put the consent invites it needs answered in the
   access request body itself (`POST {register}/access`, needs a core that
   echoes `cmcInvites` on its `201` answer):
-  `cmcInvites: [{ capabilityUrl, mandatory?, for? }]`, 1 to 8 entries,
-  `mandatory` `false` by default, `for` `"self"` (default) or `"target"` (the
-  account the access is granted for, see `actAs` below). After the user signs
+  `cmcInvites: [{ capabilityUrl, mandatory?, for?, accessName? }]`, 1 to 8
+  entries, `mandatory` `false` by default, `for` `"self"` (default) or
+  `"target"` (the account the access is granted for, see `actAs` below),
+  `accessName` the name of the grant the accept creates on the accepting
+  account (1 to 256 characters; without it, the default name; needs an
+  open-pryv.io release newer than 2.0.0-rc.35, an older core refuses an entry
+  carrying it). After the user signs
   in, the consent screen shows the app access first, then one block per invite
   (who asks, their consent text, what they ask for) with its own Approve and
   Decline; the app access's Accept becomes "Continue", enabled once every
@@ -257,7 +261,8 @@ Every route accepts these query parameters:
     written (no invite accepted, no access created);
   - accepts every approved invite (mandatory ones first) with `@pryv/cmc`
     `acceptInvite`, on the scope the requester stamped on its offer
-    (`originStreamId`, else `:_cmc:apps:<its app id>`): `for: "self"` with
+    (`originStreamId`, else `:_cmc:apps:<its app id>`), with the entry's
+    `accessName` when it has one: `for: "self"` with
     the signed-in person's own session, `for: "target"` with the delegate token
     on the managed account the access is granted for (with no such account,
     with the person's own session, and the outcome says `acceptedFor: "self"`);
