@@ -12,8 +12,9 @@
  * `REFUSED_MANDATORY_CONSENT` before anything is written.
  *
  * Pure helpers, plus the reads the page cannot get from `cmc.readOffer`
- * (where the accept belongs and the offer's id, `readOfferRef`; whether this
- * account already gave the consent, `readGivenConsent`).
+ * (where the accept belongs and the offer's id, `readOfferRef`; the accesses
+ * that show whether this account already gave the consent, `listGrants` +
+ * `givenConsentOf`).
  */
 
 import { Pryv } from "./pryvClient";
@@ -196,7 +197,7 @@ export interface GivenConsent {
 }
 
 /** The fields of an access `givenConsentOf` reads. */
-interface GrantLike {
+export interface GrantLike {
   id?: unknown;
   created?: unknown;
   expires?: unknown;
@@ -240,14 +241,26 @@ function isBoundedId(value: unknown): value is string {
 }
 
 /**
- * The live grant the account behind `apiEndpoint` (token-bearing) holds for
- * the offer `offerEventId`, or null. Throws when the accesses cannot be
- * listed: the page then shows the invite as it would without this check.
+ * The accesses of the account behind `apiEndpoint` (token-bearing), for
+ * `givenConsentOf`. One listing serves every invite answered on that account.
+ * Throws when they cannot be listed: the page then shows the invites as it
+ * would without this check.
  */
-export async function readGivenConsent(apiEndpoint: string, offerEventId: string): Promise<GivenConsent | null> {
+export async function listGrants(apiEndpoint: string): Promise<GrantLike[]> {
   const conn = new Pryv.Connection(apiEndpoint);
-  const accesses = (await conn.apiOne("accesses.get", {}, "accesses")) as GrantLike[];
-  return givenConsentOf(accesses, offerEventId);
+  return (await conn.apiOne("accesses.get", {}, "accesses")) as GrantLike[];
+}
+
+/**
+ * The decisions as they stand: a `given` invite whose grant is not (or no
+ * longer) known counts as undecided, so Continue waits rather than post an
+ * outcome the page cannot fill.
+ */
+export function settledDecisions(
+  decisions: ReadonlyArray<InviteDecision | null>,
+  views: ReadonlyArray<{ given: GivenConsent | null } | undefined>,
+): Array<InviteDecision | null> {
+  return decisions.map((d, i) => (d === "given" && views[i]?.given == null ? null : d));
 }
 
 /**

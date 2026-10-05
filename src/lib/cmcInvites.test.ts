@@ -9,6 +9,7 @@ import {
   scopeFromOffer,
   givenConsentOf,
   givenOutcome,
+  settledDecisions,
 } from "./cmcInvites";
 
 describe("[ACI13] consent invites: pure helpers", () => {
@@ -103,6 +104,18 @@ describe("[ACIG] consent invites: a consent already given", () => {
   it("[ACIG3] with several grants of one offer, the earliest", () => {
     const later = grant({ id: "g2", created: 500 }, { acceptEventId: "acc-2" });
     expect(givenConsentOf([later, grant()], "offer-1", 1000)?.accessId).toBe("g1");
+  });
+
+  it("[ACIG5] a given invite whose grant is not known counts as undecided", () => {
+    const given = { accessId: "g1", acceptEventId: "acc-1", created: 200 };
+    expect(settledDecisions(["given", "given", "approve", null], [{ given }, { given: null }, undefined, undefined])).toEqual([
+      "given",
+      null,
+      "approve",
+      null,
+    ]);
+    expect(settledDecisions(["given"], [])).toEqual([null]);
+    expect(allDecided(settledDecisions(["given", "decline"], [{ given: null }, { given: null }]), 2)).toBe(false);
   });
 
   it("[ACIG4] reported as the core validates an accepted outcome", () => {

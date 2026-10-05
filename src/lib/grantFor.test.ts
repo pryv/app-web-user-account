@@ -153,7 +153,7 @@ describe("[GFM] who is this access for: an account the user manages only", () =>
 
   it("[GFM5] when no managed account can be used, never the signed-in account: unavailable, with the cause", () => {
     expect(grantStep({ ...base, offers: false })).toEqual({ kind: "unavailable", cause: "delegation-off" });
-    expect(grantStep({ ...base, offers: null })).toEqual({ kind: "unavailable", cause: "list-failed" });
+    expect(grantStep({ ...base, offers: null })).toEqual({ kind: "unavailable", cause: "info-unreadable" });
     // A session acting for another account cannot create one.
     expect(grantStep({ ...base, acting: true, listed: null })).toEqual({ kind: "unavailable", cause: "list-failed" });
     expect(grantStep({ ...base, acting: true, listed: [] })).toEqual({ kind: "unavailable", cause: "none" });

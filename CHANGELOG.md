@@ -41,8 +41,9 @@
   creation form opens directly (pre-filled with the `actAs` username) and the
   account created is selected; a session acting for a managed account keeps
   it preselected. When no managed account can be used (no delegation on the
-  platform, a listing that failed with no creation possible, or none from an
-  acting session), the page says why and offers Cancel only:
+  platform, the platform's info unreadable, a listing that failed with no
+  creation possible, or none from an acting session), the page says why and
+  offers Cancel only:
   `REFUSED` with `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message`
   naming the cause. `for: "target"` invites are then always answered on the
   managed account. Needs an open-pryv.io release newer than 2.0.0-rc.35 that

@@ -115,7 +115,7 @@ export function offersCreation(actAs: ActAs | null, managedOnly: boolean, acting
 }
 
 /** Why no managed account can be used, when the app asked for one. */
-export type ManagedUnavailableCause = "delegation-off" | "list-failed" | "none";
+export type ManagedUnavailableCause = "delegation-off" | "info-unreadable" | "list-failed" | "none";
 
 /** What follows the sign-in: see `grantStep`. */
 export type GrantStep =
@@ -158,7 +158,7 @@ export function grantStep(input: {
   const { offers, listed, selfUsername, actAs, managedOnly, acting, preferred } = input;
   if (offers !== true) {
     if (!managedOnly) return { kind: "consent" };
-    return { kind: "unavailable", cause: offers == null ? "list-failed" : "delegation-off" };
+    return { kind: "unavailable", cause: offers == null ? "info-unreadable" : "delegation-off" };
   }
   const creation = offersCreation(actAs, managedOnly, acting);
   if (listed == null && !creation) return managedOnly ? { kind: "unavailable", cause: "list-failed" } : { kind: "consent" };

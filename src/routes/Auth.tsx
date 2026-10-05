@@ -16,12 +16,15 @@ import {
   acceptedOutcome,
   boundedReason,
   readOfferRef,
-  readGivenConsent,
+  listGrants,
+  givenConsentOf,
+  settledDecisions,
   givenOutcome,
   REFUSED_MANDATORY_CONSENT,
   MANDATORY_CONSENT_FAILED,
   type CmcInviteOutcome,
   type GivenConsent,
+  type GrantLike,
   type InviteDecision,
 } from "../lib/cmcInvites";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
@@ -276,6 +279,8 @@ export default function Auth() {
   // its own (the invites still need an answer): it is kept and handed over
   // after them.
   const [reuse, setReuse] = useState<ReusedAccess | null>(null);
+  // The decisions as they stand (see `settledDecisions`): what Continue and the flow go by.
+  const decisions = settledDecisions(inviteDecisions, inviteViews);
 
   // "Who is this for?": offered after sign-in when the platform runs account
   // delegation, the app allows it, and the user controls other accounts (or,
@@ -386,11 +391,19 @@ export default function Auth() {
       if (cancelled) return;
       setInviteViews((prev) => prev.map((v, j) => (j === i ? view : v)));
     };
+    // One listing per account (token-bearing endpoint), shared by its invites.
+    const listings = new Map<string, Promise<GrantLike[]>>();
     const givenFor = async (i: number, offerEventId: string | null): Promise<GivenConsent | null> => {
       const { credentials } = inviteCredentials(i);
       if (offerEventId == null || credentials == null) return null;
+      const api = buildApiEndpointWithToken(credentials.endpoint, credentials.token);
+      let listing = listings.get(api);
+      if (listing == null) {
+        listing = listGrants(api);
+        listings.set(api, listing);
+      }
       try {
-        return await readGivenConsent(buildApiEndpointWithToken(credentials.endpoint, credentials.token), offerEventId);
+        return givenConsentOf(await listing, offerEventId);
       } catch (err: unknown) {
         console.warn("auth: could not check whether a consent invite was already given", err);
         return null;
@@ -510,7 +523,10 @@ export default function Auth() {
       // The consent-completion payload needs the username; the form was
       // skipped, so resolve it from the stored session.
       const asUser = knownUsername ?? (await storedConnection.username());
-      if (expected != null && asUser.toLowerCase() !== expected.toLowerCase()) return;
+      if (expected != null && asUser.toLowerCase() !== expected.toLowerCase()) {
+        console.warn("auth: the stored session is not the account just created; showing the sign-in card");
+        return;
+      }
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
@@ -659,6 +675,12 @@ export default function Auth() {
       // managed account, there is none): the creation form opens at once.
       setCreateOpen(step.createOpen);
       setCreatedNotice(null);
+      return;
+    }
+    // Never the signed-in account when the app asked for a managed one, whatever
+    // the step above concluded.
+    if (managedOnly) {
+      setManagedUnavailable("list-failed");
       return;
     }
     await runCheckApp(endpoint, token, asUser);
@@ -909,7 +931,7 @@ export default function Auth() {
   async function refuseDeclinedInvites(): Promise<void> {
     if (invites == null) return;
     for (let i = 0; i < invites.length; i++) {
-      if (inviteDecisions[i] !== "decline") continue;
+      if (decisions[i] !== "decline") continue;
       const scope = inviteViews[i]?.scope;
       const { credentials } = inviteCredentials(i);
       // Unreadable or without a scope: nothing to answer with.
@@ -929,13 +951,17 @@ export default function Auth() {
     if (invites == null || !apiEndpoint || !personalToken) return null;
     // A consent already given is reported from the grant in place; nothing is written.
     const outcomes: Array<CmcInviteOutcome | null> = invites.map((invite, i) => {
-      if (inviteDecisions[i] === "decline") return { declined: true };
-      const given = inviteDecisions[i] === "given" ? inviteViews[i]?.given : null;
+      if (decisions[i] === "decline") return { declined: true };
+      const given = decisions[i] === "given" ? inviteViews[i]?.given : null;
       return given != null ? givenOutcome(given, invite.for === "target" && !invitesAsTarget(i)) : null;
     });
+    const order = acceptOrder(invites, decisions);
+    // Every invite must end with an outcome: one that is neither declined,
+    // given nor to be accepted stops the flow before anything is written.
+    if (outcomes.some((o, i) => o == null && !order.includes(i))) throw new Error(t("consent.errorCouldNotAccept"));
     // Declined invites are answered first, before any accept or grant.
     await refuseDeclinedInvites();
-    for (const i of acceptOrder(invites, inviteDecisions)) {
+    for (const i of order) {
       const invite = invites[i];
       const { credentials, asTarget } = inviteCredentials(i);
       try {
@@ -965,12 +991,14 @@ export default function Auth() {
         outcomes[i] = { reason: boundedReason(failure.reason) };
       }
     }
-    return outcomes as CmcInviteOutcome[];
+    const answered = outcomes.filter((o): o is CmcInviteOutcome => o != null);
+    if (answered.length !== invites.length) throw new Error(t("consent.errorCouldNotAccept"));
+    return answered;
   }
 
   async function accept() {
     if (!accessState || !apiEndpoint || !personalToken || !check) return;
-    if (invites != null && !allDecided(inviteDecisions, invites.length)) return;
+    if (invites != null && !allDecided(decisions, invites.length)) return;
     setFinishing("accept");
     setError(null);
     // Once the outcome is handed over, the buttons stay disabled: the window
@@ -979,7 +1007,7 @@ export default function Auth() {
     try {
       // Decide: a declined mandatory invite refuses the whole request before
       // anything is written (no invite accepted, no access created).
-      if (invites != null && declinedMandatory(invites, inviteDecisions) >= 0) {
+      if (invites != null && declinedMandatory(invites, decisions) >= 0) {
         // Every declined requester is told no; nothing is accepted or granted.
         await refuseDeclinedInvites();
         await refuseWith(
@@ -1088,13 +1116,13 @@ export default function Auth() {
     if (!accessState || !query.pollUrl) return;
     setFinishing("refuse");
     setError(null);
-    const why =
-      cause === "delegation-off"
-        ? "acting for another account is not available on this platform"
-        : cause === "list-failed"
-          ? "the accounts the user manages could not be listed"
-          : "the user manages no active account, and none can be created from this session";
-    await refuseWith(MANAGED_ACCOUNT_UNAVAILABLE, "The app asked for an account the user manages, and none can be used: " + why);
+    const why: Record<ManagedUnavailableCause, string> = {
+      "delegation-off": "acting for another account is not available on this platform",
+      "info-unreadable": "the platform's information could not be read",
+      "list-failed": "the accounts the user manages could not be listed",
+      none: "the user manages no active account, and none can be created from this session",
+    };
+    await refuseWith(MANAGED_ACCOUNT_UNAVAILABLE, "The app asked for an account the user manages, and none can be used: " + why[cause]);
   }
 
   /** Post REFUSED with this reason and hand over (close, go back, or the complete card). */
@@ -1149,17 +1177,17 @@ export default function Auth() {
   // say why; the user can only cancel (nothing is granted on their own account).
   if (managedUnavailable != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
-    const causeKey =
-      managedUnavailable === "delegation-off"
-        ? "consent.managedUnavailableDelegationOff"
-        : managedUnavailable === "list-failed"
-          ? "consent.managedUnavailableListFailed"
-          : "consent.managedUnavailableNone";
+    const causeKey: Record<ManagedUnavailableCause, string> = {
+      "delegation-off": "consent.managedUnavailableDelegationOff",
+      "info-unreadable": "consent.managedUnavailableInfoUnreadable",
+      "list-failed": "consent.managedUnavailableListFailed",
+      none: "consent.managedUnavailableNone",
+    };
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
         <p className="mb-2 text-sm">{tNodes("consent.managedUnavailable", { app: <strong>{appName}</strong> })}</p>
-        <Alert tone="info">{t(causeKey)}</Alert>
+        <Alert tone="info">{t(causeKey[managedUnavailable])}</Alert>
         <Button
           variant="ghost"
           type="button"
@@ -1176,7 +1204,10 @@ export default function Auth() {
   // "Who is this for?": the signed-in account, or an account it controls.
   if (targets != null && owner != null) {
     const appName = requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"));
-    const unavailable = unavailableActAs(targets, accessState.actAs);
+    // The account the app named, when not a choice; not said of the signed-in
+    // account itself (left out with `managedOnly`, not "an account you can act for").
+    const named = unavailableActAs(targets, accessState.actAs);
+    const unavailable = named !== owner.username ? named : null;
     // Creation is offered when the app named `actAs` or asked for a managed
     // account, and never from a session acting for another account: the new
     // account's delegate is the user.
@@ -1247,9 +1278,14 @@ export default function Auth() {
         )}
         {error && <Alert>{error}</Alert>}
         {selectedTarget == null && targets.length > 0 && (
-          <p className="mb-3 text-sm text-muted">{t("consent.grantChooseManaged")}</p>
+          <p id="grant-choose-hint" className="mb-3 text-sm text-muted">{t("consent.grantChooseManaged")}</p>
         )}
-        <Button type="button" onClick={() => void continueWithTarget()} disabled={busy || selectedTarget == null}>
+        <Button
+          type="button"
+          onClick={() => void continueWithTarget()}
+          disabled={busy || selectedTarget == null}
+          aria-describedby={selectedTarget == null && targets.length > 0 ? "grant-choose-hint" : undefined}
+        >
           {busy
             ? t("consent.checking")
             : selectedTarget != null
@@ -1280,7 +1316,7 @@ export default function Auth() {
         )
       : entries;
     const panelChoice = allowsChoice && reuse == null;
-    const invitesPending = invites != null && !allDecided(inviteDecisions, invites.length);
+    const invitesPending = invites != null && !allDecided(decisions, invites.length);
     const decide = (i: number, d: InviteDecision | null) =>
       setInviteDecisions((prev) => prev.map((v, j) => (j === i ? d : v)));
     return (

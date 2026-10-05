@@ -109,8 +109,12 @@ describe("[ARG] /auth right after creating an account in this window", () => {
   });
 
   it("[ARG4] a marker for another account than the stored session: the card, nothing continued", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     openAuth(registeredState("bob"));
     await screen.findByText("Welcome back");
     expect(flow.checkAppAccess).not.toHaveBeenCalled();
+    // Said in the console, for a deployer whose registration lands on the card.
+    expect(warn.mock.calls.some((c) => String(c[0]).includes("not the account just created"))).toBe(true);
+    warn.mockRestore();
   });
 });

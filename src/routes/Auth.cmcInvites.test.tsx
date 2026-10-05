@@ -33,7 +33,7 @@ vi.mock("../lib/pryvClient", async (importOriginal) => {
   return { ...actual, cmc: { ...actual.cmc, ...cmcMock } };
 });
 
-const scopeMock = vi.hoisted(() => ({ readOfferRef: vi.fn(), readGivenConsent: vi.fn() }));
+const scopeMock = vi.hoisted(() => ({ readOfferRef: vi.fn(), listGrants: vi.fn() }));
 vi.mock("../lib/cmcInvites", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/cmcInvites")>()),
   ...scopeMock,
@@ -96,6 +96,12 @@ const PERMS = [{ streamId: "diary", level: "read", defaultName: "Journal" }];
 const POLL = "https://core.test/reg/access/k1";
 const CAP_A = "https://cap-a@requester.test/";
 const CAP_B = "https://cap-b@requester.test/";
+
+const grantOf = (id: string, offerEventId: string, acceptEventId: string, created: number | null) => ({
+  id,
+  created,
+  clientData: { cmc: { role: "counterparty", offerEventId, acceptEventId } },
+});
 
 /** What happened, in order: accepts and access writes on one timeline. */
 let timeline: string[] = [];
@@ -182,8 +188,8 @@ describe("[ACI] /auth: consent invites in the access request", () => {
       scope: ":_cmc:apps:carer",
       offerEventId: url === CAP_A ? "offer-a" : "offer-b",
     }));
-    scopeMock.readGivenConsent.mockReset();
-    scopeMock.readGivenConsent.mockResolvedValue(null);
+    scopeMock.listGrants.mockReset();
+    scopeMock.listGrants.mockResolvedValue([]);
     deleg.listControlled.mockReset();
     deleg.getToken.mockReset();
     deleg.serviceInfo = { features: {} };
@@ -513,6 +519,18 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(posted().cmcInvites).toEqual([{ acceptEventId: "ev-1", dataGrantAccessId: "grant-1" }]);
   });
 
+  it("[ACI26] the accesses of one account are listed once for all its invites", async () => {
+    scopeMock.listGrants.mockResolvedValue([grantOf("grant-old", "offer-b", "accept-old", null)]);
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    await within(blocks[1]).findByTestId("cmc-offer-given");
+    expect(within(blocks[0]).getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(scopeMock.listGrants).toHaveBeenCalledTimes(1);
+    expect(scopeMock.listGrants).toHaveBeenCalledWith("https://parent-token@parent.core.test/");
+  });
+
   it("[ACI9] an unreadable invite can only be declined", async () => {
     cmcMock.readOffer.mockImplementation(async (url: string) => {
       if (url === CAP_B) throw new Error("capability gone");
@@ -542,7 +560,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     });
     expect(cmcMock.readOffer).not.toHaveBeenCalled();
     expect(scopeMock.readOfferRef).not.toHaveBeenCalled();
-    expect(scopeMock.readGivenConsent).not.toHaveBeenCalled();
+    expect(scopeMock.listGrants).not.toHaveBeenCalled();
   });
 
   it("[ACI10] (guard) an access the app already holds is not handed over before the invites are answered", async () => {
@@ -610,9 +628,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
   });
 
   it("[ACI20] an offer this account already accepted shows as given: no Approve/Decline, counts as accepted, nothing written", async () => {
-    scopeMock.readGivenConsent.mockImplementation(async (_api: string, offerEventId: string) =>
-      offerEventId === "offer-a" ? { accessId: "grant-old", acceptEventId: "accept-old", created: 1_700_000_000 } : null,
-    );
+    scopeMock.listGrants.mockResolvedValue([grantOf("grant-old", "offer-a", "accept-old", 1_700_000_000)]);
     await reachConsent(
       needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
     );
@@ -623,7 +639,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(within(blocks[0]).queryByRole("button", { name: "Decline" })).toBeNull();
     expect(within(blocks[0]).queryByRole("button", { name: "Change" })).toBeNull();
     // Checked on the account the invite applies to, for this offer.
-    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://parent-token@parent.core.test/", "offer-a");
+    expect(scopeMock.listGrants).toHaveBeenCalledWith("https://parent-token@parent.core.test/");
     // The given (mandatory) invite counts as decided: only the other one is waited for.
     expect(continueButton().disabled).toBe(true);
     decide(blocks[1], "Approve");
@@ -641,16 +657,16 @@ describe("[ACI] /auth: consent invites in the access request", () => {
   });
 
   it("[ACI21] a for: 'target' invite is checked on the controlled account, with its delegate token", async () => {
-    scopeMock.readGivenConsent.mockImplementation(async (api: string) =>
-      api === "https://" + PAT + "@kid-a.core.test/" ? { accessId: "g-kid", acceptEventId: "a-kid", created: null } : null,
+    scopeMock.listGrants.mockImplementation(async (api: string) =>
+      api === "https://" + PAT + "@kid-a.core.test/" ? [grantOf("g-kid", "offer-a", "a-kid", null)] : [],
     );
     await reachViaGrantFor(
       [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
       "kid-a",
     );
     const blocks = await inviteBlocks(2);
-    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://" + PAT + "@kid-a.core.test/", "offer-a");
-    expect(scopeMock.readGivenConsent).toHaveBeenCalledWith("https://parent-token@parent.core.test/", "offer-b");
+    expect(scopeMock.listGrants).toHaveBeenCalledWith("https://" + PAT + "@kid-a.core.test/");
+    expect(scopeMock.listGrants).toHaveBeenCalledWith("https://parent-token@parent.core.test/");
     expect((await within(blocks[0]).findByTestId("cmc-offer-given")).textContent).toBe("Already given. It is kept as it is.");
     // The parent's own invite was not given on the parent's account: a full block.
     expect(within(blocks[1]).getByRole("button", { name: "Approve" })).toBeTruthy();
@@ -663,7 +679,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
   });
 
   it("[ACI22] when the accesses cannot be listed, the invite is shown as usual", async () => {
-    scopeMock.readGivenConsent.mockRejectedValue(new Error("403"));
+    scopeMock.listGrants.mockRejectedValue(new Error("403"));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
     const [block] = await inviteBlocks(1);

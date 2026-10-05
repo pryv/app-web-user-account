@@ -417,6 +417,7 @@
     "grantChooseManaged": "Choose the account of the person you look after to continue.",
     "managedUnavailable": "{{app}} needs access for someone you look after, not for your own account.",
     "managedUnavailableDelegationOff": "Acting for someone you look after is not available here. Cancel to go back to the app.",
+    "managedUnavailableInfoUnreadable": "This platform could not be checked right now. Cancel to go back to the app, then try again later.",
     "managedUnavailableListFailed": "The accounts you manage could not be listed. Cancel to go back to the app, then try again later.",
     "managedUnavailableNone": "You do not manage an account that can be used here, and one cannot be created from this session. Cancel to go back to the app."
   },

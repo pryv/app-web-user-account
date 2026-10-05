@@ -339,8 +339,9 @@ Every route accepts these query parameters:
   you look after" opens directly (pre-filled with the `actAs` username when
   it names one); the account created is selected. A session acting for a
   managed account keeps it preselected, with no creation offer. When no
-  managed account can be used (the platform does not run delegation, the
-  managed accounts could not be listed and none can be created, or a session
+  managed account can be used (the platform does not run delegation, its
+  info could not be read, the managed accounts could not be listed and none
+  can be created, or a session
   acting for another account manages none), the page says why and offers
   Cancel only, which answers `REFUSED` with
   `reasonId: "MANAGED_ACCOUNT_UNAVAILABLE"` and a `message` naming the cause.

@@ -64,8 +64,8 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
  * Router state `Register` hands to `/auth` after creating and signing in an
  * account in this window: `/auth` then continues to the request with that
  * session instead of greeting a returning visitor. One-shot: `/auth` clears it
- * from the history entry once read, so a reload or a later visit shows the
- * card again.
+ * from the history entry once read (the mount effect next to `justRegistered`
+ * in `src/routes/Auth.tsx`), so a reload or a later visit shows the card again.
  */
 export function registeredState(username: string): { registeredAs: string } {
   return { registeredAs: username };

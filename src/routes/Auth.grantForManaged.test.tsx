@@ -33,7 +33,8 @@ const deleg = vi.hoisted(() => ({
   createAccount: vi.fn(),
   /** The connection each delegation client was built on, in order. */
   builtOn: [] as Array<{ apiEndpoint?: string }>,
-  serviceInfo: { features: { delegation: true } } as Record<string, unknown>,
+  /** null: the platform's info cannot be read. */
+  serviceInfo: { features: { delegation: true } } as Record<string, unknown> | null,
 }));
 vi.mock("@pryv/delegation", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@pryv/delegation")>();
@@ -63,7 +64,12 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
             apiEndpoint: "https://parent-token@parent.core.test/",
             endpoint: "https://parent.core.test/",
             username: async () => "parent",
-            service: { info: async () => deleg.serviceInfo },
+            service: {
+              info: async () => {
+                if (deleg.serviceInfo == null) throw new TypeError("Failed to fetch");
+                return deleg.serviceInfo;
+              },
+            },
           },
         })
       }
@@ -94,6 +100,17 @@ vi.mock("pryv", () => ({
     },
   },
 }));
+
+// Lets one test force what `grantStep` answers, to pin the page's own guard.
+const stepOverride = vi.hoisted(() => ({ value: null as unknown }));
+vi.mock("../lib/grantFor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/grantFor")>();
+  return {
+    ...actual,
+    grantStep: (input: Parameters<typeof actual.grantStep>[0]) =>
+      stepOverride.value != null ? stepOverride.value : actual.grantStep(input),
+  };
+});
 
 import Auth from "./Auth";
 import { SessionProvider } from "../lib/session";
@@ -147,6 +164,7 @@ describe("[AMO] /auth: the app asks for an account the user manages", () => {
     deleg.createAccount.mockReset();
     deleg.builtOn = [];
     deleg.serviceInfo = { features: { delegation: true } };
+    stepOverride.value = null;
     flow.deriveServiceInfoUrlFromPollUrl.mockReturnValue("https://core.test/service/info");
     flow.checkAppAccess.mockResolvedValue({ checkedPermissions: PERMS });
     flow.createAppAccess.mockResolvedValue({ id: "acc-kid", token: "kid-app-token" });
@@ -202,6 +220,9 @@ describe("[AMO] /auth: the app asks for an account the user manages", () => {
     for (const r of screen.getAllByRole("radio")) expect((r as HTMLInputElement).checked).toBe(false);
     expect(screen.queryByRole("button", { name: /continue for parent/i })).toBeNull();
     expect(CONTINUE("Continue").disabled).toBe(true);
+    // The reason it is disabled is reachable from the button itself.
+    const hintId = CONTINUE("Continue").getAttribute("aria-describedby");
+    expect(hintId != null && document.getElementById(hintId)?.textContent).toMatch(/Choose the account/);
     (screen.getByDisplayValue("kid-c") as HTMLInputElement).click();
     await waitFor(() => expect(CONTINUE(/continue for kid-c/i).disabled).toBe(false));
     CONTINUE(/continue for kid-c/i).click();
@@ -235,6 +256,33 @@ describe("[AMO] /auth: the app asks for an account the user manages", () => {
     expect((screen.getByDisplayValue("kid-a") as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByRole("button", { name: TOGGLE })).toBeNull();
     expect(CONTINUE(/continue for kid-a/i).disabled).toBe(false);
+  });
+
+  it("[AMO7] the page itself never falls back to the signed-in account, whatever the step concluded", async () => {
+    deleg.serviceInfo = { features: {} };
+    // A step to choose from, but no delegation client to work with: nothing to grant on.
+    stepOverride.value = { kind: "choose", targets: [{ username: "kid-a", self: false }], selected: "kid-a", listFailed: false, createOpen: false };
+    await signIn(needSignin({ actAs: "allow", actAsManagedOnly: true }));
+    await screen.findByText(/needs access for someone you look after/);
+    expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Cancel"]);
+    expect(flow.checkAppAccess).not.toHaveBeenCalled();
+  });
+
+  it("[AMO8] the app named the signed-in account: not called \"an account you can act for\"", async () => {
+    await signIn(needSignin({ actAs: "parent", actAsManagedOnly: true }));
+    await screen.findByText(/access to:/);
+    expect(screen.queryByText(/is not an account you can act for/)).toBeNull();
+    expect(screen.getAllByRole("radio").map((r) => (r as HTMLInputElement).value)).toEqual(["kid-a", "kid-c"]);
+  });
+
+  it("[AMO9] the platform's info cannot be read: said so, Cancel names that cause", async () => {
+    deleg.serviceInfo = null;
+    await signIn(needSignin({ actAs: "allow", actAsManagedOnly: true }));
+    await screen.findByText(/could not be checked right now/);
+    CONTINUE("Cancel").click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalledTimes(1));
+    expect(refusal()).toMatchObject({ status: "REFUSED", reasonId: "MANAGED_ACCOUNT_UNAVAILABLE" });
+    expect(refusal().message).toMatch(/information could not be read/);
   });
 
   it("[AMO6] (guard) an echo other than true, or none (older core): the step as before, own account included", async () => {
