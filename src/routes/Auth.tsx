@@ -125,6 +125,9 @@ interface AuthQuery {
   username: string | null;
 }
 
+/** What a check-app run ended with, for the caller: "refused" when the register refused the access the app holds. */
+type CheckOutcome = "refused" | null;
+
 /** Longest wait for the stored session's name before a hinted page shows the form. */
 const KNOWN_USERNAME_WAIT_MS = 4000;
 
@@ -531,7 +534,13 @@ export default function Auth() {
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
-      await afterSignIn(conn.endpoint, conn.token, asUser, storedConnection);
+      const outcome = await afterSignIn(conn.endpoint, conn.token, asUser, storedConnection);
+      if (outcome === "refused") {
+        // Back on the card the person came from, with the reason (set by
+        // runCheckApp), rather than on a sign-in form they never asked for.
+        setPersonalToken(null);
+        setApiEndpoint(null);
+      }
     } catch (err: unknown) {
       setPersonalToken(null);
       setApiEndpoint(null);
@@ -629,8 +638,8 @@ export default function Auth() {
     token: string,
     asUser: string,
     connection: PryvConnection | null,
-  ) {
-    if (!accessState) return;
+  ): Promise<CheckOutcome> {
+    if (!accessState) return null;
     // Whether the step applies (null: the platform's info could not be read),
     // and the accounts the user controls (null: not listed, or the listing failed).
     let offers: boolean | null = null;
@@ -665,7 +674,7 @@ export default function Auth() {
     });
     if (step.kind === "unavailable") {
       setManagedUnavailable(step.cause);
-      return;
+      return null;
     }
     if (step.kind === "choose" && connection && client) {
       setOwner({ username: asUser, endpoint, token, connection, client });
@@ -676,15 +685,15 @@ export default function Auth() {
       // managed account, there is none): the creation form opens at once.
       setCreateOpen(step.createOpen);
       setCreatedNotice(null);
-      return;
+      return null;
     }
     // Never the signed-in account when the app asked for a managed one, whatever
     // the step above concluded.
     if (managedOnly) {
       setManagedUnavailable("list-failed");
-      return;
+      return null;
     }
-    await runCheckApp(endpoint, token, asUser);
+    return await runCheckApp(endpoint, token, asUser);
   }
 
   /**
@@ -711,12 +720,23 @@ export default function Auth() {
     // With `managedOnly` nothing is granted until a managed account is chosen.
     const target = targets.find((c) => c.username === selectedTarget) ?? (managedOnly ? null : targets[0]);
     if (target == null || (managedOnly && target.self)) return;
+    // A failure (or a refusal) once the choice is left brings the person back
+    // to it, with the reason: the signed-in account's own credentials again,
+    // the delegate token dropped.
+    const choices = targets;
+    const backToChoice = () => {
+      setUsername(owner.username);
+      setPersonalToken(owner.token);
+      setApiEndpoint(owner.endpoint);
+      setGrantFor(null);
+      setTargets(choices);
+    };
     setBusy(true);
     setError(null);
     try {
       if (target.self) {
         setTargets(null);
-        await runCheckApp(owner.endpoint, owner.token, owner.username);
+        if ((await runCheckApp(owner.endpoint, owner.token, owner.username)) === "refused") backToChoice();
         return;
       }
       const workspace = await openDelegatedWorkspace(owner.client, target.username);
@@ -726,16 +746,23 @@ export default function Auth() {
       setApiEndpoint(workspace.apiEndpoint);
       setGrantFor(hint);
       setTargets(null);
-      await runCheckApp(workspace.apiEndpoint, workspace.token, workspace.username, hint);
+      if ((await runCheckApp(workspace.apiEndpoint, workspace.token, workspace.username, hint)) === "refused") backToChoice();
     } catch (err: unknown) {
       setError(delegationErrorMessage(err));
+      backToChoice();
     } finally {
       setBusy(false);
     }
   }
 
-  async function runCheckApp(endpoint: string, token: string, asUser?: string, hint?: DelegationHint) {
-    if (!accessState) return;
+  /**
+   * Check the app's access on the account and go on to the consent step, or
+   * hand over an access the app already holds. "refused" when the register
+   * refused that access (the error is set): the caller brings the person back
+   * to where they came from.
+   */
+  async function runCheckApp(endpoint: string, token: string, asUser?: string, hint?: DelegationHint): Promise<CheckOutcome> {
+    if (!accessState) return null;
     // != null (not !== undefined): the poll state carries explicit `null`s
     // for absent fields, and the check-app schema rejects e.g. clientData:null.
     const checkData = {
@@ -766,7 +793,7 @@ export default function Auth() {
           delegated: hint != null,
         });
         setCheck({ ...result, checkedPermissions: result.matchingAccess.permissions ?? [] });
-        return;
+        return null;
       }
       // `token` here is the signed-in personal token (runCheckApp's own param),
       // used to create the hand-off secret; finalizeAccepted skips shape H when
@@ -780,10 +807,12 @@ export default function Auth() {
         // The access is NOT deleted here: it predates this request, so it is
         // not ours to remove.
         setError(consentRefusalMessage(refusal));
+        return "refused";
       }
-      return;
+      return null;
     }
     setCheck(result);
+    return null;
   }
 
   /**

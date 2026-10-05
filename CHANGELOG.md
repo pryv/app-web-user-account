@@ -84,6 +84,12 @@
   console. The redaction reads at most the first 2000 characters, in linear
   time, so an over-long message from a remote platform cannot stall the page;
   a failed accesses listing is logged once, not once per invite.
+- **`/auth`: an error after "Continue for" or "Continue as" shows where the
+  person was.** A check-app failure, or a register refusal of the access the
+  app already holds, after "Continue for" now brings back "who is this for?"
+  with its choices and the reason, on the signed-in account's own credentials
+  (the delegate token dropped), instead of the sign-in form. A register
+  refusal after "Continue as" shows the reason on the Welcome back card.
 
 ## 0.12.0 - 2026-10-04
 
