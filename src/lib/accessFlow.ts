@@ -48,7 +48,7 @@ export interface AppCheck {
 }
 
 export interface AccessState {
-  status?: "NEED_SIGNIN" | "ACCEPTED" | "REFUSED" | "REDIRECTED" | "ERROR";
+  status?: "NEED_SIGNIN" | "ACCEPTED" | "REFUSED" | "ERROR";
   requestingAppId?: string;
   requestedPermissions?: Permission[];
   deviceName?: string;
@@ -63,7 +63,6 @@ export interface AccessState {
   message?: string;
   apiEndpoint?: string;
   username?: string;
-  redirectUrl?: string;
   lang?: string;
   /**
    * The consent form, present only when the app created its request with a
@@ -419,7 +418,6 @@ export function closeOrFallback(fallback?: CloseFallback): void {
  * appended to returnURL (see RETURN_URL_PARAMS):
  *
  *   - CLI mode → the terminal message, nothing else (`next` included).
- *   - REDIRECTED status → follow redirectUrl (multi-core handoff).
  *   - no returnURL, and a `next` hand-off page (accept only) → continue to it
  *     in the same window.
  *   - no returnURL otherwise → close the window; a tab that cannot be closed
@@ -440,16 +438,6 @@ export function closeOrRedirect(
   if (cli) {
     renderCliTerminalMessage();
     return;
-  }
-  if (state.status === "REDIRECTED" && state.redirectUrl) {
-    // Fail closed: only follow a valid http(s) multi-core handoff target. A
-    // non-http(s) scheme (javascript:/data:) would execute in the auth origin.
-    const safe = httpUrlOrNull(state.redirectUrl);
-    if (safe) {
-      window.location.href = safe.href;
-      return;
-    }
-    // Invalid redirectUrl → drop to the normal completion path below.
   }
   const returnURL = state.returnURL;
   if (!returnURL || returnURL === "false") {

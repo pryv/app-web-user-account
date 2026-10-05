@@ -55,6 +55,10 @@
 
 ### Changed
 
+- **`/auth` no longer follows a `REDIRECTED` access state.** The platform
+  stopped producing that status (a multi-core hand-off no page ever used), so
+  `closeOrRedirect` drops the branch that followed its `redirectUrl`, and the
+  `AccessState` type loses the status and the field.
 - **`/auth` after "Create account": no "Welcome back"**
   ([#17](https://github.com/pryv/app-web-user-account/issues/17)). An account
   created from `/auth` in the same window now goes straight on to the request
