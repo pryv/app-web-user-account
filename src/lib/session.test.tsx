@@ -22,7 +22,9 @@ vi.mock("pryv", () => ({
   },
 }));
 
-import { SessionProvider, useSession, storedServiceInfoUrl, type PryvConnection } from "./session";
+import { SessionProvider, type PryvConnection } from "./session";
+import { useSession } from "./useSession";
+import { storedServiceInfoUrl } from "./sessionStore";
 import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 const conn = (apiEndpoint: string) => ({ apiEndpoint, endpoint: apiEndpoint }) as unknown as PryvConnection;

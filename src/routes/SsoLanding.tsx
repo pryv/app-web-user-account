@@ -7,7 +7,8 @@ import { getService } from "../lib/service";
 import { PlatformNotAllowedError } from "../lib/deployedSettings";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
-import { useSession, type PryvConnection } from "../lib/session";
+import { type PryvConnection } from "../lib/session";
+import { useSession } from "../lib/useSession";
 import { parseSsoHash, ssoErrorMessage } from "../lib/ssoLanding";
 import { ssoReturnFromHash, restoreSsoReturn } from "../lib/ssoReturn";
 

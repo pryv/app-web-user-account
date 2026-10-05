@@ -32,7 +32,7 @@
  */
 
 import { httpUrlOrNull } from "./safeRedirect";
-import { safeReturnTo } from "./session";
+import { safeReturnTo } from "./sessionPaths";
 import { HANDOFF_ROUTES } from "./handoffReturn";
 
 /**

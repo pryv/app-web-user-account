@@ -5,7 +5,7 @@ import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-r
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
-import { useSession } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
 
 interface Access {
   id: string;

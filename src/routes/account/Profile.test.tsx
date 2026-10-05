@@ -18,7 +18,7 @@ const state = vi.hoisted(() => {
     options: [{ value: "en", label: "English" }] as Array<{ value: string; label: string }>,
   };
 });
-vi.mock("../../lib/session", () => ({
+vi.mock("../../lib/useSession", () => ({
   useSession: () => ({ connection: state.connection, setConnection: vi.fn() }),
 }));
 vi.mock("../../lib/languages", () => ({

@@ -18,6 +18,7 @@ const flow = vi.hoisted(() => ({
   deleteAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
+  buildAcceptedState: vi.fn(),
 }));
 vi.mock("../lib/accessFlow", () => flow);
 
@@ -140,6 +141,18 @@ describe("[PCS] /auth continue with the stored session", () => {
     fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
     await waitFor(() => expect(instead.disabled).toBe(true));
     expect(flow.checkAppAccess).not.toHaveBeenCalled();
+  });
+
+  it("[PCS7] a register refusal of the access the app already holds: back on the card, with the reason", async () => {
+    flow.checkAppAccess.mockResolvedValue({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.buildAcceptedState.mockImplementation((a: { username: string }) => ({ status: "ACCEPTED", username: a.username }));
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await openAuth();
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/welcome back/i)).toBeTruthy();
+    expect(document.querySelector("input[type=password]")).toBeNull();
+    expect((screen.getByRole("button", { name: /continue as alice/i }) as HTMLButtonElement).disabled).toBe(false);
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
   });
 
   it("[PCS4] a server failure (503) keeps the session", async () => {

@@ -7,7 +7,8 @@ import { Pryv } from "../../lib/pryvClient";
 import { Delegation } from "../../lib/pryvClient";
 import type { DelegateRecord, ControlledRecord } from "../../lib/pryvClient";
 import { Card, Button, Field, Alert, SectionLabel } from "../../components/ui";
-import { useSession, type PryvConnection } from "../../lib/session";
+import { type PryvConnection } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
 import { NO_BACK_TO, inPopupOrFrame, parseBackTo } from "../../lib/backTo";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../../lib/username";
 import {

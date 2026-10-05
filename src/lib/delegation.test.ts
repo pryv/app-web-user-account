@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import Pryv from "pryv";
+import i18n from "../i18n";
 import { DelegationError, errorIds } from "@pryv/delegation";
 import type { DelegateRecord, ControlledRecord } from "@pryv/delegation";
 import {
@@ -158,6 +159,26 @@ describe("formatSince", () => {
   it("formats an epoch-seconds timestamp", () => {
     // 2021-01-01T00:00:00Z in seconds.
     expect(formatSince(1609459200)).not.toBe("");
+  });
+  it("[DFS1] follows the page's language, not the browser's", () => {
+    // This build ships English only, so i18next keeps "en": set the language
+    // a fork with more catalogs would have, the way formatSince reads it.
+    const page = i18n as { language: string };
+    const before = page.language;
+    const date = new Date(1609459200 * 1000);
+    try {
+      for (const lang of ["de", "en-US", "ja"]) {
+        page.language = lang;
+        expect(formatSince(1609459200), lang).toBe(date.toLocaleDateString(lang));
+      }
+      // The three differ, so the language is what decides.
+      expect(new Set(["de", "en-US", "ja"].map((l) => date.toLocaleDateString(l))).size).toBe(3);
+      // A tag the runtime cannot format in: the browser's format, no throw.
+      page.language = "not a tag!";
+      expect(formatSince(1609459200)).toBe(date.toLocaleDateString());
+    } finally {
+      page.language = before;
+    }
   });
 });
 

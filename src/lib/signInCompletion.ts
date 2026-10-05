@@ -27,7 +27,7 @@ import {
   hasPendingAccessRequest,
 } from "./authParams";
 import { handoffReturnPath } from "./handoffReturn";
-import { safeReturnTo, accountPath } from "./session";
+import { safeReturnTo, accountPath } from "./sessionPaths";
 
 /**
  * `path` with its `pryvServiceInfoUrl` set to the platform the user just

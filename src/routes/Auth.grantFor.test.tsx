@@ -288,6 +288,65 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     await screen.findByText(/is requesting permission/);
   });
 
+  it("[AGF12] check-app failing after \"Continue for\" brings the person back to the choice, with the reason", async () => {
+    flow.checkAppAccess.mockRejectedValueOnce(new Error("check-app failed (500)"));
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await screen.findByText("check-app failed (500)");
+    expect(screen.getByText(/access to:/)).toBeTruthy();
+    expect(screen.getAllByRole("radio").length).toBeGreaterThan(1);
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    // Back on the signed-in account's own credentials: the delegate token is gone.
+    (screen.getByDisplayValue("parent") as HTMLInputElement).click();
+    screen.getByRole("button", { name: /continue for parent/i }).click();
+    await screen.findByText(/is requesting permission/);
+    expect(flow.checkAppAccess.mock.calls[1].slice(0, 2)).toEqual(["https://parent.core.test/", "parent-token"]);
+    // The grant itself is written on the parent's account, as the parent, without a delegation hint.
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(flow.createAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://parent.core.test/", "parent-token"]);
+    expect(flow.updateAccessState.mock.calls[0][1].username).toBe("parent");
+    expect(flow.updateAccessState.mock.calls[0][1].delegation).toBeUndefined();
+  });
+
+  it("[AGF13] a register refusal of the access the managed account holds: back to the choice, with the reason", async () => {
+    flow.checkAppAccess.mockResolvedValueOnce({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    screen.getByRole("button", { name: /continue for kid-a/i }).click();
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/access to:/)).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  it("[AGF14] a register refusal of the access the signed-in account holds, after \"Continue for parent\": back to the choice", async () => {
+    flow.checkAppAccess.mockResolvedValueOnce({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await signIn(needSignin({ actAs: "kid-a" }));
+    await screen.findByText(/access to:/);
+    (screen.getByDisplayValue("parent") as HTMLInputElement).click();
+    screen.getByRole("button", { name: /continue for parent/i }).click();
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/access to:/)).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    expect(flow.checkAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://parent.core.test/", "parent-token"]);
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  it("[AGF15] a register refusal right after the sign-in form: the Welcome back card of the session just opened, with the reason", async () => {
+    flow.checkAppAccess.mockResolvedValueOnce({ matchingAccess: { id: "m1", token: "existing", type: "app", permissions: PERMS } });
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "invalid-consent-grant", reason: "mandatory-refused" });
+    await signIn(needSignin({ actAs: "deny" }));
+    await screen.findByText(/permissions this app requires were not granted/i);
+    expect(screen.getByText(/welcome back/i)).toBeTruthy();
+    expect(screen.queryByText("sign-in-stub")).toBeNull();
+    expect(await screen.findByRole("button", { name: /continue as parent/i })).toBeTruthy();
+    expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
   // Cancel and completion hand `closeOrRedirect` the page's way back to the app
   // (`backUrl`) and a callback that shows the complete card, so a tab that
   // cannot be closed does not stay on a dead page.

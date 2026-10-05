@@ -70,6 +70,15 @@
   id in one read; `readOfferScope` stays, built on it. `CmcOfferBlock` takes an
   optional `given` text that replaces its actions. `listGrants` lists an
   account's accesses once for all the invites answered on it.
+- Modules split so the linter's fast-refresh rule passes with no warning
+  (no behaviour change). For code a fork adds (an account tab, a page):
+  `useSession` now comes from `src/lib/useSession.ts`; `signinPath`,
+  `safeReturnTo`, `accountPath` and `HANDOFF_PARAMS` from
+  `src/lib/sessionPaths.ts`; `storedServiceInfoUrl` and
+  `storedParentConnection` from `src/lib/sessionStore.ts`; `parseInline` from
+  `src/lib/markdownParse.ts`. `SessionProvider` and the `PryvConnection` /
+  `ActingAs` types stay in `src/lib/session.tsx` (the extension slots'
+  imports are unchanged), and `src/brand.tsx` keeps both `brand` and `Logo`.
 
 ### Fixed
 
@@ -84,6 +93,18 @@
   console. The redaction reads at most the first 2000 characters, in linear
   time, so an over-long message from a remote platform cannot stall the page;
   a failed accesses listing is logged once, not once per invite.
+- **`/auth`: an error after "Continue for" or "Continue as" shows where the
+  person was.** A check-app failure, or a register refusal of the access the
+  app already holds, after "Continue for" now brings back "who is this for?"
+  with its choices and the reason, on the signed-in account's own credentials
+  (the delegate token dropped), instead of the sign-in form. A register
+  refusal after "Continue as", or right after signing in with the form, shows
+  the reason on the Welcome back card of the session (kept: the person did
+  sign in), so this visit and the next one open on the same card.
+- **Dates follow the page's language.** `formatSince` (the "since" dates of
+  the delegation pages and the "Already given on" date of `/auth`) formats in
+  the i18n language instead of the browser's; a language the runtime cannot
+  format in falls back to the browser's.
 
 ## 0.12.0 - 2026-10-04
 

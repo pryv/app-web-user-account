@@ -16,8 +16,11 @@ const conn = vi.hoisted(() => ({
   api: vi.fn(),
   accessInfo: vi.fn(),
 }));
-vi.mock("../../lib/session", () => ({
+vi.mock("../../lib/useSession", () => ({
   useSession: () => ({ connection: { api: conn.api, accessInfo: conn.accessInfo }, setConnection: vi.fn() }),
+}));
+vi.mock("../../lib/sessionPaths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/sessionPaths")>()),
   signinPath: () => "/signin",
 }));
 vi.mock("../../lib/socket", () => ({ subscribeToAccessChanges: () => () => {} }));

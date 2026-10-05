@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseInline } from "./markdownLite";
+import { parseInline } from "./markdownParse";
 
 describe("parseInline", () => {
   it("parses bold, italic, code and text runs", () => {

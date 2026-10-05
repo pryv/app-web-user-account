@@ -4,7 +4,9 @@ import { useTranslation } from "react-i18next";
 import { tNodes } from "../../components/consent/tNodes";
 import { Card, Field, Alert } from "../../components/ui";
 import { Trash2, Download } from "lucide-react";
-import { useSession, signinPath, storedServiceInfoUrl } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
+import { signinPath } from "../../lib/sessionPaths";
+import { storedServiceInfoUrl } from "../../lib/sessionStore";
 import { parseAuthParams } from "../../lib/authParams";
 
 /**

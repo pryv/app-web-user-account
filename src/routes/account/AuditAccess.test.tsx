@@ -22,8 +22,11 @@ const conn = vi.hoisted(() => {
   c.connection = { api: c.api, accessInfo: c.accessInfo };
   return c;
 });
-vi.mock("../../lib/session", () => ({
+vi.mock("../../lib/useSession", () => ({
   useSession: () => ({ connection: conn.connection, setConnection: vi.fn() }),
+}));
+vi.mock("../../lib/sessionPaths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/sessionPaths")>()),
   signinPath: () => "/signin",
 }));
 vi.mock("../../extensions/AccessExtras", () => ({

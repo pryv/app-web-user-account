@@ -3,7 +3,8 @@ import { LogOut } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { syncLocaleFromAccount } from "../../i18n";
-import { useSession, signinPath } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
+import { signinPath } from "../../lib/sessionPaths";
 import { ACCOUNT_TABS } from "../../accountTabs";
 
 /**
