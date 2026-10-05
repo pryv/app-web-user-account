@@ -9,6 +9,7 @@ import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOffer
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
+import { loggableError } from "../lib/apiError";
 import { useStreamLabels } from "../lib/useConsentDisplay";
 
 /**
@@ -106,7 +107,7 @@ export default function CmcApprove() {
       .readOffer(params.capabilityUrl)
       .then((o: unknown) => setOffer(o as CmcOfferView))
       .catch((err: unknown) => {
-        console.warn("cmc-accept: could not read the offer", err);
+        console.warn("cmc-accept: could not read the offer:", loggableError(err));
         setError({ message: i18n.t(OFFER_UNREADABLE_KEY), tone: "danger" });
       })
       .finally(() => setLoadingOffer(false));

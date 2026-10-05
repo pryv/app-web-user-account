@@ -531,6 +531,39 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(scopeMock.listGrants).toHaveBeenCalledWith("https://parent-token@parent.core.test/");
   });
 
+  it("[ACI27] what is logged when an invite's offer, grants or refusal fail names no token-bearing URL", async () => {
+    cmcMock.readOffer.mockImplementation(async (url: string) => {
+      if (url === CAP_B) throw new Error("cannot read " + CAP_B);
+      return { requester: { username: "doctor", host: "requester.test" }, requestedPermissions: [], mode: "single-use" };
+    });
+    scopeMock.listGrants.mockRejectedValue(
+      Object.assign(new Error("accesses.get failed"), { innerObject: { message: "denied for https://parent-token@parent.core.test/" } }),
+    );
+    cmcMock.refuseInvite.mockRejectedValue(new Error("refusal to " + CAP_A + " failed"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: false, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await screen.findAllByTestId("cmc-invite");
+    await within(blocks[1]).findByText(/could not be read/);
+    await within(blocks[0]).findByTestId("cmc-requester");
+    decide(blocks[0], "Decline");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    const logged = warn.mock.calls;
+    warn.mockRestore();
+    // The offer, the grants and the refusal each said why.
+    expect(logged.length).toBeGreaterThanOrEqual(3);
+    for (const args of logged) {
+      for (const a of args) {
+        expect(typeof a).toBe("string");
+        for (const secret of ["parent-token", "cap-a@", "cap-b@"]) expect(a as string).not.toContain(secret);
+      }
+    }
+  });
+
   it("[ACI9] an unreadable invite can only be declined", async () => {
     cmcMock.readOffer.mockImplementation(async (url: string) => {
       if (url === CAP_B) throw new Error("capability gone");

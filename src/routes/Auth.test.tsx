@@ -209,7 +209,8 @@ describe("[AUCP] /auth consent panel", () => {
   });
 
   it("[AUC7] a shared-secret request falls back to inline when the secret cannot be created", async () => {
-    flow.createHandoffSecret.mockRejectedValue(new Error("create shared secret failed (403)"));
+    flow.createHandoffSecret.mockRejectedValue(new Error("create shared secret failed (403) at https://personal-token@alice.core.test/"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await renderAndSignIn({
       status: "NEED_SIGNIN",
       requestingAppId: "test-app",
@@ -225,6 +226,14 @@ describe("[AUCP] /auth consent panel", () => {
     // Fallback: inline token, no hand-off.
     expect(posted.token).toBe("app-token");
     expect(posted.handoff).toBeUndefined();
+    // The fallback is logged as text, without the token-bearing endpoint.
+    const logged = warn.mock.calls.flat();
+    warn.mockRestore();
+    expect(logged.length).toBeGreaterThan(0);
+    for (const a of logged) {
+      expect(typeof a).toBe("string");
+      expect(a as string).not.toContain("personal-token");
+    }
   });
 
   it("[AUC8] the already-authorized reuse path also hands the credential off (not a stale-null token)", async () => {

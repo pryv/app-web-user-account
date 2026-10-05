@@ -49,6 +49,7 @@ import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage, formatSince } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
+import { loggableError } from "../lib/apiError";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
@@ -405,7 +406,7 @@ export default function Auth() {
       try {
         return givenConsentOf(await listing, offerEventId);
       } catch (err: unknown) {
-        console.warn("auth: could not check whether a consent invite was already given", err);
+        console.warn("auth: could not check whether a consent invite was already given:", loggableError(err));
         return null;
       }
     };
@@ -426,7 +427,7 @@ export default function Auth() {
           });
         })
         .catch((err: unknown) => {
-          console.warn("auth: could not read a consent invite's offer", err);
+          console.warn("auth: could not read a consent invite's offer:", loggableError(err));
           settle(i, { offer: null, loading: false, error: t(OFFER_UNREADABLE_KEY), scope: null, given: null });
         });
     });
@@ -827,7 +828,7 @@ export default function Auth() {
       } catch (e) {
         // Fall back to inline delivery, but leave a trace: a create that keeps
         // failing (e.g. shared secrets disabled) is worth seeing in the console.
-        console.warn("credential hand-off secret creation failed; delivering inline", e);
+        console.warn("credential hand-off secret creation failed; delivering inline:", loggableError(e));
         handoffKey = null;
       }
     }
@@ -940,7 +941,7 @@ export default function Auth() {
         const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
         await cmc.refuseInvite(conn, invites[i].capabilityUrl, { scopeStreamId: scope });
       } catch (err: unknown) {
-        console.warn("auth: could not send a consent invite's refusal", err);
+        console.warn("auth: could not send a consent invite's refusal:", loggableError(err));
       }
     }
   }

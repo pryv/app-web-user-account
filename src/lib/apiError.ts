@@ -25,6 +25,27 @@ export function platformError(err: unknown, fallback: string): PlatformError {
   return { id, message };
 }
 
+/**
+ * A one-line description of an error, safe to log: its platform id and
+ * message (as `platformError` reads them), with anything that looks like a URL
+ * or a `token@host` part replaced. Log this, never the error object itself:
+ * its fields (or a message from an older client) may carry a token-bearing
+ * endpoint or capability URL.
+ */
+export function loggableError(err: unknown): string {
+  const { id, message } = platformError(err, typeof err === "string" ? err : "unknown error");
+  const text = redactUrls(message);
+  return id != null ? redactUrls(id) + ": " + text : text;
+}
+
+/** `text` with URLs and `userinfo@host` parts replaced, cut at 300 characters. */
+export function redactUrls(text: string): string {
+  return text
+    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]*/gi, "<url>")
+    .replace(/[^\s"'<>@/:]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+[^\s"'<>]*/gi, "<redacted>")
+    .slice(0, 300);
+}
+
 function field(value: unknown, key: string): unknown {
   return value != null && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
 }

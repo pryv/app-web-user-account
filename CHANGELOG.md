@@ -76,6 +76,12 @@
 - **`/auth`: no sign-in form while "Continue as" or "Continue for" runs.**
   Until check-app answered, the page fell back to the sign-in form (disabled,
   its links still active); it now shows a "Checking…" card.
+- **Console warnings no longer log raw error objects.** `/auth` and
+  `/cmc-accept` log a failed offer read, grant check, refusal or hand-off
+  secret as one line (the platform error id and message, through
+  `loggableError` in `src/lib/apiError.ts`), with URLs and `token@host` parts
+  redacted, so a token-bearing endpoint or capability URL never reaches the
+  console.
 
 ## 0.12.0 - 2026-10-04
 

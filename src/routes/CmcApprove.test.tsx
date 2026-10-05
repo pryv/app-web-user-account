@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 /**
@@ -47,6 +47,22 @@ describe("[CMRQ] /cmc-accept requester identity", () => {
     const who = await screen.findByTestId("cmc-requester");
     expect(who.textContent).toBe("mallory@requester.test");
     expect(screen.getByText(/calls itself/).textContent).toContain("Your Bank");
+  });
+
+  it("[CMR3] an offer that cannot be read is logged without the capability URL", async () => {
+    cmcMock.readOffer.mockRejectedValue(new Error("cannot read https://cap@requester.test/"));
+    localStorage.setItem("pryv.session.apiEndpoint", "https://tok@alice.core.test/");
+    localStorage.setItem("pryv.session.serviceInfoUrl", "https://core.test/reg/service/info");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderAt();
+    await waitFor(() => expect(warn).toHaveBeenCalled());
+    const logged = warn.mock.calls.flat();
+    warn.mockRestore();
+    expect(logged.length).toBeGreaterThan(0);
+    for (const a of logged) {
+      expect(typeof a).toBe("string");
+      expect(a as string).not.toContain("cap@");
+    }
   });
 
   it("[CMR2] without a verified account, never presents the self-asserted name as the requester", async () => {
