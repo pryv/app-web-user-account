@@ -191,10 +191,19 @@ export function statusLabel(status: RelationshipStatus | string): string {
   }
 }
 
-/** Format a Pryv epoch-seconds timestamp as a short local date, or "" when absent. */
+/**
+ * Format a Pryv epoch-seconds timestamp as a short date in the page's language
+ * (the i18n one, not the browser's), or "" when absent. A language the
+ * runtime cannot format in falls back to the browser's.
+ */
 export function formatSince(ts?: number | null): string {
   if (ts == null || !Number.isFinite(ts)) return "";
-  return new Date(ts * 1000).toLocaleDateString();
+  const date = new Date(ts * 1000);
+  try {
+    return date.toLocaleDateString(i18n.language || undefined);
+  } catch {
+    return date.toLocaleDateString();
+  }
 }
 
 /** View-model for a "My delegates" (B-side) row. */

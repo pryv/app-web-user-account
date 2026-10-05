@@ -90,6 +90,10 @@
   with its choices and the reason, on the signed-in account's own credentials
   (the delegate token dropped), instead of the sign-in form. A register
   refusal after "Continue as" shows the reason on the Welcome back card.
+- **Dates follow the page's language.** `formatSince` (the "since" dates of
+  the delegation pages and the "Already given on" date of `/auth`) formats in
+  the i18n language instead of the browser's; a language the runtime cannot
+  format in falls back to the browser's.
 
 ## 0.12.0 - 2026-10-04
 
