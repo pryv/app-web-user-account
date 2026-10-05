@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { tNodes } from "./consent/tNodes";
-import { useSession } from "../lib/session";
+import { useSession } from "../lib/useSession";
 
 /** The `delegation` field of `access-info` for an access acting on a controlled account. */
 interface AccessInfoDelegation {

@@ -7,7 +7,8 @@ import { getLegalSettings } from "../lib/deployedSettings";
 import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
 import { signedInTarget, registeredState } from "../lib/signInCompletion";
-import { useSession, type PryvConnection } from "../lib/session";
+import { type PryvConnection } from "../lib/session";
+import { useSession } from "../lib/useSession";
 import { brand } from "../brand";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../lib/username";
 import {

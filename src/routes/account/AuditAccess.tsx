@@ -4,7 +4,8 @@ import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, XCircle } from "lucide
 import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
-import { useSession, signinPath } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
+import { signinPath } from "../../lib/sessionPaths";
 import {
   buildAuditGetParams,
   auditAction,

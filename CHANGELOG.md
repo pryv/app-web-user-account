@@ -70,6 +70,15 @@
   id in one read; `readOfferScope` stays, built on it. `CmcOfferBlock` takes an
   optional `given` text that replaces its actions. `listGrants` lists an
   account's accesses once for all the invites answered on it.
+- Modules split so the linter's fast-refresh rule passes with no warning
+  (no behaviour change). For code a fork adds (an account tab, a page):
+  `useSession` now comes from `src/lib/useSession.ts`; `signinPath`,
+  `safeReturnTo`, `accountPath` and `HANDOFF_PARAMS` from
+  `src/lib/sessionPaths.ts`; `storedServiceInfoUrl` and
+  `storedParentConnection` from `src/lib/sessionStore.ts`; `parseInline` from
+  `src/lib/markdownParse.ts`. `SessionProvider` and the `PryvConnection` /
+  `ActingAs` types stay in `src/lib/session.tsx` (the extension slots'
+  imports are unchanged), and `src/brand.tsx` keeps both `brand` and `Logo`.
 
 ### Fixed
 

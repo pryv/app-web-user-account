@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { useSession, signinPath } from "../lib/session";
+import { useSession } from "../lib/useSession";
+import { signinPath } from "../lib/sessionPaths";
 
 /**
  * Subject-side password change. Calls `account.changePassword` on the user's

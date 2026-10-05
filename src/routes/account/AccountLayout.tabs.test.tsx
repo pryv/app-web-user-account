@@ -8,8 +8,11 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
  * with the current query string carried on every link.
  */
 
-vi.mock("../../lib/session", () => ({
+vi.mock("../../lib/useSession", () => ({
   useSession: () => ({ connection: { api: vi.fn() }, setConnection: vi.fn() }),
+}));
+vi.mock("../../lib/sessionPaths", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/sessionPaths")>()),
   signinPath: () => "/signin",
 }));
 vi.mock("../../accountTabs", () => ({

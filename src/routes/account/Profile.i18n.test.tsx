@@ -17,7 +17,7 @@ const state = vi.hoisted(() => {
     sync: vi.fn(),
   };
 });
-vi.mock("../../lib/session", () => ({
+vi.mock("../../lib/useSession", () => ({
   useSession: () => ({ connection: state.connection, setConnection: vi.fn() }),
 }));
 vi.mock("../../lib/languages", () => ({

@@ -5,7 +5,8 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
-import { useSession, type PryvConnection } from "../lib/session";
+import { type PryvConnection } from "../lib/session";
+import { useSession } from "../lib/useSession";
 import {
   fetchSsoProviders,
   coreOriginFromApiEndpoint,

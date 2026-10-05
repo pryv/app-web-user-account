@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Trans, useTranslation } from "react-i18next";
 import { RefreshCw, ScrollText } from "lucide-react";
 import { Card, Button, Alert } from "../../components/ui";
-import { useSession } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
 import { subscribeToAccessChanges } from "../../lib/socket";
 import { delegationManagedKind, managedKindLabel } from "../../lib/delegation";
 

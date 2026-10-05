@@ -36,7 +36,9 @@ import {
   withRequestedNames,
   type OfferPermission,
 } from "../lib/consent";
-import { useSession, storedServiceInfoUrl, storedParentConnection, type PryvConnection } from "../lib/session";
+import { type PryvConnection } from "../lib/session";
+import { useSession } from "../lib/useSession";
+import { storedServiceInfoUrl, storedParentConnection } from "../lib/sessionStore";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { chainedHandoffPath } from "../lib/handoffReturn";

@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("pryv", () => ({ default: { Service: class {}, Connection: class {} } }));
 
-import { safeReturnTo, signinPath, accountPath } from "./session";
+import { safeReturnTo, signinPath, accountPath } from "./sessionPaths";
 import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 const SI = "https://core.test/reg/service/info";

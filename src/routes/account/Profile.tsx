@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Pencil, Plus, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert, SelectField } from "../../components/ui";
-import { useSession } from "../../lib/session";
+import { useSession } from "../../lib/useSession";
 import { emailBadge, verificationOnAccount, type EmailView } from "../../lib/emailVerification";
 import { LANGUAGE_OPTIONS } from "../../lib/languages";
 import ProfileExtensions from "../../extensions/ProfileExtensions";
