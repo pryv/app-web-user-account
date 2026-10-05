@@ -1433,12 +1433,16 @@ export default function Auth() {
     );
   }
 
-  // Continuing with the account just created in this window: no card.
-  if (autoContinue !== "off") {
+  // Continuing with the account just created in this window: no card. And
+  // while a signed-in continue runs ("Continue as", "Continue for"), the
+  // request is being checked: not the sign-in form, which the page would
+  // otherwise fall back to until check-app answers.
+  const continuing = busy && personalToken != null;
+  if (autoContinue !== "off" || continuing) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
-        <p className="text-sm text-muted">{t("consent.loading")}</p>
+        <p className="text-sm text-muted">{t(continuing ? "consent.checking" : "consent.loading")}</p>
       </Card>
     );
   }

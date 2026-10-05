@@ -68,7 +68,14 @@
   the same names as a new one. Display only: the access is unchanged.
 - `readOfferRef` in `src/lib/cmcInvites.ts` returns an offer's scope and event
   id in one read; `readOfferScope` stays, built on it. `CmcOfferBlock` takes an
-  optional `given` text that replaces its actions.
+  optional `given` text that replaces its actions. `listGrants` lists an
+  account's accesses once for all the invites answered on it.
+
+### Fixed
+
+- **`/auth`: no sign-in form while "Continue as" or "Continue for" runs.**
+  Until check-app answered, the page fell back to the sign-in form (disabled,
+  its links still active); it now shows a "Checking…" card.
 
 ## 0.12.0 - 2026-10-04
 
