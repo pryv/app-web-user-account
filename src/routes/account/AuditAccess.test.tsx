@@ -86,6 +86,15 @@ describe("[AXSP] access details extension slot", () => {
     );
   });
 
+  it("[AXS4] dates read with the month written out, never all-numeric", async () => {
+    const oct5 = Date.UTC(2026, 9, 5, 12) / 1000;
+    conn.accesses = [{ ...ACCESSES[0], created: oct5 }, ACCESSES[1]];
+    renderPage("app-1");
+    await screen.findByTestId("access-ext");
+    const created = screen.getByText(/Oct 5, 2026/);
+    expect(created.textContent).not.toMatch(/\b10\/5\/2026\b/);
+  });
+
   it("[AXS3] does not mount while the access is not loaded, nor when it is not listed", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {

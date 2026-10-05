@@ -169,13 +169,13 @@ describe("formatSince", () => {
     try {
       for (const lang of ["de", "en-US", "ja"]) {
         page.language = lang;
-        expect(formatSince(1609459200), lang).toBe(date.toLocaleDateString(lang));
+        expect(formatSince(1609459200), lang).toBe(date.toLocaleDateString(lang, { day: "numeric", month: "short", year: "numeric" }));
       }
       // The three differ, so the language is what decides.
-      expect(new Set(["de", "en-US", "ja"].map((l) => date.toLocaleDateString(l))).size).toBe(3);
+      expect(new Set(["de", "en-US", "ja"].map((l) => date.toLocaleDateString(l, { day: "numeric", month: "short", year: "numeric" }))).size).toBe(3);
       // A tag the runtime cannot format in: the browser's format, no throw.
       page.language = "not a tag!";
-      expect(formatSince(1609459200)).toBe(date.toLocaleDateString());
+      expect(formatSince(1609459200)).toBe(date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }));
     } finally {
       page.language = before;
     }
