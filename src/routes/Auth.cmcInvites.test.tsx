@@ -366,6 +366,70 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(flow.updateAccessState).toHaveBeenCalledTimes(1);
   });
 
+  it("[ACI29] a mandatory invite created by the signed-in account: named, and no switch account promised", async () => {
+    cmcMock.acceptInvite.mockRejectedValue(
+      Object.assign(new Error("CMC accept failed: cmc-self-accept-forbidden"), { id: "cmc-self-accept-forbidden" }),
+    );
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("REFUSED");
+    expect(String(posted().message)).toContain("cmc-self-accept-forbidden");
+    const shown = await screen.findByText(/This invitation was created by this account/);
+    expect(shown.textContent).toBe(
+      "A required consent invite could not be accepted (This invitation was created by this account (parent); it must be approved by the person it was sent to, from their own account.). The request was refused and the app was given no access.",
+    );
+    expect(shown.textContent).not.toMatch(/switch account/i);
+  });
+
+  it("[ACI30] granting for a managed account: a refused invite names the account that answered it", async () => {
+    const cases: Array<[forWhom: "target" | "self", answering: string, other: string]> = [
+      ["target", "kid-a", "parent"],
+      ["self", "parent", "kid-a"],
+    ];
+    for (const [forWhom, answering, other] of cases) {
+      // Each pass starts signed out (the stub's sign-in is kept as the session).
+      cleanup();
+      localStorage.clear();
+      flow.updateAccessState.mockClear();
+      deleg.serviceInfo = { features: { delegation: true } };
+      deleg.listControlled.mockResolvedValue([
+        { relId: "r1", controlled: { username: "kid-a", hostSlug: "core-b" }, status: "active", requestedAt: 1 },
+      ]);
+      deleg.getToken.mockResolvedValue({ token: PAT, apiEndpoint: "https://kid-a.core.test/" });
+      cmcMock.acceptInvite.mockRejectedValue(
+        Object.assign(new Error("CMC accept failed: cmc-self-accept-forbidden"), { id: "cmc-self-accept-forbidden" }),
+      );
+      flow.loadAccessState.mockResolvedValue(
+        needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: forWhom }], { actAs: "allow", actAsManagedOnly: true }),
+      );
+      render(
+        <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+          <SessionProvider>
+            <Auth />
+          </SessionProvider>
+        </MemoryRouter>,
+      );
+      (await screen.findByText("sign-in-stub")).click();
+      await screen.findByText(/access to:/);
+      (screen.getByDisplayValue("kid-a") as HTMLInputElement).click();
+      (await screen.findByRole("button", { name: /continue for kid-a/i })).click();
+      await screen.findByText(/is requesting permission/);
+      const [block] = await inviteBlocks(1);
+      decide(block, "Approve");
+      await waitFor(() => expect(continueButton().disabled).toBe(false));
+      continueButton().click();
+      await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+      expect(posted().status).toBe("REFUSED");
+      const shown = await screen.findByText(/This invitation was created by this account/);
+      expect(shown.textContent).toContain(`created by this account (${answering});`);
+      expect(shown.textContent).not.toContain(`(${other})`);
+    }
+  });
+
   it("[ACI11] an optional accept that fails is reported, and the grant proceeds", async () => {
     cmcMock.acceptInvite.mockImplementation(async (_conn: unknown, url: string) => {
       if (url === CAP_B) throw Object.assign(new Error("CMC accept failed"), { id: "cmc-capability-invalidated" });

@@ -13,6 +13,8 @@ import { consentEntries, pickText, type LocalizableText, type OfferPermission } 
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { answeredRequestMessage, scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
 import { signInLinkFor } from "../lib/handoffReturn";
+import { useApprovingAccount } from "../lib/useApprovingAccount";
+import { ApprovingAccountBlocked, ApprovingAccountLine } from "../components/consent/ApprovingAccount";
 
 interface ScopeUpdateParams {
   scopeRequestEventId: string | null;
@@ -74,6 +76,13 @@ function deliverResult(
  * The scope-request event lives on the user's own account (collector
  * stream), so the proposed `newPermissions` are read with the session and
  * rendered with the shared consent kit before the user decides.
+ *
+ * Like `/cmc-accept`, the page answers with the session this browser holds,
+ * which is not necessarily the person the request was meant for: it names the
+ * account that answers above Approve / Decline, with "Not you? Switch
+ * account", and offers neither until that account is known. When the calling
+ * app names the account it expects (`username=`) and the session is another
+ * one, it asks to switch account instead.
  */
 export default function CmcScopeUpdate() {
   const { t } = useTranslation();
@@ -92,6 +101,7 @@ export default function CmcScopeUpdate() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
+  const who = useApprovingAccount("/cmc-scope-update");
 
   // Load the scope-request event to show WHAT the collector proposes —
   // the user should never approve an unseen permission set.
@@ -161,7 +171,7 @@ export default function CmcScopeUpdate() {
   }
 
   async function accept() {
-    if (!connection || !params.scopeRequestEventId) return;
+    if (!connection || !params.scopeRequestEventId || !who.mayAnswer) return;
     setWorking("accept");
     setError(null);
     try {
@@ -186,7 +196,7 @@ export default function CmcScopeUpdate() {
   }
 
   async function refuse() {
-    if (!connection || !params.scopeRequestEventId) return;
+    if (!connection || !params.scopeRequestEventId || !who.mayAnswer) return;
     setWorking("refuse");
     setError(null);
     try {
@@ -247,14 +257,22 @@ export default function CmcScopeUpdate() {
       <div className="mb-4 rounded bg-body p-3 text-xs break-all text-muted">
         {t("cmc.requestIdLabel")} {params.scopeRequestEventId}
       </div>
-      <ConsentActions
-        busy={working}
-        disabled={!proposal || proposal.answered != null}
-        acceptLabel={t("cmc.approve")}
-        refuseLabel={t("cmc.decline")}
-        onAccept={() => void accept()}
-        onRefuse={() => void refuse()}
-      />
+      {/* Who answers, only while there is something to answer: not on a request
+          already answered, nor one that could not be read (the switch block
+          still shows then: another account is the likely way to read it). */}
+      {!loadError && proposal?.answered == null && <ApprovingAccountLine who={who} disabled={working !== null} />}
+      {who.blocked && proposal?.answered == null ? (
+        <ApprovingAccountBlocked who={who} />
+      ) : (
+        <ConsentActions
+          busy={working}
+          disabled={!proposal || proposal.answered != null || !who.mayAnswer}
+          acceptLabel={t("cmc.approve")}
+          refuseLabel={t("cmc.decline")}
+          onAccept={() => void accept()}
+          onRefuse={() => void refuse()}
+        />
+      )}
     </Card>
   );
 }

@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
-import { CmcError } from "@pryv/cmc";
 
 /**
- * [CMRS] /cmc-accept: the account that answers. Nothing in the link binds an
- * open-link invite to a person, so the page names the signed-in account above
- * Approve / Decline with a way to switch, offers neither until that account is
- * known, and, when the calling app names the account it expects (`username=`)
- * and the session is another one, asks to switch account instead.
+ * [SUAS] /cmc-scope-update: the account that answers. The page answers with
+ * the session this browser holds, so, as /cmc-accept, it names the signed-in
+ * account above Approve / Decline with a way to switch, offers neither until
+ * that account is known, and, when the calling app names the account it
+ * expects (`username=`) and the session is another one, asks to switch
+ * account instead.
  */
 
 /** When set, answers `username()` in place of the endpoint's host label. */
 const lookup = vi.hoisted(() => ({ impl: null as null | (() => Promise<string>) }));
+
+/** The scope request as `events.getOne` returns it (a result row). */
+const PENDING_REQUEST = { event: { content: { newPermissions: [{ streamId: "diary", level: "read" }], message: "More, please." } } };
+const request = vi.hoisted(() => ({ row: null as null | Record<string, unknown> }));
 
 vi.mock("pryv", () => ({
   default: {
@@ -32,23 +36,22 @@ vi.mock("pryv", () => ({
         return name;
       }
       async api() {
-        return [{}];
+        return [request.row ?? PENDING_REQUEST];
       }
     },
   },
 }));
 
-const cmcMock = vi.hoisted(() => ({ readOffer: vi.fn(), acceptInvite: vi.fn() }));
+const cmcMock = vi.hoisted(() => ({ acceptScopeUpdate: vi.fn(), refuseScopeUpdate: vi.fn() }));
 vi.mock("../lib/pryvClient", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/pryvClient")>();
   return { ...actual, cmc: { ...actual.cmc, ...cmcMock } };
 });
 
-import CmcApprove from "./CmcApprove";
+import CmcScopeUpdate from "./CmcScopeUpdate";
 import { SessionProvider } from "../lib/session";
 
 const SERVICE_INFO_URL = "https://core.test/reg/service/info";
-const CAPABILITY = "https://cap@requester.test/";
 
 function signedIn(api = "https://tok@alice.core.test/") {
   localStorage.setItem("pryv.session.apiEndpoint", api);
@@ -62,12 +65,12 @@ function SignInProbe() {
 }
 
 function renderPage(extra: Record<string, string> = {}) {
-  const q = new URLSearchParams({ capabilityUrl: CAPABILITY, scopeStreamId: "s1", ...extra });
+  const q = new URLSearchParams({ scopeRequestEventId: "req-1", scopeStreamId: "s1", ...extra });
   render(
-    <MemoryRouter initialEntries={[`/cmc-accept?${q.toString()}`]}>
+    <MemoryRouter initialEntries={[`/cmc-scope-update?${q.toString()}`]}>
       <SessionProvider>
         <Routes>
-          <Route path="/cmc-accept" element={<CmcApprove />} />
+          <Route path="/cmc-scope-update" element={<CmcScopeUpdate />} />
           <Route path="/signin" element={<SignInProbe />} />
         </Routes>
       </SessionProvider>
@@ -75,12 +78,9 @@ function renderPage(extra: Record<string, string> = {}) {
   );
 }
 
-function offer() {
-  cmcMock.readOffer.mockResolvedValue({
-    requester: { username: "bob", host: "requester.test" },
-    requestedPermissions: [{ streamId: "diary", level: "read" }],
-    mode: "open",
-  });
+/** The proposal is read: the page is ready to answer. */
+async function proposalShown() {
+  await screen.findByText("More, please.");
 }
 
 /** The /signin target the page navigated to, as query params. */
@@ -91,35 +91,38 @@ async function signInTarget(): Promise<URLSearchParams> {
   return new URLSearchParams(target.slice("/signin".length));
 }
 
-describe("[CMRS] /cmc-accept names the account that answers", () => {
+const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+
+describe("[SUAS] /cmc-scope-update names the account that answers", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
     lookup.impl = null;
+    request.row = null;
     localStorage.clear();
-    cmcMock.readOffer.mockReset();
-    cmcMock.acceptInvite.mockReset();
+    cmcMock.acceptScopeUpdate.mockReset();
+    cmcMock.refuseScopeUpdate.mockReset();
   });
 
-  it("[CMS1] states the signed-in account above Approve, with a way to switch", async () => {
+  it("[SUA1] states the signed-in account above Approve, with a way to switch", async () => {
     signedIn();
-    offer();
     renderPage();
+    await proposalShown();
     const line = await screen.findByTestId("cmc-approving-as");
     expect(line.textContent).toContain("You are approving as alice.");
     expect(line.querySelector("strong")?.textContent).toBe("alice");
-    expect(screen.getByRole("button", { name: "Not you? Switch account" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(button("Not you? Switch account")).toBeTruthy();
+    expect(button("Approve").disabled).toBe(false);
+    expect(button("Decline").disabled).toBe(false);
   });
 
-  it("[CMS2] Switch account signs out and returns to the same request after sign-in", async () => {
+  it("[SUA2] Switch account signs out and returns to the same request after sign-in", async () => {
     signedIn();
-    offer();
     renderPage({ mode: "popup", returnUrl: "https://app.test/" });
     fireEvent.click(await screen.findByRole("button", { name: "Not you? Switch account" }));
     const target = await signInTarget();
-    expect(target.get("next")).toBe("/cmc-accept");
-    expect(target.get("capabilityUrl")).toBe(CAPABILITY);
+    expect(target.get("next")).toBe("/cmc-scope-update");
+    expect(target.get("scopeRequestEventId")).toBe("req-1");
     expect(target.get("scopeStreamId")).toBe("s1");
     expect(target.get("mode")).toBe("popup");
     expect(target.get("returnUrl")).toBe("https://app.test/");
@@ -128,9 +131,8 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     expect(localStorage.getItem("pryv.session.apiEndpoint")).toBeNull();
   });
 
-  it("[CMS3] another account than the one the app expects: asks to switch, offers no Approve", async () => {
+  it("[SUA3] another account than the one the app expects: asks to switch, offers no Approve", async () => {
     signedIn();
-    offer();
     renderPage({ username: "carol" });
     const block = await screen.findByTestId("cmc-switch-account");
     expect(block.textContent).toContain("This request is for carol, but you are signed in as alice.");
@@ -141,31 +143,30 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     const target = await signInTarget();
     // The sign-in form is pre-filled with the expected account.
     expect(target.get("username")).toBe("carol");
-    expect(target.get("next")).toBe("/cmc-accept");
+    expect(target.get("next")).toBe("/cmc-scope-update");
     expect(localStorage.getItem("pryv.session.apiEndpoint")).toBeNull();
   });
 
-  it("[CMS4] the expected account, in any case: Approve is offered", async () => {
+  it("[SUA4] the expected account, in any case: Approve is offered", async () => {
     signedIn();
-    offer();
     renderPage({ username: "Alice" });
+    await proposalShown();
     await screen.findByTestId("cmc-approving-as");
     expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(button("Approve").disabled).toBe(false);
   });
 
-  it("[CMS5] an email hint is not compared with the account", async () => {
+  it("[SUA5] an email hint is not compared with the account", async () => {
     signedIn();
-    offer();
     renderPage({ username: "carol@example.test" });
+    await proposalShown();
     await screen.findByTestId("cmc-approving-as");
     expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(button("Approve").disabled).toBe(false);
   });
 
-  it("[CMS6] the signed-in account cannot be read: no Approve, sign in again instead", async () => {
+  it("[SUA6] the signed-in account cannot be read: no Approve, sign in again instead", async () => {
     signedIn("https://tok@unreachable.core.test/");
-    offer();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     renderPage();
     const block = await screen.findByTestId("cmc-switch-account");
@@ -175,29 +176,28 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
   });
 
-  it("[CMS8] while the account is looked up: Approve / Decline shown but disabled, then enabled", async () => {
+  it("[SUA7] while the account is looked up: Approve / Decline shown but disabled, then enabled", async () => {
     signedIn();
-    offer();
     let resolve: (name: string) => void = () => {};
     lookup.impl = () => new Promise<string>((r) => (resolve = r));
     renderPage();
+    await proposalShown();
     expect((await screen.findByTestId("cmc-checking-account")).textContent).toBe("Checking the signed-in account…");
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(button("Approve").disabled).toBe(true);
+    expect(button("Decline").disabled).toBe(true);
     expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(cmcMock.acceptInvite).not.toHaveBeenCalled();
+    fireEvent.click(button("Approve"));
+    expect(cmcMock.acceptScopeUpdate).not.toHaveBeenCalled();
     await act(async () => resolve("alice"));
     expect((await screen.findByTestId("cmc-approving-as")).textContent).toContain("alice");
     expect(screen.queryByTestId("cmc-checking-account")).toBeNull();
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(button("Approve").disabled).toBe(false);
+    expect(button("Decline").disabled).toBe(false);
   });
 
-  it("[CMS9] a lookup that does not answer in time: sign in again, a late name changes nothing", async () => {
+  it("[SUA8] a lookup that does not answer in time: sign in again, a late name changes nothing", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     signedIn();
-    offer();
     let resolve: (name: string) => void = () => {};
     lookup.impl = () => new Promise<string>((r) => (resolve = r));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -215,54 +215,59 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     expect(screen.getByTestId("cmc-switch-account")).toBeTruthy();
   });
 
-  it("[CMS10] a username= that cannot name an account is not compared nor shown", async () => {
+  it("[SUA9] a username= that cannot name an account is not compared nor shown", async () => {
     signedIn();
-    offer();
     const crafted = "call 0800 000 000 to unlock your account";
     renderPage({ username: crafted });
     await screen.findByTestId("cmc-approving-as");
     expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
     expect(document.body.textContent).not.toContain("0800");
-    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
     cleanup();
     renderPage({ username: "a".repeat(61) });
     await screen.findByTestId("cmc-approving-as");
     expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
   });
 
-  it("[CMS11] an invite created by the signed-in account: says so, offers Switch account instead of Approve", async () => {
+  it("[SUA10] Approve answers with the session the page named", async () => {
     signedIn();
-    offer();
-    cmcMock.acceptInvite.mockRejectedValue(new CmcError("CMC accept failed: cmc-self-accept-forbidden", "cmc-self-accept-forbidden"));
+    cmcMock.acceptScopeUpdate.mockResolvedValue({ updateAcceptEventId: "evt-1", peerNotified: true });
     renderPage();
+    await proposalShown();
     await screen.findByTestId("cmc-approving-as");
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    expect(
-      await screen.findByText(
-        "This invitation was created by this account (alice); it must be approved by the person it was sent to. If that is you on another account, switch account.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByText(/could not approve/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
-    // One way forward, not two: the "Not you?" line gives way to the button.
-    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
-    fireEvent.click(within(screen.getByTestId("cmc-switch-account")).getByRole("button", { name: "Switch account" }));
-    const target = await signInTarget();
-    expect(target.get("next")).toBe("/cmc-accept");
-    expect(target.get("capabilityUrl")).toBe(CAPABILITY);
-    expect(localStorage.getItem("pryv.session.apiEndpoint")).toBeNull();
+    fireEvent.click(button("Approve"));
+    await screen.findByText("Scope update approved");
+    const [conn, id] = cmcMock.acceptScopeUpdate.mock.calls[0] as [{ apiEndpoint: string }, string];
+    expect(conn.apiEndpoint).toBe("https://tok@alice.core.test/");
+    expect(id).toBe("req-1");
   });
 
-  it("[CMS7] Approve answers with the session the page named", async () => {
+  it("[SUA11] a request already answered: no account line, no switch, nothing to approve", async () => {
     signedIn();
-    offer();
-    cmcMock.acceptInvite.mockResolvedValue({ acceptEventId: "evt-1" });
+    request.row = { event: { content: { ...PENDING_REQUEST.event.content, status: "accepted" } } };
+    renderPage({ username: "carol" });
+    await screen.findByText("You have already answered this request. It was approved.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByTestId("cmc-checking-account")).toBeNull();
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+    expect(button("Approve").disabled).toBe(true);
+    cleanup();
     renderPage();
-    await screen.findByTestId("cmc-approving-as");
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    await screen.findByText("Request approved");
-    const [conn] = cmcMock.acceptInvite.mock.calls[0] as [{ apiEndpoint: string }];
-    expect(conn.apiEndpoint).toBe("https://tok@alice.core.test/");
+    await screen.findByText("You have already answered this request. It was approved.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Not you? Switch account" })).toBeNull();
+  });
+
+  it("[SUA12] a request that cannot be read: no account line; another expected account still offers the switch", async () => {
+    signedIn();
+    request.row = { error: { id: "unknown-resource", message: "Unknown event" } };
+    renderPage();
+    await screen.findByText(/could not be found on your account/);
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+    cleanup();
+    renderPage({ username: "carol" });
+    const block = await screen.findByTestId("cmc-switch-account");
+    expect(block.textContent).toContain("This request is for carol, but you are signed in as alice.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
   });
 });
