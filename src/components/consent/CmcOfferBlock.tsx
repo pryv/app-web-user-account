@@ -46,6 +46,8 @@ export interface CmcOfferBlockProps {
    * (there is nothing to decide).
    */
   given?: string | null;
+  /** Rendered after the permissions, before the actions (e.g. the account has no email address). */
+  notice?: ReactNode;
 }
 
 /**
@@ -72,6 +74,7 @@ export function CmcOfferBlock({
   onChange,
   heading,
   given = null,
+  notice,
 }: CmcOfferBlockProps) {
   const { t } = useTranslation();
   return (
@@ -99,6 +102,7 @@ export function CmcOfferBlock({
             <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
           )}
           <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
+          {notice}
         </>
       )}
       {given != null ? (
