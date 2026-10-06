@@ -65,6 +65,23 @@ export function coreOriginFromApiEndpoint(apiEndpoint: string): string {
   return new URL(apiEndpoint).origin;
 }
 
+/**
+ * Whether third-party sign-in can exist on a platform with this `api`
+ * template. SSO is dnsLess only, so a template that puts the username in the
+ * host (`https://{username}.api.example.com/`) rules it out, and probing would
+ * only look up a placeholder host that never resolves. A missing or unreadable
+ * template does not rule it out (the probe is best effort).
+ */
+export function ssoPossibleForApi(apiTemplate: unknown): boolean {
+  if (typeof apiTemplate !== "string") return true;
+  const marker = "username-placeholder";
+  try {
+    return !new URL(apiTemplate.split("{username}").join(marker)).hostname.includes(marker);
+  } catch {
+    return true;
+  }
+}
+
 /** Public descriptor URL for the configured provider allow-list. */
 export function ssoProvidersUrl(coreOrigin: string): string {
   return coreOrigin.replace(/\/+$/, "") + "/auth/sso/providers";
