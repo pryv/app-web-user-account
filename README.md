@@ -366,6 +366,14 @@ Every route accepts these query parameters:
   page behaves per `actAs` (the user's own account included with `"allow"`);
   so does an older version of this page on a newer core. Check the field on
   the core's `201` answer to know whether it was understood.
+
+  **Permissions on the account's email.** When your request or consent offer
+  reads the account's email (`:system:email`, or `:_system:account`), the
+  consent screen tells the user when their account has no address (accounts
+  created without one hold a placeholder) and lets them add one before
+  approving. Approving without one is still possible; read the address you
+  get as "none" when it is not one you can reach. `/cmc-accept` does the same
+  for the offer it shows.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

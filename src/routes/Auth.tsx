@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation, Trans } from "react-i18next";
@@ -51,7 +51,10 @@ import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage, formatSince } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
-import { loggableError } from "../lib/apiError";
+import { loggableError, platformError } from "../lib/apiError";
+import { hasUsableEmail, missingEmailErrorKey, readAccountEmail, readsAccountEmail, setAccountEmail } from "../lib/accountEmail";
+import { maskUrlCredentials } from "../lib/maskCredentials";
+import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
@@ -441,6 +444,75 @@ export default function Auth() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invites, consentStepReached]);
+
+  // Consents that read the account's email, on an account with no address
+  // someone receives (see lib/accountEmail): said on the block, with a way to
+  // add one. Keyed by the token-bearing endpoint of the account each consent
+  // applies to (the app's rows: the account granted on; an invite: the one it
+  // is answered with), so blocks on the same account share one read and one
+  // add. Best-effort: an account that cannot be read gets no notice (each
+  // endpoint is read once, a failed read is not retried).
+  const [emailStates, setEmailStates] = useState<Record<string, MissingEmailState | null>>({});
+  const emailReads = useRef(new Set<string>());
+  /** The endpoint whose email the app's own rows concern, when they read it (nothing for an access already held). */
+  const rowsEmailEndpoint =
+    consentStepReached && reuse == null && apiEndpoint && personalToken && readsAccountEmail(rowPermissions as OfferPermission[])
+      ? buildApiEndpointWithToken(apiEndpoint, personalToken)
+      : null;
+  /** The endpoint whose email invite `i` concerns, when its offer reads it (nothing for a consent already given). */
+  function inviteEmailEndpoint(i: number): string | null {
+    const view = inviteViews[i];
+    if (view?.offer == null || view.given != null || !readsAccountEmail(view.offer.requestedPermissions)) return null;
+    const { credentials } = inviteCredentials(i);
+    return credentials == null ? null : buildApiEndpointWithToken(credentials.endpoint, credentials.token);
+  }
+  const emailEndpoints = [rowsEmailEndpoint, ...(invites ?? []).map((_, i) => inviteEmailEndpoint(i))].filter(
+    (e): e is string => e != null,
+  );
+  const emailEndpointsKey = [...new Set(emailEndpoints)].sort().join(" ");
+  useEffect(() => {
+    for (const endpoint of emailEndpointsKey === "" ? [] : emailEndpointsKey.split(" ")) {
+      if (emailReads.current.has(endpoint)) continue;
+      emailReads.current.add(endpoint);
+      readAccountEmail(endpoint)
+        .then((email) => {
+          if (!hasUsableEmail({ email })) setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "missing" } }));
+        })
+        .catch((err: unknown) => {
+          console.warn("auth: could not read the account's email:", loggableError(err));
+        });
+    }
+  }, [emailEndpointsKey]);
+  const emailAdding = Object.values(emailStates).some((st) => st?.kind === "adding");
+
+  /** Make `email` the address of the account behind `endpoint`; every block on that account follows. */
+  async function addEmail(endpoint: string, email: string) {
+    setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "adding" } }));
+    try {
+      const stored = await setAccountEmail(endpoint, email);
+      setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "added", email: stored } }));
+    } catch (err: unknown) {
+      console.warn("auth: could not add the account's email:", loggableError(err));
+      const key = missingEmailErrorKey(err);
+      const message = key === "consent.emailTaken" ? t(key) : maskUrlCredentials(platformError(err, t(key)).message);
+      setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "error", message } }));
+    }
+  }
+
+  /** The notice for the account behind `endpoint`, when there is something to say. */
+  function emailNotice(endpoint: string | null, accountName: string | null, appName: string) {
+    const state = endpoint != null ? emailStates[endpoint] : null;
+    if (endpoint == null || state == null) return undefined;
+    return (
+      <MissingEmailNotice
+        username={accountName}
+        appName={appName}
+        state={state}
+        onAdd={(email) => addEmail(endpoint, email)}
+        disabled={finishing !== null}
+      />
+    );
+  }
 
   // Persisted session (localStorage) — usable for this consent when it
   // belongs to the same platform. The user can always pick "Not me".
@@ -1399,8 +1471,13 @@ export default function Auth() {
                 : t("consent.mismatchWillReplace")
             ) : undefined
           }
+          afterList={emailNotice(
+            rowsEmailEndpoint,
+            grantFor != null ? username : null,
+            requestingApp?.name ?? accessState.requestingAppId ?? t("consent.theRequestingApp"),
+          )}
           busy={finishing}
-          acceptDisabled={invitesPending}
+          acceptDisabled={invitesPending || emailAdding}
           labels={invites != null ? { accept: t("consent.continue") } : undefined}
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
@@ -1450,6 +1527,13 @@ export default function Auth() {
                             : t("cmc.inviteAlreadyGiven")
                           : null
                       }
+                      notice={emailNotice(
+                        inviteEmailEndpoint(i),
+                        invitesAsTarget(i) ? username : null,
+                        view?.offer?.requester.username
+                          ? `${view.offer.requester.username}@${view.offer.requester.host}`
+                          : t("cmc.unidentifiedRequester"),
+                      )}
                     />
                   </section>
                 );

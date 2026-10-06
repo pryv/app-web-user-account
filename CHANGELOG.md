@@ -2,6 +2,17 @@
 
 ## 0.14.1 - 2026-10-06
 
+### Added
+
+- **`/auth` and `/cmc-accept` say when a consent reads the account's email and the account has none**
+  ([#21](https://github.com/pryv/app-web-user-account/issues/21)). An account created with the email
+  left empty holds a placeholder address, and a requester whose permissions read the account's email
+  (`:system:email`, or the whole `:_system:account`) gets that placeholder while the person approves
+  believing they can be reached. The block now says so, names the requester, and offers to add an
+  address right there (it becomes the account's email address, unverified). Approve stays available: the consent is the person's to give with or
+  without an address. When the account's email cannot be read, nothing is shown. For an invite
+  answered on a managed account, the notice names that account.
+
 ### Fixed
 
 - **The access details page no longer shows tokens.** Its "Client data" block
