@@ -162,6 +162,8 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
           event: completedTrigger(String(c.params.id), "consent/accept-cmc", "completed"),
         };
       }
+      // `/auth` lists the account's grants to tell an invite already given: none here.
+      if (c.method === "accesses.get") return { accesses: [] };
       return { error: { id: "unknown-resource", message: `unmocked ${c.method}` } };
     });
     return json(route, { meta: META, results });
