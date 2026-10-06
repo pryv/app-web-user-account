@@ -24,6 +24,14 @@
   open the page again with `username=` naming the account the invite was sent to. On `/auth`, a
   consent invite refused for this reason names the account the same way, without the switch-account
   advice.
+- **`/cmc-scope-update` names the account that answers, and can be told which one to expect.** The
+  page answers a scope update with the account of the session the browser holds without saying which
+  one. As `/cmc-accept`, it now says "You are approving as {username}" above Approve / Decline, with
+  "Not you? Switch account" (sign out, sign in, back to the same request), and offers neither until
+  the signed-in account is known (when it cannot be read within a few seconds, it asks to sign in
+  again). The calling app can name the account it expects with `username=`: when another account is
+  signed in, the page asks to switch account instead of offering Approve. A value that cannot be a
+  username is ignored.
 
 ## 0.15.0 - 2026-10-06
 

@@ -1,25 +1,22 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
 import { Card, Alert, Button } from "../components/ui";
-import { tNodes } from "../components/consent/tNodes";
 import { useSession } from "../lib/useSession";
 import { storedServiceInfoUrl } from "../lib/sessionStore";
 import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { signInLinkFor } from "../lib/handoffReturn";
+import { useApprovingAccount } from "../lib/useApprovingAccount";
+import { ApprovingAccountBlocked, ApprovingAccountLine } from "../components/consent/ApprovingAccount";
 import { inviteFailure, OFFER_UNREADABLE_KEY, type InviteFailure } from "../lib/cmcAccept";
 import { loggableError, platformError } from "../lib/apiError";
 import { hasUsableEmail, missingEmailErrorKey, readsAccountEmail } from "../lib/accountEmail";
 import { maskUrlCredentials } from "../lib/maskCredentials";
 import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
 import { useStreamLabels } from "../lib/useConsentDisplay";
-import { isValidUsername } from "../lib/username";
-
-/** Longest wait for the signed-in account's name before asking to sign in again (as `/auth`). */
-const ACCOUNT_LOOKUP_WAIT_MS = 4000;
 
 /**
  * What the page hands back to the app that sent the invite: the outcome only.
@@ -46,37 +43,20 @@ interface AcceptParams {
   accessName: string | null;
   returnUrl: string | null;
   mode: "popup" | "redirect";
-  /**
-   * The account the calling app expects to answer (`username=`, lowercased),
-   * or null. Only a value that can be a username counts: the page shows it, so
-   * a crafted link cannot put arbitrary text there. An email (or any other
-   * value) is not compared; it only pre-fills the sign-in form, like any
-   * `username` hint.
-   */
-  expectedUsername: string | null;
 }
 
 function parseCmcParams(search: string): AcceptParams {
   const p = new URLSearchParams(search);
   const returnUrl = p.get("returnUrl");
   const mode = (p.get("mode") as "popup" | "redirect" | null) ?? (returnUrl ? "redirect" : "popup");
-  // Lowered first: usernames are lowercase-only, and the rule rejects capitals.
-  const hint = p.get("username")?.trim().toLowerCase() ?? "";
   return {
     capabilityUrl: p.get("capabilityUrl") ?? p.get("capability"),
     scopeStreamId: p.get("scopeStreamId"),
     accessName: p.get("accessName"),
     returnUrl,
     mode,
-    expectedUsername: isValidUsername(hint) ? hint : null,
   };
 }
-
-/** The account the session acts on, as this page knows it. */
-type ApprovingAccount = { status: "loading" } | { status: "known"; username: string } | { status: "unknown" };
-
-const LINK_BUTTON =
-  "text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50";
 
 /** A failed call's result row as an error carrying the platform's id (read by `platformError`). */
 function rowError(error: { id?: string; message?: string }, fallback: string): Error {
@@ -125,9 +105,8 @@ function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
  */
 export default function CmcApprove() {
   const { t } = useTranslation();
-  const { connection, setConnection, actingAs } = useSession();
+  const { connection, actingAs } = useSession();
   const { search } = useLocation();
-  const navigate = useNavigate();
   const params = parseCmcParams(search);
 
   const [offer, setOffer] = useState<CmcOfferView | null>(null);
@@ -182,56 +161,8 @@ export default function CmcApprove() {
 
   // The account that answers: whichever session this browser holds, which is
   // not necessarily the person the invite was meant for.
-  const [account, setAccount] = useState<ApprovingAccount>({ status: "loading" });
-  useEffect(() => {
-    setAccount({ status: "loading" });
-    if (!connection) return;
-    let cancelled = false;
-    // The lookup is a network call: a stalled one must not leave the actions
-    // disabled with no way out. Past the wait, ask to sign in again; a name
-    // arriving later is ignored (the page does not change under the user).
-    const giveUp = setTimeout(() => {
-      console.warn("cmc-accept: the signed-in account could not be read in time");
-      cancelled = true;
-      setAccount({ status: "unknown" });
-    }, ACCOUNT_LOOKUP_WAIT_MS);
-    connection
-      .username()
-      .then((username) => {
-        if (!cancelled) setAccount({ status: "known", username });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        console.warn("cmc-accept: could not read the signed-in account:", loggableError(err));
-        setAccount({ status: "unknown" });
-      })
-      .finally(() => clearTimeout(giveUp));
-    return () => {
-      cancelled = true;
-      clearTimeout(giveUp);
-    };
-    // The session's account (its endpoint) decides; the object identity does not.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountEndpoint]);
-
-  const signedInAs = account.status === "known" ? account.username : null;
-  const wrongAccount =
-    signedInAs != null &&
-    params.expectedUsername != null &&
-    params.expectedUsername !== signedInAs.toLowerCase();
-  /** Approve / Decline answer with the session: only once it is known to be the right account. */
-  const mayAnswer = signedInAs != null && !wrongAccount;
-
-  /** Sign out, sign in (as someone else), and come back to this same request. */
-  function switchAccount() {
-    const query = new URLSearchParams(search);
-    // Signing out forgets the session's platform: keep it on the way back.
-    const platform = storedServiceInfoUrl();
-    if (!query.has("pryvServiceInfoUrl") && platform) query.set("pryvServiceInfoUrl", platform);
-    // Navigate first, then drop the session: /signin then opens on its form.
-    navigate(signInLinkFor("/cmc-accept", "?" + query.toString()));
-    setConnection(null);
-  }
+  const who = useApprovingAccount("/cmc-accept", "cmc-accept");
+  const { signedInAs, mayAnswer, switchAccount } = who;
 
   async function addEmail(email: string) {
     if (!connection) return;
@@ -351,42 +282,14 @@ export default function CmcApprove() {
   // "Switch account" (the error above says why).
   const answerAsAnother = error?.switchAccount === true;
 
-  // Who answers, said right above the actions (while it is looked up, why they
-  // are disabled). Without a known account (or with another one than the app
-  // expects), the actions are replaced by a way to sign in as the right person.
-  const accountLine = answerAsAnother ? null : account.status === "loading" ? (
-    <p className="mb-4 text-sm text-muted" data-testid="cmc-checking-account">
-      {t("cmc.checkingAccount")}
-    </p>
-  ) : mayAnswer ? (
-    <p className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" data-testid="cmc-approving-as">
-      <span>{tNodes("cmc.approvingAs", { username: <strong>{signedInAs}</strong> })}</span>
-      <button type="button" onClick={switchAccount} disabled={working !== null} className={LINK_BUTTON}>
-        {t("cmc.notYouSwitch")}
-      </button>
-    </p>
-  ) : null;
-
   const actionsBlocked = answerAsAnother ? (
     <div data-testid="cmc-switch-account">
       <Button type="button" onClick={switchAccount}>
         {t("cmc.switchAccount")}
       </Button>
     </div>
-  ) : account.status === "unknown" || wrongAccount ? (
-    <div data-testid="cmc-switch-account">
-      <Alert tone="info">
-        {wrongAccount
-          ? tNodes("cmc.expectedOtherAccount", {
-              expected: <strong>{params.expectedUsername}</strong>,
-              username: <strong>{signedInAs}</strong>,
-            })
-          : t("cmc.accountUnconfirmed")}
-      </Alert>
-      <Button type="button" onClick={switchAccount}>
-        {t("cmc.switchAccount")}
-      </Button>
-    </div>
+  ) : who.blocked ? (
+    <ApprovingAccountBlocked who={who} />
   ) : undefined;
 
   return (
@@ -414,7 +317,7 @@ export default function CmcApprove() {
                 disabled={working !== null}
               />
             )}
-            {accountLine}
+            {!answerAsAnother && <ApprovingAccountLine who={who} disabled={working !== null} />}
           </>
         }
       />
