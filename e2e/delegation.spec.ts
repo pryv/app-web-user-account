@@ -80,14 +80,14 @@ async function signedInWithDelegation(
   // (`connection.apiOne`), so the lists are answered here, by method id. A
   // batch of several calls gets one result per call.
   const methods: string[] = [];
-  const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  const calls: Array<{ method: string; params?: Record<string, unknown>; url?: string }> = [];
   let detached = false;
   await page.route("https://*.example.test/", async (route) => {
     const body = route.request().postDataJSON() as Array<{ method: string; params?: Record<string, unknown> }> | null;
     const batch = Array.isArray(body) && body.length > 0 ? body : [{ method: "" }];
     for (const call of batch) {
       methods.push(call.method);
-      calls.push(call);
+      calls.push({ ...call, url: route.request().url() });
     }
     const results = batch.map((call) => answer(call.method, call.params ?? {}));
     if (results.some((r) => r == null)) {
@@ -125,6 +125,10 @@ async function signedInWithDelegation(
       case "accesses.get":
         if (opts.accessesError) return { error: { id: "unexpected-error", message: "e2e: accesses unavailable" } };
         return { accesses: (detached ? opts.accessesAfterDetach : undefined) ?? opts.accesses ?? [] };
+      case "events.get":
+        return { events: [] };
+      case "streams.get":
+        return { streams: [] };
       case "events.getOne": {
         const event = opts.events?.[String(params.id)];
         return event != null ? { event } : { error: { id: "unknown-resource", message: "no such event" } };
@@ -258,6 +262,31 @@ test.describe("/account/delegation", () => {
   test("[DLG5] a signed-out visit keeps ?create=1 through the sign-in bounce", async ({ page }) => {
     await page.goto("/account/delegation?create=1");
     await expect(page).toHaveURL(/\/signin\?.*returnTo=[^&]*create%3D1/);
+  });
+
+  test("[DLG6] a link to a managed account's access: Open as, then the access as that account", async ({ page }) => {
+    const { methods, calls } = await signedInWithDelegation(page, {
+      controlled: [{ relId: "rel-kid", controlled: { username: "kiddo", hostSlug: "example-test" }, status: "active", activatedAt: 1789000000 }],
+      accesses: [{ id: "acc-1", name: "kid-app", type: "app", permissions: [] }],
+    });
+    await page.goto("/account/audit-access/acc-1?as=kiddo");
+    const offer = page.getByRole("heading", { name: /Open as kiddo\?/ });
+    await expect(offer).toBeVisible();
+    await expect(page).not.toHaveURL(/as=kiddo/);
+    expect(methods).not.toContain("accesses.get");
+    expect(methods).not.toContain("delegations.getToken");
+
+    await page.getByRole("button", { name: "Open as kiddo" }).click();
+    const banner = page.getByRole("status");
+    await expect(banner).toContainText("kiddo");
+    await expect(banner).toContainText("alice");
+    await expect(offer).toHaveCount(0);
+    await expect(page.getByText("kid-app")).toBeVisible();
+    expect(methods.filter((m) => m === "delegations.getToken")).toHaveLength(1);
+    // The details came from the managed account's core.
+    const reads = calls.filter((c) => c.method === "accesses.get");
+    expect(reads.length).toBeGreaterThan(0);
+    for (const c of reads) expect(c.url).toContain("kiddo.example.test");
   });
 
   const BOB = { relId: "rel-bob", delegate: { username: "bob" }, status: "active", activatedAt: 1789000000 };

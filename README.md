@@ -107,7 +107,7 @@ of them keeps a stable interface; everything else can be merged from upstream.
 | `src/brand.tsx`, `src/brand.css` | Your product name, account noun, logo and fonts. | `brand`, `Logo`. |
 | `src/accountTabs.tsx` + `src/routes.json` | Extra account tabs (`ACCOUNT_TABS`, path relative to `/account`) or top-level pages (`EXTRA_ROUTES`); add each path to `routes.json` (`account` / `static`) for static hosting. A test fails when the two disagree. | The `AccountTab` shape. |
 | `src/extensions/ProfileExtensions.tsx` | Extra profile sections, rendered between the account and email cards; receives `{ connection, username }`. Renders nothing by default. | The props. |
-| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the audit trail card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the audit trail stay as they are. Renders nothing by default. | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
+| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the audit trail card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the audit trail stay as they are. Renders nothing by default. After the user opened the page as a managed account (`?as=`, or Open on the Delegation page), `connection` is that account's delegated session. | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
 | `src/extensions/streamLabels.ts` | `loadStreamLabels(serviceInfoUrl)` returning a `(streamId) => label \| null` resolver, to show your data model's names on consent rows. Default: no labels. | The resolver type. |
 | `src/components/consent/ConsentPanel.tsx` | Your consent screen layout; the access-request and OAuth2 pages pass it the app, the rows, the choice state and the actions. | `ConsentPanelProps`. |
 
@@ -174,6 +174,20 @@ Every route accepts these query parameters:
   core that supports the review (open-pryv.io 2.0.0-rc.31 or later): an older
   core withdraws every consent whatever the choice, and the page says so
   after the removal.
+- `/account/audit-access/<accessId>`: one access of the signed-in account (its
+  details, Revoke, audit trail), the page the rows of `/account/apps` open. Link
+  it when your app shows the user a consent or an app access and wants to send
+  them to its page. For an access of an account the user MANAGES (account
+  delegation), add `as=<username>`: when the user actively manages that
+  account, the page first asks "Open as {username}?" and, on Open, acts for that
+  account exactly as Open on the Delegation page does (banner on every page,
+  "Back to {user}" to return), then shows the access. The user must click:
+  a link never changes which account the pages act for on its own. When the user
+  does not actively manage the account named (or it does not exist: the page
+  does not tell the two apart), or the managed accounts cannot be listed, the
+  page says so and shows the user's own account; naming the account the session
+  already is does nothing. `as` is read once and dropped from the address. A
+  signed-out user signs in first and comes back with `as` kept, like `create=1`.
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.

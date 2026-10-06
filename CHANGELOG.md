@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`/account/audit-access/<id>?as=<username>`: open a managed account's access
+  from a link** ([#20](https://github.com/pryv/app-web-user-account/issues/20)).
+  An app that lists the accesses of an account the signed-in person manages
+  (a parent and their child's account, say) can now link to one of them and
+  name the account with `as`. When the person actively manages that account,
+  the page first shows "Open as {username}?" with an Open button; opening it
+  does what Open on the Delegation page does (the pages act for that account,
+  the banner says so on every page, "Back to {you}" returns to your own
+  account), then shows the access with its Revoke and audit trail. Nothing
+  switches without the click. When the person does not actively manage the
+  account named, or the managed accounts cannot be listed, the page says so
+  and shows the person's own account; a link naming the account the session
+  already is changes nothing. The parameter is read once and removed from the
+  address; it survives the sign-in of a signed-out visitor like the other
+  account deep links.
+
 ## 0.13.1 - 2026-10-05
 
 ### Fixed

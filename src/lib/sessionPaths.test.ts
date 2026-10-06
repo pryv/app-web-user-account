@@ -54,6 +54,10 @@ describe("[SRTP] safeReturnTo", () => {
     expect(safeReturnTo("/account/apps?returnTo=%2Faccount%2Fsecurity&x=1")).toBe("/account/apps?x=1");
     expect(safeReturnTo("/account/apps?x=" + "a".repeat(3000))).toBeNull();
   });
+
+  it("[SRT9] a managed account named on an access page (as=) survives the bounce", () => {
+    expect(safeReturnTo("/account/audit-access/acc-1?as=kiddo&returnTo=/x")).toBe("/account/audit-access/acc-1?as=kiddo");
+  });
 });
 
 describe("[SRTP] signinPath / accountPath", () => {

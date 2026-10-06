@@ -335,7 +335,16 @@
     "managedByDelegation": "This access is managed by account delegation and cannot be revoked here. It is removed when the delegation ends: <manage>manage account delegation</manage>.",
     "relationCreated": "created",
     "relationModified": "modified",
-    "relationCreatedModified": "created + modified"
+    "relationCreatedModified": "created + modified",
+    "asChecking": "Checking the accounts you manage…",
+    "asOfferTitle": "Open as {{username}}?",
+    "asOfferBody": "This link is for an access of {{username}}, an account you manage. Opening it makes these pages act for {{username}}, as Open on the Delegation page does: a banner says so on every page, with the way back to your own account.",
+    "asOfferOpen": "Open as {{username}}",
+    "asOpening": "Opening…",
+    "asOfferStay": "Stay on my account",
+    "asNotManaged": "This link is for an access of {{username}}, but you do not actively manage that account. This page shows your own account.",
+    "asListFailed": "This link is for an access of {{username}}. The accounts you manage could not be checked, so this page shows your own account.",
+    "asIgnored": "This link names an account that cannot exist and was ignored. This page shows your own account."
   },
   "consent": {
     "title": "Authorize access",
