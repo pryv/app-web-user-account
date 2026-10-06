@@ -10,6 +10,7 @@ import { useSession } from "../lib/useSession";
 import {
   fetchSsoProviders,
   coreOriginFromApiEndpoint,
+  ssoPossibleForApi,
   ssoStartUrl,
   type SsoProvider,
 } from "../lib/ssoLanding";
@@ -40,12 +41,15 @@ export default function SignIn() {
   // Third-party sign-in buttons, when the operator configured providers. Best
   // effort: any failure (no service-info, feature off, network) leaves the page
   // password-only. `apiEndpointFor` only builds a URL, so the placeholder user
-  // need not exist; SSO is dnsLess-only, so the core origin is shared.
+  // need not exist; SSO is dnsLess-only, so the core origin is shared, and a
+  // platform with the username in the api host is not probed at all.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const service = getService(search);
+        const info = (await service.info()) as { api?: unknown } | null;
+        if (!ssoPossibleForApi(info?.api)) return;
         const origin = coreOriginFromApiEndpoint(await service.apiEndpointFor("_"));
         const providers = await fetchSsoProviders(origin);
         if (!cancelled) {

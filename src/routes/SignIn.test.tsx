@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 /**
@@ -71,5 +71,49 @@ describe("[SIUH] username sign-in hint", () => {
     renderAt("/register?username=alice");
     const field = (await screen.findByLabelText("Username")) as HTMLInputElement;
     expect(field.value).toBe("");
+  });
+});
+
+describe("[SISP] third-party sign-in probe", () => {
+  /** A fresh fetch stub per test, answering an empty provider list. */
+  function stubFetch() {
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ providers: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("[SISP1] a platform with the username in the api host is not probed (no placeholder-host lookup)", async () => {
+    const fetchMock = stubFetch();
+    service.info.mockResolvedValue({ api: "https://{username}.api.example.com/" });
+    service.apiEndpointFor.mockResolvedValue("https://_.api.example.com/");
+    renderAt("/signin");
+    await screen.findByLabelText("Username or email");
+    // The probe effect has started (it reads the template, or a probe without
+    // the check goes straight to the placeholder endpoint).
+    await waitFor(() =>
+      expect(service.info.mock.calls.length + service.apiEndpointFor.mock.calls.length).toBeGreaterThan(0),
+    );
+    // Let the probe effect run to completion.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(service.apiEndpointFor).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes("/auth/sso/providers"))).toBe(false);
+  });
+
+  it("[SISP2] a dnsLess platform is still probed, on its core origin", async () => {
+    const fetchMock = stubFetch();
+    service.info.mockResolvedValue({ api: "https://core.example.com/{username}/" });
+    service.apiEndpointFor.mockResolvedValue("https://core.example.com/_/");
+    renderAt("/signin");
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map((c) => String(c[0]))).toContain("https://core.example.com/auth/sso/providers"),
+    );
   });
 });

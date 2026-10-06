@@ -6,7 +6,27 @@ import {
   ssoProvidersUrl,
   ssoStartUrl,
   fetchSsoProviders,
+  ssoPossibleForApi,
 } from "./ssoLanding";
+
+describe("[SSPA] ssoPossibleForApi", () => {
+  it("[SSPA1] rules SSO out when the api template puts the username in the host", () => {
+    expect(ssoPossibleForApi("https://{username}.api.example.com/")).toBe(false);
+    expect(ssoPossibleForApi("https://{username}.pryv.me/")).toBe(false);
+    expect(ssoPossibleForApi("https://core-{username}.example.com:8443/")).toBe(false);
+  });
+
+  it("[SSPA2] keeps it possible on a dnsLess (path-style) template", () => {
+    expect(ssoPossibleForApi("https://core.example.com/{username}/")).toBe(true);
+    expect(ssoPossibleForApi("http://127.0.0.1:3000/{username}/")).toBe(true);
+  });
+
+  it("[SSPA3] a missing or unreadable template does not rule it out", () => {
+    expect(ssoPossibleForApi(undefined)).toBe(true);
+    expect(ssoPossibleForApi(42)).toBe(true);
+    expect(ssoPossibleForApi("not a url")).toBe(true);
+  });
+});
 
 describe("parseSsoHash", () => {
   it("parses a login result (with and without a leading '#')", () => {

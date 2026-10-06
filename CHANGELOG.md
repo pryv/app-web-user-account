@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`/signin` no longer looks up a host that cannot exist on a DNS-per-user platform**
+  ([#24](https://github.com/pryv/app-web-user-account/issues/24)). To offer third-party sign-in, the
+  page asked the core for its providers at the origin of a placeholder account (`_`); with an `api`
+  template carrying the username in the host (`https://{username}.api.example.com/`) that is
+  `https://_.api.example.com`, which never resolves, so every sign-in logged a failed lookup in the
+  browser console. Third-party sign-in exists only on platforms without per-user hosts, so the page no
+  longer probes such a platform. Path-style platforms are probed as before.
+
 ## 0.17.0 - 2026-10-06
 
 ### Fixed
