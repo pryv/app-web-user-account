@@ -161,7 +161,7 @@ export default function CmcApprove() {
 
   // The account that answers: whichever session this browser holds, which is
   // not necessarily the person the invite was meant for.
-  const who = useApprovingAccount("/cmc-accept", "cmc-accept");
+  const who = useApprovingAccount("/cmc-accept");
   const { signedInAs, mayAnswer, switchAccount } = who;
 
   async function addEmail(email: string) {

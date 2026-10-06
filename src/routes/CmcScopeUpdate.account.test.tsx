@@ -15,6 +15,10 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 /** When set, answers `username()` in place of the endpoint's host label. */
 const lookup = vi.hoisted(() => ({ impl: null as null | (() => Promise<string>) }));
 
+/** The scope request as `events.getOne` returns it (a result row). */
+const PENDING_REQUEST = { event: { content: { newPermissions: [{ streamId: "diary", level: "read" }], message: "More, please." } } };
+const request = vi.hoisted(() => ({ row: null as null | Record<string, unknown> }));
+
 vi.mock("pryv", () => ({
   default: {
     Service: class {},
@@ -32,7 +36,7 @@ vi.mock("pryv", () => ({
         return name;
       }
       async api() {
-        return [{ event: { content: { newPermissions: [{ streamId: "diary", level: "read" }], message: "More, please." } } }];
+        return [request.row ?? PENDING_REQUEST];
       }
     },
   },
@@ -94,6 +98,7 @@ describe("[SUAS] /cmc-scope-update names the account that answers", () => {
     cleanup();
     vi.useRealTimers();
     lookup.impl = null;
+    request.row = null;
     localStorage.clear();
     cmcMock.acceptScopeUpdate.mockReset();
     cmcMock.refuseScopeUpdate.mockReset();
@@ -234,5 +239,35 @@ describe("[SUAS] /cmc-scope-update names the account that answers", () => {
     const [conn, id] = cmcMock.acceptScopeUpdate.mock.calls[0] as [{ apiEndpoint: string }, string];
     expect(conn.apiEndpoint).toBe("https://tok@alice.core.test/");
     expect(id).toBe("req-1");
+  });
+
+  it("[SUA11] a request already answered: no account line, no switch, nothing to approve", async () => {
+    signedIn();
+    request.row = { event: { content: { ...PENDING_REQUEST.event.content, status: "accepted" } } };
+    renderPage({ username: "carol" });
+    await screen.findByText("You have already answered this request. It was approved.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByTestId("cmc-checking-account")).toBeNull();
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+    expect(button("Approve").disabled).toBe(true);
+    cleanup();
+    renderPage();
+    await screen.findByText("You have already answered this request. It was approved.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Not you? Switch account" })).toBeNull();
+  });
+
+  it("[SUA12] a request that cannot be read: no account line; another expected account still offers the switch", async () => {
+    signedIn();
+    request.row = { error: { id: "unknown-resource", message: "Unknown event" } };
+    renderPage();
+    await screen.findByText(/could not be found on your account/);
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+    cleanup();
+    renderPage({ username: "carol" });
+    const block = await screen.findByTestId("cmc-switch-account");
+    expect(block.textContent).toContain("This request is for carol, but you are signed in as alice.");
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
   });
 });

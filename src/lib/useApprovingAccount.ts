@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "./useSession";
 import { storedServiceInfoUrl } from "./sessionStore";
-import { signInLinkFor } from "./handoffReturn";
+import { signInLinkFor, type HandoffRoute } from "./handoffReturn";
 import { loggableError } from "./apiError";
 import { isValidUsername } from "./username";
 
@@ -24,6 +24,12 @@ export function expectedUsernameOf(search: string): string | null {
   return isValidUsername(hint) ? hint : null;
 }
 
+/**
+ * The account check as a page renders it. Three exhaustive states: while the
+ * account is looked up, neither `mayAnswer` nor `blocked` (the actions show,
+ * disabled); then either `mayAnswer` (answer with the session) or `blocked`
+ * (the actions give way to "Switch account").
+ */
 export interface ApprovingAccountView {
   account: ApprovingAccount;
   /** The signed-in account's name, once known. */
@@ -44,9 +50,11 @@ export interface ApprovingAccountView {
  * Who answers a cross-account request on a page that reuses the stored
  * session (`/cmc-accept`, `/cmc-scope-update`): whichever account this browser
  * holds, which is not necessarily the person the request was meant for.
- * `route` is the page's own path, returned to after switching account.
+ * `route` is the page's own path, returned to after switching account: a
+ * hand-off route, the only kind `/signin` returns to with the request kept.
  */
-export function useApprovingAccount(route: string, logLabel: string): ApprovingAccountView {
+export function useApprovingAccount(route: HandoffRoute): ApprovingAccountView {
+  const logLabel = route.slice(1);
   const { connection, setConnection } = useSession();
   const { search } = useLocation();
   const navigate = useNavigate();

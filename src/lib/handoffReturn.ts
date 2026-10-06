@@ -15,7 +15,10 @@
  * the hand-off page instead of closing (see `chainedHandoffPath`).
  */
 
-export const HANDOFF_ROUTES: ReadonlySet<string> = new Set(["/cmc-accept", "/cmc-scope-update"]);
+/** A hand-off page: one of `HANDOFF_ROUTES`. */
+export type HandoffRoute = "/cmc-accept" | "/cmc-scope-update";
+
+export const HANDOFF_ROUTES: ReadonlySet<string> = new Set<HandoffRoute>(["/cmc-accept", "/cmc-scope-update"]);
 
 /** `/signin` link that returns to `route` with the current query string. */
 export function signInLinkFor(route: string, search: string): string {

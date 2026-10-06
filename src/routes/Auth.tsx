@@ -1084,6 +1084,8 @@ export default function Auth() {
       } catch (err: unknown) {
         // Named after the account that answered (see `inviteCredentials`). No
         // "Switch account" here: a refused mandatory invite ends the request.
+        // A name outside the current username rule (a legacy account) is left
+        // out on purpose: the sentence then reads without it.
         const answering = asTarget || owner == null ? username : owner.username;
         const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), {
           username: isValidUsername(answering) ? answering : null,

@@ -101,7 +101,7 @@ export default function CmcScopeUpdate() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
-  const who = useApprovingAccount("/cmc-scope-update", "cmc-scope-update");
+  const who = useApprovingAccount("/cmc-scope-update");
 
   // Load the scope-request event to show WHAT the collector proposes —
   // the user should never approve an unseen permission set.
@@ -257,8 +257,11 @@ export default function CmcScopeUpdate() {
       <div className="mb-4 rounded bg-body p-3 text-xs break-all text-muted">
         {t("cmc.requestIdLabel")} {params.scopeRequestEventId}
       </div>
-      <ApprovingAccountLine who={who} disabled={working !== null} />
-      {who.blocked ? (
+      {/* Who answers, only while there is something to answer: not on a request
+          already answered, nor one that could not be read (the switch block
+          still shows then: another account is the likely way to read it). */}
+      {!loadError && proposal?.answered == null && <ApprovingAccountLine who={who} disabled={working !== null} />}
+      {who.blocked && proposal?.answered == null ? (
         <ApprovingAccountBlocked who={who} />
       ) : (
         <ConsentActions
