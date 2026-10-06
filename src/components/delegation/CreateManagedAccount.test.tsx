@@ -36,7 +36,7 @@ describe("[CMA] CreateManagedAccount", () => {
     const fold = screen.getByTestId("managed-password-disclosure") as HTMLDetailsElement;
     expect(fold.open).toBe(false);
     expect(fold.querySelector("summary")?.textContent).toBe(
-      "Set a password for this account (optional): without one, it is used only through you",
+      "Set a password for this account (optional): without one, the account is used only through you",
     );
     expect(fold.contains(document.getElementById("managed-password"))).toBe(true);
     expect(fold.contains(document.getElementById("managed-username"))).toBe(false);

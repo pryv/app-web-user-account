@@ -8,7 +8,8 @@
   ([#23](https://github.com/pryv/app-web-user-account/issues/23)). On `/auth` and `/cmc-accept`, a
   requester's consent text given in several languages showed whichever language it listed first. It
   now shows the interface language, then its base language (`fr` for `fr-CH`), then English, then
-  the first one. A scope-update message on `/cmc-scope-update` now honours a regional variant too.
+  the first one. A scope-update message on `/cmc-scope-update` and the texts of an OAuth2 offer now
+  honour a regional variant too.
 
 ### Changed
 

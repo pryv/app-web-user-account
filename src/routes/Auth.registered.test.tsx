@@ -153,4 +153,14 @@ describe("[ARG] /auth right after creating an account in this window", () => {
     await screen.findByText(/You do not look after anyone/);
     expect(screen.queryByTestId("grant-registered")).toBeNull();
   });
+
+  it("[ARG7] (guard) a marker for another account than the one continuing: no notice naming it", async () => {
+    deleg.serviceInfo = { features: { delegation: true } };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    openAuth(registeredState("bob"), MANAGED_ONLY);
+    (await screen.findByRole("button", { name: /continue as alice/i })).click();
+    await screen.findByText(/You do not look after anyone/);
+    expect(screen.queryByTestId("grant-registered")).toBeNull();
+    warn.mockRestore();
+  });
 });

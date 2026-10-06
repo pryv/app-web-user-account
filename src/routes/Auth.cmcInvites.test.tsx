@@ -380,7 +380,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(String(posted().message)).toContain("cmc-self-accept-forbidden");
     const shown = await screen.findByText(/This invitation was created by this account/);
     expect(shown.textContent).toBe(
-      "A required consent invite could not be accepted (This invitation was created by this account (parent); it must be approved by the person it was sent to, from their own account.). The request was refused and the app was given no access.",
+      "A required consent request could not be accepted (This invitation was created by this account (parent); it must be approved by the person it was sent to, from their own account.). The request was refused and the app was given no access.",
     );
     expect(shown.textContent).not.toMatch(/switch account/i);
   });
