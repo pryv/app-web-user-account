@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.14.1 - 2026-10-06
+## 0.15.0 - 2026-10-06
 
 ### Added
 
@@ -12,6 +12,8 @@
   address right there (it becomes the account's email address, unverified). Approve stays available: the consent is the person's to give with or
   without an address. When the account's email cannot be read, nothing is shown. For an invite
   answered on a managed account, the notice names that account.
+
+## 0.14.1 - 2026-10-06
 
 ### Fixed
 
