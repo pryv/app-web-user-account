@@ -161,6 +161,21 @@ describe("[AXSP] access details extension slot", () => {
     for (const token of ["q5tok3n", "m6tok3n", "d8tok3n"]) expect(text).not.toContain(token);
   });
 
+  it("[AXS8] an error the page shows names no token", async () => {
+    conn.api.mockImplementation(async (calls: Array<{ method: string }>) =>
+      calls.map((c) =>
+        c.method === "accesses.get"
+          ? { error: { id: "forbidden", message: "denied for https://e9tok3n@core.example.com/bob/" } }
+          : c.method === "events.get"
+            ? { events: [] }
+            : { streams: [] },
+      ),
+    );
+    renderPage("app-1");
+    await screen.findByText("denied for https://***@core.example.com/bob/");
+    expect(document.body.innerHTML).not.toContain("e9tok3n");
+  });
+
   it("[AXS3] does not mount while the access is not loaded, nor when it is not listed", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {

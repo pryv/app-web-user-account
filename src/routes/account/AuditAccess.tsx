@@ -31,6 +31,7 @@ import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
 import { delegationManagedKind } from "../../lib/delegation";
 import { formatDateTime } from "../../lib/dates";
 import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
+import { platformError } from "../../lib/apiError";
 import AccessExtras from "../../extensions/AccessExtras";
 
 const PAGE_SIZE = 15;
@@ -270,7 +271,7 @@ export default function AuditAccess() {
       }
       navigate("/account/apps" + search);
     } catch (err: unknown) {
-      setRevokeError(err instanceof Error ? err.message : t("audit.errorRevoke"));
+      setRevokeError(shownError(err, t("audit.errorRevoke")));
       setRevoking(false);
     }
   }
@@ -300,7 +301,7 @@ export default function AuditAccess() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          setDetailsError(err instanceof Error ? err.message : t("audit.errorLoadDetails"));
+          setDetailsError(shownError(err, t("audit.errorLoadDetails")));
         }
       }
     })();
@@ -332,7 +333,7 @@ export default function AuditAccess() {
       setHasNext(events.length > PAGE_SIZE);
       setRows(events.slice(0, PAGE_SIZE));
     } catch (err: unknown) {
-      setAuditError(err instanceof Error ? err.message : t("audit.errorLoadTrail"));
+      setAuditError(shownError(err, t("audit.errorLoadTrail")));
       setRows([]);
     } finally {
       setBusy(false);
@@ -368,7 +369,7 @@ export default function AuditAccess() {
       setDataTruncated(events.length >= DATA_BATCH_LIMIT);
       setDataRows(filterEventsByAccess(events, accessId));
     } catch (err: unknown) {
-      setDataError(err instanceof Error ? err.message : t("audit.errorLoadData"));
+      setDataError(shownError(err, t("audit.errorLoadData")));
       setDataRows([]);
     } finally {
       setDataBusy(false);
@@ -566,8 +567,8 @@ export default function AuditAccess() {
             <div className="mt-3">
               <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.clientData")}</div>
               <pre className="overflow-x-auto rounded bg-body p-2 font-mono text-xs">
+                {/* Token-bearing endpoints (a consent grant's counterparty) shown without their token. */}
                 {JSON.stringify(
-                  // Token-bearing endpoints (a consent grant's counterparty) shown without their token.
                   maskCredentials(
                     Object.fromEntries(
                       Object.entries(details.clientData).filter(([k]) => k !== CONSENT_KEY),
@@ -833,6 +834,14 @@ export default function AuditAccess() {
   );
 }
 
+/**
+ * An error as the page shows it: the platform's own message (never a client
+ * wrapper's, which could embed the call's parameters), any URL's token masked.
+ */
+function shownError(err: unknown, fallback: string): string {
+  return maskUrlCredentials(platformError(err, fallback).message);
+}
+
 function contentText(e: DataEvent): string {
   if (e.content === undefined || e.content === null) return "—";
   const content = maskCredentials(e.content);
@@ -846,7 +855,7 @@ function detailText(e: AuditEvent): string {
   }
   return e.content?.query && Object.keys(e.content.query).length > 0
     ? JSON.stringify(maskCredentials(e.content.query))
-    : "—";
+    : "\u2014";
 }
 
 function Detail({ label, value, mono }: { label: string; value?: string | null; mono?: boolean }) {

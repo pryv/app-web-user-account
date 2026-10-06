@@ -70,4 +70,22 @@ describe("[MCRD] credentials masked on screen", () => {
       "unreachable: could not reach https://***@core.example.com/alice/",
     );
   });
+
+  it("[MCR5] a URL with a user part is not the end of it: a second URL, a query, a fragment, another line", () => {
+    expect(maskUrlCredentials("https://t1@h1.test/ and https://t2@h2.test/")).toBe("https://***@h1.test/ and https://***@h2.test/");
+    expect(maskUrlCredentials("https://tok@h.test/\nhttps://tok2@h2.test/")).toBe("https://***@h.test/\nhttps://***@h2.test/");
+    const both = maskUrlCredentials("https://t1@h.test/?next=https://t2@h2.test/x#https://t3@h3.test/");
+    expect(both).toBe("https://***@h.test/?next=https://***@h2.test/x#https://***@h3.test/");
+    // A text is not turned into one percent-encoded URL.
+    expect(maskUrlCredentials("HTTP://tok@h.test/ inside text ending")).toBe("HTTP://***@h.test/ inside text ending");
+  });
+
+  it("[MCR6] a URL percent-encoded in a query value", () => {
+    expect(
+      maskUrlCredentials("/cmc-accept?capabilityUrl=https%3A%2F%2Fcap4tok3n%40core.example.com%2Fkiddo%2F&scopeStreamId=s1"),
+    ).toBe("/cmc-accept?capabilityUrl=https%3A%2F%2F***%40core.example.com%2Fkiddo%2F&scopeStreamId=s1");
+    expect(maskCredentials({ next: "https%3a%2f%2fTOK%40h.test%2F" })).toEqual({ next: "https%3a%2f%2f***%40h.test%2F" });
+    // Encoded, without a user part: unchanged.
+    expect(maskUrlCredentials("x=https%3A%2F%2Fcore.example.com%2Fa%40b")).toBe("x=https%3A%2F%2Fcore.example.com%2Fa%40b");
+  });
 });

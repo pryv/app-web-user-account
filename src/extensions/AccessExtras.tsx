@@ -15,6 +15,12 @@ import type { AccessDetails } from "../lib/audit";
  * stays `false` if that request fails), so read it on every render rather than
  * once on mount. The slot only adds content: it cannot change the details card,
  * the revoke button or the audit trail.
+ *
+ * `access` is raw: `access.clientData` can carry token-bearing URLs (a consent
+ * grant's `cmc.counterparty.apiEndpoint` and `cmc.backChannelApiEndpoint`, a
+ * delegation invite's `delegation.capabilityUrl`). A fork that prints any of
+ * it passes it through `maskCredentials` from `src/lib/maskCredentials.ts`
+ * first.
  */
 export default function AccessExtras(_props: {
   connection: PryvConnection;
