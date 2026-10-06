@@ -22,7 +22,7 @@
   "dependencies": {
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/roboto-condensed": "^5.2.8",
-    "@pryv/cmc": "^3.17.0",
+    "@pryv/cmc": "^3.19.0",
     "@pryv/delegation": "^3.15.0",
     "@pryv/socket.io": "^3.13.0",
     "events": "^3.3.0",
