@@ -485,8 +485,13 @@ Two production builds exist:
   This is what an open-pryv.io platform serves as a hosted site
   (`hostedSites: { account: { static: <folder> } }`), and what a release ships
   as `app-web-user-account-<version>-root.tar.gz`, created with
-  `tar -czf app-web-user-account-<version>-root.tar.gz -C dist .` and attached
-  with `gh release upload v<version> app-web-user-account-<version>-root.tar.gz`.
+  `COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf app-web-user-account-<version>-root.tar.gz -C dist .`
+  and attached with `gh release upload v<version> app-web-user-account-<version>-root.tar.gz`.
+  On macOS the plain `tar -czf` adds a `._<name>` AppleDouble file per entry
+  and extended-attribute headers, which a Linux host extracts as files and
+  serves; the flags above keep them out (GNU tar on Linux ignores
+  `COPYFILE_DISABLE` and needs no flag). Check with `tar -tzf <file> | grep -c '\._'`
+  on Linux: it must print 0.
 - `npm run build:pages` builds the GitHub Pages copy served under
   `/app-web-user-account/` (adds `404.html` and `.nojekyll`).
 
