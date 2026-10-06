@@ -519,6 +519,11 @@
     "inviteForSelf": "For you ({{username}})",
     "inviteForManaged": "For {{username}}, whom you look after",
     "inviteAlreadyGivenOn": "Already given on {{date}}. It is kept as it is.",
+    "approvingAs": "You are approving as {{username}}.",
+    "notYouSwitch": "Not you? Switch account",
+    "switchAccount": "Switch account",
+    "expectedOtherAccount": "This request is for {{expected}}, but you are signed in as {{username}}. Switch account to answer it as {{expected}}.",
+    "accountUnconfirmed": "Could not confirm which account is signed in. Sign in again to answer this request.",
     "inviteAlreadyGiven": "Already given. It is kept as it is."
   },
   "emailVerification": {

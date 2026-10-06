@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **`/cmc-accept` names the account that answers, and can be told which one to expect**
+  ([#22](https://github.com/pryv/app-web-user-account/issues/22)). The page answers a consent offer
+  with whichever account is signed in in the browser, and an open-link invite can be accepted by
+  anyone: on a shared or family device, the wrong person could approve without being told. The page
+  now says "You are approving as {username}" above Approve / Decline, with "Not you? Switch account"
+  (sign out, sign in, back to the same offer), and offers neither until the signed-in account is
+  known. The calling app can name the account it expects with `username=`: when another account is
+  signed in, the page asks to switch account instead of offering Approve.
+
 ## 0.15.0 - 2026-10-06
 
 ### Added

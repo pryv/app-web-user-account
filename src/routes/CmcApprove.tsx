@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
-import { Card, Alert } from "../components/ui";
+import { Card, Alert, Button } from "../components/ui";
+import { tNodes } from "../components/consent/tNodes";
 import { useSession } from "../lib/useSession";
 import { storedServiceInfoUrl } from "../lib/sessionStore";
 import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
@@ -41,20 +42,34 @@ interface AcceptParams {
   accessName: string | null;
   returnUrl: string | null;
   mode: "popup" | "redirect";
+  /**
+   * The account the calling app expects to answer (`username=`), or null. An
+   * email cannot be compared with the session's username: it only pre-fills
+   * the sign-in form, like any `username` hint.
+   */
+  expectedUsername: string | null;
 }
 
 function parseCmcParams(search: string): AcceptParams {
   const p = new URLSearchParams(search);
   const returnUrl = p.get("returnUrl");
   const mode = (p.get("mode") as "popup" | "redirect" | null) ?? (returnUrl ? "redirect" : "popup");
+  const hint = p.get("username")?.trim() || null;
   return {
     capabilityUrl: p.get("capabilityUrl") ?? p.get("capability"),
     scopeStreamId: p.get("scopeStreamId"),
     accessName: p.get("accessName"),
     returnUrl,
     mode,
+    expectedUsername: hint != null && !hint.includes("@") ? hint : null,
   };
 }
+
+/** The account the session acts on, as this page knows it. */
+type ApprovingAccount = { status: "loading" } | { status: "known"; username: string } | { status: "unknown" };
+
+const LINK_BUTTON =
+  "text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50";
 
 /** A failed call's result row as an error carrying the platform's id (read by `platformError`). */
 function rowError(error: { id?: string; message?: string }, fallback: string): Error {
@@ -90,15 +105,22 @@ function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
  *
  * Permission render + Approve/Decline come from the shared consent kit.
  * The `@pryv/cmc` accept contract is all-or-nothing (no granted subset on
- * the accept trigger), so every entry renders locked. Unlike the OAuth
- * consent (always fresh sign-in), this surface reuses the persisted account
- * session — the capability hand-off already binds the request to a specific
- * subject, and the in-app approval UX relies on the session.
+ * the accept trigger), so every entry renders locked.
+ *
+ * Unlike the OAuth consent (always a fresh sign-in), this surface reuses the
+ * persisted account session. Nothing in the link binds the offer to an
+ * account: an open-link invite can be accepted by anyone, so whoever is
+ * signed in in this browser would answer it. The page therefore names the
+ * account that answers above Approve / Decline, with "Not you? Switch
+ * account", and offers neither until that account is known. When the calling
+ * app names the account it expects (`username=`) and the session is another
+ * one, it asks to switch account instead.
  */
 export default function CmcApprove() {
   const { t } = useTranslation();
-  const { connection, actingAs } = useSession();
+  const { connection, setConnection, actingAs } = useSession();
   const { search } = useLocation();
+  const navigate = useNavigate();
   const params = parseCmcParams(search);
 
   const [offer, setOffer] = useState<CmcOfferView | null>(null);
@@ -150,6 +172,40 @@ export default function CmcApprove() {
     // The session's account (its endpoint) and the offer decide; the object identity does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offerReadsEmail, accountEndpoint]);
+
+  // The account that answers: whichever session this browser holds, which is
+  // not necessarily the person the invite was meant for.
+  const [account, setAccount] = useState<ApprovingAccount>({ status: "loading" });
+  useEffect(() => {
+    setAccount({ status: "loading" });
+    if (!connection) return;
+    let cancelled = false;
+    connection
+      .username()
+      .then((username) => {
+        if (!cancelled) setAccount({ status: "known", username });
+      })
+      .catch((err: unknown) => {
+        console.warn("cmc-accept: could not read the signed-in account:", loggableError(err));
+        if (!cancelled) setAccount({ status: "unknown" });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // The session's account (its endpoint) decides; the object identity does not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountEndpoint]);
+
+  /** Sign out, sign in (as someone else), and come back to this same request. */
+  function switchAccount() {
+    const query = new URLSearchParams(search);
+    // Signing out forgets the session's platform: keep it on the way back.
+    const platform = storedServiceInfoUrl();
+    if (!query.has("pryvServiceInfoUrl") && platform) query.set("pryvServiceInfoUrl", platform);
+    // Navigate first, then drop the session: /signin then opens on its form.
+    navigate(signInLinkFor("/cmc-accept", "?" + query.toString()));
+    setConnection(null);
+  }
 
   async function addEmail(email: string) {
     if (!connection) return;
@@ -262,6 +318,42 @@ export default function CmcApprove() {
     );
   }
 
+  const signedInAs = account.status === "known" ? account.username : null;
+  const wrongAccount =
+    signedInAs != null &&
+    params.expectedUsername != null &&
+    params.expectedUsername.toLowerCase() !== signedInAs.toLowerCase();
+
+  // Who answers, said right above the actions. Without a known account (or
+  // with another one than the app expects), the actions are replaced by a way
+  // to sign in as the right person.
+  const accountLine =
+    signedInAs != null && !wrongAccount ? (
+      <p className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" data-testid="cmc-approving-as">
+        <span>{tNodes("cmc.approvingAs", { username: <strong>{signedInAs}</strong> })}</span>
+        <button type="button" onClick={switchAccount} disabled={working !== null} className={LINK_BUTTON}>
+          {t("cmc.notYouSwitch")}
+        </button>
+      </p>
+    ) : null;
+
+  const actionsBlocked =
+    account.status === "unknown" || wrongAccount ? (
+      <div data-testid="cmc-switch-account">
+        <Alert tone="info">
+          {wrongAccount
+            ? tNodes("cmc.expectedOtherAccount", {
+                expected: <strong>{params.expectedUsername}</strong>,
+                username: <strong>{signedInAs}</strong>,
+              })
+            : t("cmc.accountUnconfirmed")}
+        </Alert>
+        <Button type="button" onClick={switchAccount}>
+          {t("cmc.switchAccount")}
+        </Button>
+      </div>
+    ) : undefined;
+
   return (
     <Card>
       <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
@@ -271,20 +363,24 @@ export default function CmcApprove() {
         error={error}
         labelFor={labelFor}
         busy={working}
-        disabled={!offer}
+        disabled={!offer || account.status !== "known"}
         approveDisabled={emailState?.kind === "adding"}
         onApprove={() => void approve()}
         onDecline={() => void decline()}
+        actionsBlocked={actionsBlocked}
         notice={
-          offer != null && emailState != null ? (
-            <MissingEmailNotice
-              username={actingAs?.username ?? null}
-              appName={offer.requester.username ? `${offer.requester.username}@${offer.requester.host}` : t("cmc.unidentifiedRequester")}
-              state={emailState}
-              onAdd={addEmail}
-              disabled={working !== null}
-            />
-          ) : undefined
+          <>
+            {offer != null && emailState != null && (
+              <MissingEmailNotice
+                username={actingAs?.username ?? null}
+                appName={offer.requester.username ? `${offer.requester.username}@${offer.requester.host}` : t("cmc.unidentifiedRequester")}
+                state={emailState}
+                onAdd={addEmail}
+                disabled={working !== null}
+              />
+            )}
+            {accountLine}
+          </>
         }
       />
     </Card>
