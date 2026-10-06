@@ -149,7 +149,7 @@ describe("[CMRE] /cmc-accept missing email", () => {
     await waitFor(() => expect(updates).toEqual([{ update: { email: "alice@example.com" } }]));
     expect(approveButton().disabled).toBe(true);
     release({ account: { email: "alice@example.com" } });
-    await screen.findByText("alice@example.com is now this account's email address. You can confirm it from your profile later.");
+    await screen.findByText("alice@example.com is now this account's email address.");
     expect(approveButton().disabled).toBe(false);
   });
 
@@ -165,11 +165,29 @@ describe("[CMRE] /cmc-accept missing email", () => {
     const field = within(notice).getByLabelText("Email address") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "bob@example.com" } });
     fireEvent.submit(within(notice).getByTestId("missing-email-form"));
-    await screen.findByText("This address is already used by another account.");
-    expect((within(screen.getByTestId("missing-email")).getByLabelText("Email address") as HTMLInputElement).value).toBe("bob@example.com");
+    const reason = await screen.findByText("This address is already used by another account.");
+    const input = within(screen.getByTestId("missing-email")).getByLabelText("Email address") as HTMLInputElement;
+    expect(input.value).toBe("bob@example.com");
+    // The reason is tied to the field.
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    const describedBy = input.getAttribute("aria-describedby");
+    expect(describedBy != null && document.getElementById(describedBy)?.contains(reason)).toBe(true);
     expect(approveButton().disabled).toBe(false);
     approveButton().click();
     await waitFor(() => expect(cmcMock.acceptInvite).toHaveBeenCalledTimes(1));
+  });
+
+  it("[CME8] the added notice shows the address the platform now holds, not the one typed", async () => {
+    signedIn();
+    offerReading(READS_EMAIL);
+    net.answer = (_e, method) =>
+      method === "account.get" ? { account: { email: PLACEHOLDER } } : { account: { email: "alice@example.org" } };
+    renderPage();
+    const notice = await screen.findByTestId("missing-email");
+    fireEvent.change(within(notice).getByLabelText("Email address"), { target: { value: "Alice@Example.org" } });
+    fireEvent.submit(within(notice).getByTestId("missing-email-form"));
+    await screen.findByText("alice@example.org is now this account's email address.");
+    expect(screen.queryByText(/Alice@Example\.org/)).toBeNull();
   });
 
   it("[CME6] the account cannot be read: nothing said, a warning without the endpoint, Approve available", async () => {

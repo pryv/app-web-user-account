@@ -41,6 +41,7 @@ export function MissingEmailNotice({ username, appName, state, onAdd, disabled =
   }
 
   const adding = state.kind === "adding";
+  const errorId = id + "-error";
   function submit(e: FormEvent) {
     e.preventDefault();
     const email = value.trim();
@@ -67,8 +68,14 @@ export function MissingEmailNotice({ username, appName, state, onAdd, disabled =
           value={value}
           onChange={(e) => setValue(e.target.value)}
           disabled={adding || disabled}
+          aria-invalid={state.kind === "error" ? true : undefined}
+          aria-describedby={state.kind === "error" ? errorId : undefined}
         />
-        {state.kind === "error" && <Alert>{state.message}</Alert>}
+        {state.kind === "error" && (
+          <div id={errorId}>
+            <Alert>{state.message}</Alert>
+          </div>
+        )}
         <Button type="submit" variant="ghost" className="w-auto" disabled={adding || disabled}>
           {adding ? t("consent.missingEmailAdding") : t("consent.missingEmailAdd")}
         </Button>

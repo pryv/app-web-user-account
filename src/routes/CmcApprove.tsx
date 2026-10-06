@@ -56,6 +56,11 @@ function parseCmcParams(search: string): AcceptParams {
   };
 }
 
+/** A failed call's result row as an error carrying the platform's id (read by `platformError`). */
+function rowError(error: { id?: string; message?: string }, fallback: string): Error {
+  return Object.assign(new Error(error.message ?? fallback), { id: error.id });
+}
+
 function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
   const payload = outcomePayload(res);
   if (params.mode === "redirect" && params.returnUrl) {
@@ -133,7 +138,7 @@ export default function CmcApprove() {
           account?: { email?: string | null };
           error?: { id?: string; message?: string };
         }>;
-        if (res?.error) throw Object.assign(new Error(res.error.message ?? "account.get failed"), { id: res.error.id });
+        if (res?.error) throw rowError(res.error, "account.get failed");
         if (!cancelled && !hasUsableEmail(res?.account)) setEmailState({ kind: "missing" });
       } catch (err: unknown) {
         console.warn("cmc-accept: could not read the account's email:", loggableError(err));
@@ -153,7 +158,7 @@ export default function CmcApprove() {
       const [res] = (await connection.api([
         { method: "account.update", params: { update: { email } } },
       ])) as Array<{ account?: { email?: string }; error?: { id?: string; message?: string } }>;
-      if (res?.error) throw Object.assign(new Error(res.error.message ?? "account.update failed"), { id: res.error.id });
+      if (res?.error) throw rowError(res.error, "account.update failed");
       setEmailState({ kind: "added", email: res?.account?.email ?? email });
     } catch (err: unknown) {
       console.warn("cmc-accept: could not add the account's email:", loggableError(err));

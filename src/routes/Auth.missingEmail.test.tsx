@@ -248,7 +248,7 @@ describe("[AMEL] /auth missing email", () => {
     fireEvent.change(within(blocks[0]).getByLabelText("Email address"), { target: { value: "parent@example.com" } });
     fireEvent.submit(within(blocks[0]).getByTestId("missing-email-form"));
     for (const b of blocks) {
-      await within(b).findByText("parent@example.com is now this account's email address. You can confirm it from your profile later.");
+      await within(b).findByText("parent@example.com is now this account's email address.");
     }
     expect(account.calls.filter((c) => c.endsWith("account.update"))).toEqual([PARENT + " account.update"]);
   });
@@ -287,6 +287,17 @@ describe("[AMEL] /auth missing email", () => {
     release({ email: "parent@example.com" });
     await within(block).findByText(/is now this account's email address/);
     expect(continueButton().disabled).toBe(false);
+  });
+
+  it("[AME8] the added notice shows the address the platform now holds, not the one typed", async () => {
+    account.update = async () => ({ email: "parent@example.org" });
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    await within(block).findByTestId("missing-email");
+    fireEvent.change(within(block).getByLabelText("Email address"), { target: { value: "Parent@Example.org" } });
+    fireEvent.submit(within(block).getByTestId("missing-email-form"));
+    await within(block).findByText("parent@example.org is now this account's email address.");
+    expect(within(block).queryByText(/Parent@Example\.org/)).toBeNull();
   });
 
   it("[AME7] a consent already given: nothing to grant, no notice, the account not read", async () => {

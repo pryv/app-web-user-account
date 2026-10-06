@@ -49,6 +49,8 @@ export function hasUsableEmail(account: { email?: string | null } | null | undef
 /** The account's email, through `account.get` (a personal or delegate token). Throws when it cannot be read. */
 export async function readAccountEmail(apiEndpoint: string): Promise<string | null> {
   const conn = new Pryv.Connection(apiEndpoint);
+  // The client library types `account.get` params as `null`; the API expects an
+  // (empty) object, as the profile page sends.
   const account = (await conn.apiOne("account.get", {} as unknown as null, "account")) as { email?: unknown } | null;
   return typeof account?.email === "string" ? account.email : null;
 }

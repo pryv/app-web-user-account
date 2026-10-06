@@ -431,11 +431,11 @@
     "managedUnavailableNone": "You do not manage an account that can be used here, and one cannot be created from this session. Cancel to go back to the app.",
     "missingEmailNotice": "This account has no email address: add one so {{app}} can reach you.",
     "missingEmailNoticeFor": "{{username}} has no email address: add one so {{app}} can reach them.",
-    "missingEmailAddHint": "The requester would otherwise read an address nobody receives.",
+    "missingEmailAddHint": "The requester would otherwise read an address you do not receive.",
     "missingEmailLabel": "Email address",
     "missingEmailAdd": "Add email",
     "missingEmailAdding": "Adding…",
-    "missingEmailAdded": "{{email}} is now this account's email address. You can confirm it from your profile later.",
+    "missingEmailAdded": "{{email}} is now this account's email address.",
     "emailTaken": "This address is already used by another account.",
     "emailAddFailed": "Could not add the email address."
   },

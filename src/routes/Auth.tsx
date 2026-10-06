@@ -450,7 +450,8 @@ export default function Auth() {
   // add one. Keyed by the token-bearing endpoint of the account each consent
   // applies to (the app's rows: the account granted on; an invite: the one it
   // is answered with), so blocks on the same account share one read and one
-  // add. Best-effort: an account that cannot be read gets no notice.
+  // add. Best-effort: an account that cannot be read gets no notice (each
+  // endpoint is read once, a failed read is not retried).
   const [emailStates, setEmailStates] = useState<Record<string, MissingEmailState | null>>({});
   const emailReads = useRef(new Set<string>());
   /** The endpoint whose email the app's own rows concern, when they read it (nothing for an access already held). */
