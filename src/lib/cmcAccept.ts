@@ -11,14 +11,6 @@ import { GRANT_REQUIRES_OWNER_ID, grantRequiresOwnerMessage, isGrantRequiresOwne
 /** Catalog key of the text shown when the offer behind the link cannot be read (invalid or expired link, network). */
 export const OFFER_UNREADABLE_KEY = "cmc.acceptOfferUnreadable";
 
-/**
- * The platform refused the approval because the approving account is the one
- * that created the invite (an account cannot consent to itself, e.g. an
- * open-link invite opened while signed in as its requester). Not yet in
- * `@pryv/cmc`'s `errorIds`, hence spelled out here.
- */
-export const SELF_ACCEPT_FORBIDDEN_ID = "cmc-self-accept-forbidden";
-
 type Tone = "danger" | "info";
 
 interface Outcome {
@@ -41,7 +33,9 @@ const OUTCOMES: Record<string, Outcome> = {
   [errorIds.CAPABILITY_ALREADY_ACCEPTED_BY_YOU]: { key: "cmc.acceptAlreadyByYou", tone: "info" },
   // The wait ended before the platform recorded an outcome: not a failure.
   [errorIds.CAPABILITY_TIMEOUT]: { key: "cmc.acceptStillProcessing", tone: "info" },
-  [SELF_ACCEPT_FORBIDDEN_ID]: {
+  // The approving account created the invite (an account cannot consent to
+  // itself, e.g. an open-link invite opened while signed in as its requester).
+  [errorIds.SELF_ACCEPT_FORBIDDEN]: {
     key: "cmc.acceptSelfForbidden",
     namedKey: "cmc.acceptSelfForbiddenAs",
     switchKey: "cmc.acceptSelfForbiddenSwitch",

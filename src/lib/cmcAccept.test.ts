@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import Pryv from "pryv";
 import { CmcError, errorIds } from "@pryv/cmc";
-import { inviteFailure, SELF_ACCEPT_FORBIDDEN_ID } from "./cmcAccept";
+import { inviteFailure } from "./cmcAccept";
 import { platformError } from "./apiError";
 import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE } from "./delegation";
 
@@ -34,7 +34,7 @@ describe("[CMAF] inviteFailure", () => {
   });
 
   it("explains an invite approved by the account that created it, and says to switch account where the page can", () => {
-    const err = cmcError(SELF_ACCEPT_FORBIDDEN_ID);
+    const err = cmcError(errorIds.SELF_ACCEPT_FORBIDDEN);
     // /cmc-accept: named, and the page offers "Switch account".
     expect(inviteFailure(err, "Could not approve.", { username: "alice", canSwitchAccount: true })).toEqual({
       reason: "cmc-self-accept-forbidden",
