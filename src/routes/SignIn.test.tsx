@@ -75,10 +75,15 @@ describe("[SIUH] username sign-in hint", () => {
 });
 
 describe("[SISP] third-party sign-in probe", () => {
-  const fetchMock = vi.fn(
-    async (_url: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify({ providers: [] }), { status: 200 }),
-  );
+  /** A fresh fetch stub per test, answering an empty provider list. */
+  function stubFetch() {
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ providers: [] }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
@@ -86,12 +91,16 @@ describe("[SISP] third-party sign-in probe", () => {
   });
 
   it("[SISP1] a platform with the username in the api host is not probed (no placeholder-host lookup)", async () => {
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubFetch();
     service.info.mockResolvedValue({ api: "https://{username}.api.example.com/" });
     service.apiEndpointFor.mockResolvedValue("https://_.api.example.com/");
     renderAt("/signin");
     await screen.findByLabelText("Username or email");
-    await waitFor(() => expect(service.info).toHaveBeenCalled());
+    // The probe effect has started (it reads the template, or a probe without
+    // the check goes straight to the placeholder endpoint).
+    await waitFor(() =>
+      expect(service.info.mock.calls.length + service.apiEndpointFor.mock.calls.length).toBeGreaterThan(0),
+    );
     // Let the probe effect run to completion.
     await new Promise((r) => setTimeout(r, 0));
     expect(service.apiEndpointFor).not.toHaveBeenCalled();
@@ -99,7 +108,7 @@ describe("[SISP] third-party sign-in probe", () => {
   });
 
   it("[SISP2] a dnsLess platform is still probed, on its core origin", async () => {
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubFetch();
     service.info.mockResolvedValue({ api: "https://core.example.com/{username}/" });
     service.apiEndpointFor.mockResolvedValue("https://core.example.com/_/");
     renderAt("/signin");
