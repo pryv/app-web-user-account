@@ -30,6 +30,7 @@ import { MarkdownLite } from "../../lib/markdownLite";
 import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
 import { delegationManagedKind } from "../../lib/delegation";
 import { formatDateTime } from "../../lib/dates";
+import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
 import AccessExtras from "../../extensions/AccessExtras";
 
 const PAGE_SIZE = 15;
@@ -566,8 +567,11 @@ export default function AuditAccess() {
               <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.clientData")}</div>
               <pre className="overflow-x-auto rounded bg-body p-2 font-mono text-xs">
                 {JSON.stringify(
-                  Object.fromEntries(
-                    Object.entries(details.clientData).filter(([k]) => k !== CONSENT_KEY),
+                  // Token-bearing endpoints (a consent grant's counterparty) shown without their token.
+                  maskCredentials(
+                    Object.fromEntries(
+                      Object.entries(details.clientData).filter(([k]) => k !== CONSENT_KEY),
+                    ),
                   ),
                   null,
                   2,
@@ -831,16 +835,17 @@ export default function AuditAccess() {
 
 function contentText(e: DataEvent): string {
   if (e.content === undefined || e.content === null) return "—";
-  const s = typeof e.content === "string" ? e.content : JSON.stringify(e.content);
+  const content = maskCredentials(e.content);
+  const s = typeof content === "string" ? content : JSON.stringify(content);
   return s.length > 200 ? s.slice(0, 200) + "…" : s;
 }
 
 function detailText(e: AuditEvent): string {
   if (isAuditError(e)) {
-    return [e.content?.id, e.content?.message].filter(Boolean).join(": ") || "—";
+    return maskUrlCredentials([e.content?.id, e.content?.message].filter(Boolean).join(": ")) || "\u2014";
   }
   return e.content?.query && Object.keys(e.content.query).length > 0
-    ? JSON.stringify(e.content.query)
+    ? JSON.stringify(maskCredentials(e.content.query))
     : "—";
 }
 

@@ -113,6 +113,54 @@ describe("[AXSP] access details extension slot", () => {
     expect(screen.queryByText(/This access is not listed anymore/)).toBeNull();
   });
 
+  it("[AXS6] client data shows a consent grant's endpoints without their token", async () => {
+    conn.accesses = [
+      {
+        ...ACCESSES[0],
+        clientData: {
+          cmc: {
+            role: "counterparty",
+            counterparty: { username: "alice", host: "core.example.com", apiEndpoint: "https://c3x9tok3n@core.example.com/alice/" },
+            backChannelApiEndpoint: "https://bk7tok3n@core.example.com/alice/",
+          },
+        },
+      },
+      ACCESSES[1],
+    ];
+    renderPage("app-1");
+    const block = await screen.findByText(/"counterparty"/);
+    expect(block.textContent).toContain("https://***@core.example.com/alice/");
+    expect(document.body.textContent).not.toContain("c3x9tok3n");
+    expect(document.body.textContent).not.toContain("bk7tok3n");
+    expect(block.textContent).toContain('"username": "alice"');
+  });
+
+  it("[AXS7] audit and data rows show endpoints without their token", async () => {
+    conn.api.mockImplementation(async (calls: Array<{ method: string; params?: { streams?: unknown } }>) =>
+      calls.map((c) => {
+        if (c.method === "accesses.get") return { accesses: conn.accesses };
+        if (c.method === "events.get" && c.params?.streams != null) {
+          return {
+            events: [
+              { id: "a1", time: 1789000000, type: "audit-log/pryv-api", streamIds: [], content: { action: "events.get", query: { capabilityUrl: "https://q5tok3n@core.example.com/bob/" } } },
+              { id: "a2", time: 1789000001, type: "audit-log/pryv-api-error", streamIds: [], content: { id: "unreachable", message: "could not reach https://m6tok3n@core.example.com/bob/" } },
+            ],
+          };
+        }
+        if (c.method === "events.get") {
+          return { events: [{ id: "d1", time: 1789000000, type: "note/txt", createdBy: "app-1", content: "https://d8tok3n@core.example.com/bob/" }] };
+        }
+        return { streams: [] };
+      }),
+    );
+    renderPage("app-1");
+    await screen.findByText(/could not reach https:\/\/\*\*\*@core\.example\.com\/bob\//);
+    await screen.findByText("https://***@core.example.com/bob/");
+    await screen.findByText('{"capabilityUrl":"https://***@core.example.com/bob/"}');
+    const text = document.body.innerHTML;
+    for (const token of ["q5tok3n", "m6tok3n", "d8tok3n"]) expect(text).not.toContain(token);
+  });
+
   it("[AXS3] does not mount while the access is not loaded, nor when it is not listed", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
