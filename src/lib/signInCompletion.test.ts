@@ -114,6 +114,18 @@ describe("[SICT] signed-in target", () => {
     expect(p.get("pryvServiceInfoUrl")).toBe(SI);
   });
 
+  it("[SICT13] an access page naming a managed account (as=) comes back with it, on the platform signed in to", () => {
+    const target = signedInTarget(
+      `?pryvServiceInfoUrl=${encodeURIComponent(SI)}&returnTo=` + encodeURIComponent("/account/audit-access/acc-1?as=kiddo"),
+      ENDPOINT,
+    ) as { kind: string; path: string };
+    expect(target.kind).toBe("internal");
+    expect(target.path.startsWith("/account/audit-access/acc-1?")).toBe(true);
+    const p = new URLSearchParams(target.path.slice(target.path.indexOf("?")));
+    expect(p.get("as")).toBe("kiddo");
+    expect(p.get("pryvServiceInfoUrl")).toBe(SI);
+  });
+
   it("[SICT9] an unsafe returnTo falls through to the profile", () => {
     expect(signedInTarget("?returnTo=https%3A%2F%2Fevil.test", ENDPOINT)).toEqual({
       kind: "internal",

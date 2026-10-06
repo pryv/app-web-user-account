@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, XCircle } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
@@ -6,6 +6,11 @@ import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession } from "../../lib/useSession";
 import { signinPath } from "../../lib/sessionPaths";
+import { storedParentConnection, type PryvConnection } from "../../lib/sessionStore";
+import { Pryv, Delegation } from "../../lib/pryvClient";
+import { runFlow } from "../../lib/delegation";
+import { asParam, withoutAs, resolveAs } from "../../lib/auditAs";
+import { tNodes } from "../../components/consent/tNodes";
 import {
   buildAuditGetParams,
   auditAction,
@@ -35,6 +40,21 @@ const RELATION_KEYS: Record<ReturnType<typeof eventRelation>, string> = {
   "created + modified": "audit.relationCreatedModified",
 };
 
+/**
+ * What the page does with `?as=<username>` (see lib/auditAs): `checking` while
+ * the managed accounts are listed, `offer` / `opening` around the "Open as"
+ * card, a notice for `not-managed` / `list-failed` / `ignored`, `none` when
+ * there is nothing (left) to do.
+ */
+type AsState =
+  | { kind: "none" }
+  | { kind: "checking" }
+  | { kind: "offer"; username: string; hostSlug?: string; error?: string | null }
+  | { kind: "opening"; username: string; hostSlug?: string }
+  | { kind: "not-managed"; username: string }
+  | { kind: "list-failed"; username: string }
+  | { kind: "ignored" };
+
 function fmtTime(t?: number | null): string {
   // No value: a dash (as before).
   return t ? formatDateTime(t) : "\u2014";
@@ -48,11 +68,114 @@ function fmtTime(t?: number | null): string {
 export default function AuditAccess() {
   const { t } = useTranslation();
   const { accessId } = useParams<{ accessId: string }>();
-  const { connection, setConnection } = useSession();
+  const { connection, setConnection, actingAs, actAs } = useSession();
   const navigate = useNavigate();
   // Carried on every in-app link so the platform choice (pryvServiceInfoUrl) survives.
-  const { search } = useLocation();
+  const { search, pathname } = useLocation();
   const [confirm, confirmDialog] = useConfirm();
+
+  // `?as=<username>`: read once, then dropped from the address (it would ride
+  // on every in-app link and offer the switch again on the way back).
+  const [asRequested] = useState(() => asParam(search));
+  const [asState, setAsState] = useState<AsState>(() =>
+    asRequested == null ? { kind: "none" } : { kind: "checking" },
+  );
+  // The access data loads wait until it is decided which account they load
+  // from: a late response for the person's own account must never land after
+  // the switch.
+  const ready = asState.kind !== "checking" && asState.kind !== "offer" && asState.kind !== "opening";
+  // The managed accounts are listed, and opened, with the signed-in person's
+  // OWN session: while the pages act for an account, the one kept to return to.
+  const actingUsername = actingAs?.username ?? null;
+  // Built only when a link asked for an account: a page without `as` needs neither.
+  const ownerConnection = useMemo<PryvConnection | null>(
+    () => (asRequested == null ? null : actingUsername != null ? storedParentConnection() : connection),
+    [asRequested, actingUsername, connection],
+  );
+  const ownerClient = useMemo(
+    () => (ownerConnection ? Delegation.fromConnection(ownerConnection, { pryv: Pryv }) : null),
+    [ownerConnection],
+  );
+  const asCheckPending = asState.kind === "checking";
+  useEffect(() => {
+    if (!asCheckPending || asRequested == null || !connection) return;
+    navigate({ pathname, search: withoutAs(search) }, { replace: true });
+    let cancelled = false;
+    void (async () => {
+      // Shape, and the account the pages already act for: no listing needed.
+      const first = resolveAs({ as: asRequested, selfUsername: null, actingUsername, controlled: [] });
+      // Without a list, `not-managed` here only means: a valid username, not the
+      // account acted for. Anything else is decided already.
+      if (first.kind !== "not-managed") {
+        if (!cancelled) setAsState(first.kind === "ignored" ? { kind: "ignored" } : { kind: "none" });
+        return;
+      }
+      if (!ownerConnection || !ownerClient) {
+        if (!cancelled) setAsState({ kind: "list-failed", username: first.username });
+        return;
+      }
+      let selfUsername: string | null = null;
+      try {
+        selfUsername = await ownerConnection.username();
+      } catch {
+        selfUsername = null;
+      }
+      if (cancelled) return;
+      if (selfUsername === first.username) {
+        setAsState({ kind: "none" });
+        return;
+      }
+      const listed = await runFlow(() => ownerClient.listControlled());
+      if (cancelled) return;
+      if (!listed.ok) {
+        setAsState({ kind: "list-failed", username: first.username });
+        return;
+      }
+      const resolution = resolveAs({ as: asRequested, selfUsername, actingUsername, controlled: listed.value });
+      setAsState(resolution.kind === "offer" ? { ...resolution, error: null } : resolution);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Once per page: `search` and `pathname` change only through the strip above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asCheckPending, connection]);
+
+  /** "Open as": what Open on the Delegation page does, then this page reloads as that account. */
+  async function openAs(username: string, hostSlug?: string) {
+    if (!ownerConnection || !ownerClient || !actAs) return;
+    setAsState({ kind: "opening", username, hostSlug });
+    const res = await runFlow(() => ownerClient.openControlled(username));
+    if (!res.ok) {
+      setAsState({ kind: "offer", username, hostSlug, error: res.message });
+      return;
+    }
+    let parentUsername = actingAs?.parentUsername ?? null;
+    if (parentUsername == null) {
+      try {
+        parentUsername = await ownerConnection.username();
+      } catch {
+        setAsState({ kind: "offer", username, hostSlug, error: t("delegation.errGeneric") });
+        return;
+      }
+    }
+    actAs(res.value as unknown as PryvConnection, { username, parentUsername });
+    setAsState({ kind: "none" });
+  }
+
+  // The card's heading takes the focus when the offer shows.
+  // Once (a page shows at most one offer, `as` being read once): a failed Open
+  // comes back to the card without taking the focus away from where the person
+  // is (the error is announced as an alert).
+  const offerHeading = useRef<HTMLHeadingElement>(null);
+  const offerFocused = useRef(false);
+  const asKind = asState.kind;
+  useEffect(() => {
+    if (asKind === "offer" && !offerFocused.current) {
+      offerFocused.current = true;
+      offerHeading.current?.focus();
+    }
+  }, [asKind]);
 
   const [details, setDetails] = useState<AccessDetails | null>(null);
   const [detailsMissing, setDetailsMissing] = useState(false);
@@ -77,7 +200,7 @@ export default function AuditAccess() {
   // Actions ever used on this account — populates the action filter dropdown.
   const [actions, setActions] = useState<string[]>([]);
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !ready) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -98,7 +221,7 @@ export default function AuditAccess() {
     return () => {
       cancelled = true;
     };
-  }, [connection]);
+  }, [connection, ready]);
 
   const [rows, setRows] = useState<AuditEvent[] | null>(null);
   const [hasNext, setHasNext] = useState(false);
@@ -108,7 +231,7 @@ export default function AuditAccess() {
   // Self-access marker: warn before the user revokes the very access their
   // session runs on (revoking it signs them out).
   useEffect(() => {
-    if (!connection) return;
+    if (!connection || !ready) return;
     connection
       .accessInfo()
       .then((info: unknown) => {
@@ -118,7 +241,7 @@ export default function AuditAccess() {
       .catch(() => {
         /* non-fatal — UX helper only */
       });
-  }, [connection]);
+  }, [connection, ready]);
 
   async function revoke() {
     if (!connection || !accessId) return;
@@ -154,7 +277,12 @@ export default function AuditAccess() {
   // Access details — accesses.get includes expired ones so revoked-but-listed
   // accesses still resolve; a fully deleted access keeps its audit trail.
   useEffect(() => {
-    if (!connection || !accessId) return;
+    if (!connection || !accessId || !ready) return;
+    // A new connection (the pages now act for another account) or access id:
+    // nothing from the previous load may stay on screen next to the new one.
+    setDetails(null);
+    setDetailsMissing(false);
+    setDetailsError(null);
     let cancelled = false;
     void (async () => {
       try {
@@ -178,10 +306,10 @@ export default function AuditAccess() {
     return () => {
       cancelled = true;
     };
-  }, [connection, accessId, t]);
+  }, [connection, accessId, ready, t]);
 
   const loadAudit = useCallback(async () => {
-    if (!connection || !accessId) return;
+    if (!connection || !accessId || !ready) return;
     setBusy(true);
     setAuditError(null);
     try {
@@ -208,7 +336,7 @@ export default function AuditAccess() {
     } finally {
       setBusy(false);
     }
-  }, [connection, accessId, applied, page, t]);
+  }, [connection, accessId, applied, page, ready, t]);
 
   useEffect(() => {
     void loadAudit();
@@ -227,7 +355,7 @@ export default function AuditAccess() {
   const [dataError, setDataError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!connection || !accessId) return;
+    if (!connection || !accessId || !ready) return;
     setDataBusy(true);
     setDataError(null);
     try {
@@ -244,7 +372,7 @@ export default function AuditAccess() {
     } finally {
       setDataBusy(false);
     }
-  }, [connection, accessId, dataApplied, t]);
+  }, [connection, accessId, dataApplied, ready, t]);
 
   useEffect(() => {
     void loadData();
@@ -270,15 +398,73 @@ export default function AuditAccess() {
     });
   }
 
+  const backLink = (
+    <Link
+      to={"/account/apps" + search}
+      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+    >
+      <ArrowLeft size={14} aria-hidden /> {t("audit.backToApps")}
+    </Link>
+  );
+
+  // Until it is decided which account the page shows: the back link and the card only.
+  if (asState.kind === "checking") {
+    return (
+      <section className="space-y-4">
+        {backLink}
+        <Card>
+          <p className="text-sm text-muted">{t("audit.asChecking")}</p>
+        </Card>
+      </section>
+    );
+  }
+  if (asState.kind === "offer" || asState.kind === "opening") {
+    const name = <strong>{asState.username}</strong>;
+    return (
+      <section className="space-y-4">
+        {backLink}
+        <Card>
+          <h2 ref={offerHeading} tabIndex={-1} className="mb-2 text-lg font-medium focus:outline-none">
+            {tNodes("audit.asOfferTitle", { username: name })}
+            {asState.hostSlug && <span className="text-sm font-normal text-muted"> · {asState.hostSlug}</span>}
+          </h2>
+          <p className="mb-4 text-sm">{tNodes("audit.asOfferBody", { username: name })}</p>
+          {asState.kind === "offer" && asState.error && <Alert>{asState.error}</Alert>}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              className="w-auto"
+              disabled={asState.kind === "opening"}
+              onClick={() => void openAs(asState.username, asState.hostSlug)}
+            >
+              {asState.kind === "opening" ? t("audit.asOpening") : tNodes("audit.asOfferOpen", { username: asState.username })}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-auto"
+              disabled={asState.kind === "opening"}
+              onClick={() => setAsState({ kind: "none" })}
+            >
+              {t("audit.asOfferStay")}
+            </Button>
+          </div>
+        </Card>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-4">
       {confirmDialog}
-      <Link
-        to={"/account/apps" + search}
-        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-      >
-        <ArrowLeft size={14} aria-hidden /> {t("audit.backToApps")}
-      </Link>
+      {backLink}
+      {asState.kind === "not-managed" && (
+        <Alert tone="info">{tNodes("audit.asNotManaged", { username: <strong>{asState.username}</strong> })}</Alert>
+      )}
+      {asState.kind === "list-failed" && (
+        <Alert tone="info">{tNodes("audit.asListFailed", { username: <strong>{asState.username}</strong> })}</Alert>
+      )}
+      {asState.kind === "ignored" && <Alert tone="info">{t("audit.asIgnored")}</Alert>}
 
       <Card>
         <div className="mb-2 flex items-center justify-between gap-3">

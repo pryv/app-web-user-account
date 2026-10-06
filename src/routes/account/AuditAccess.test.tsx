@@ -95,6 +95,24 @@ describe("[AXSP] access details extension slot", () => {
     expect(created.textContent).not.toMatch(/\b10\/5\/2026\b/);
   });
 
+  it("[AXS5] another connection (the pages now act for another account): the previous load's outcome goes", async () => {
+    conn.accesses = [];
+    const view = renderPage("app-1");
+    await screen.findByText(/This access is not listed anymore/);
+    // The session switches to an account that holds the access.
+    conn.accesses = ACCESSES;
+    conn.connection = { api: conn.api, accessInfo: conn.accessInfo };
+    view.rerender(
+      <MemoryRouter initialEntries={["/account/audit-access/app-1"]}>
+        <Routes>
+          <Route path="/account/audit-access/:accessId" element={<AuditAccess />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("access-ext");
+    expect(screen.queryByText(/This access is not listed anymore/)).toBeNull();
+  });
+
   it("[AXS3] does not mount while the access is not loaded, nor when it is not listed", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
