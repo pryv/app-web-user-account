@@ -107,7 +107,7 @@ of them keeps a stable interface; everything else can be merged from upstream.
 | `src/brand.tsx`, `src/brand.css` | Your product name, account noun, logo and fonts. | `brand`, `Logo`. |
 | `src/accountTabs.tsx` + `src/routes.json` | Extra account tabs (`ACCOUNT_TABS`, path relative to `/account`) or top-level pages (`EXTRA_ROUTES`); add each path to `routes.json` (`account` / `static`) for static hosting. A test fails when the two disagree. | The `AccountTab` shape. |
 | `src/extensions/ProfileExtensions.tsx` | Extra profile sections, rendered between the account and email cards; receives `{ connection, username }`. Renders nothing by default. | The props. |
-| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the audit trail card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the audit trail stay as they are. Renders nothing by default. After the user opened the page as a managed account (`?as=`, or Open on the Delegation page), `connection` is that account's delegated session. | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
+| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the audit trail card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the audit trail stay as they are. Renders nothing by default. After the user opened the page as a managed account (`?as=`, or Open on the Delegation page), `connection` is that account's delegated session. `access` is raw: its `clientData` can carry token-bearing URLs (a consent grant's `cmc.counterparty.apiEndpoint` and `cmc.backChannelApiEndpoint`, a delegation invite's `delegation.capabilityUrl`); print any of it through `maskCredentials` (`src/lib/maskCredentials.ts`). | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
 | `src/extensions/streamLabels.ts` | `loadStreamLabels(serviceInfoUrl)` returning a `(streamId) => label \| null` resolver, to show your data model's names on consent rows. Default: no labels. | The resolver type. |
 | `src/components/consent/ConsentPanel.tsx` | Your consent screen layout; the access-request and OAuth2 pages pass it the app, the rows, the choice state and the actions. | `ConsentPanelProps`. |
 
@@ -487,6 +487,13 @@ Two production builds exist:
   as `app-web-user-account-<version>-root.tar.gz`, created with
   `tar -czf app-web-user-account-<version>-root.tar.gz -C dist .` and attached
   with `gh release upload v<version> app-web-user-account-<version>-root.tar.gz`.
+  On macOS, bsdtar can store extended attributes as `LIBARCHIVE.xattr.*` pax
+  headers and, depending on its version and settings, `._<name>` AppleDouble
+  entries, which a Linux tar extracts as files; build there with
+  `COPYFILE_DISABLE=1 tar --no-xattrs --no-mac-metadata -czf ...` instead (on
+  Linux the plain `tar -czf`: GNU tar has no `--no-mac-metadata`). Check on
+  Linux: `tar -tvzf <file>` lists no `._` entry and prints no "unknown extended
+  header" warning.
 - `npm run build:pages` builds the GitHub Pages copy served under
   `/app-web-user-account/` (adds `404.html` and `.nojekyll`).
 

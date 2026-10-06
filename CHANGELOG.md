@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **The access details page no longer shows tokens.** Its "Client data" block
+  printed an access's client data as raw JSON, and a grant minted by accepting
+  a consent invite carries the counterparty's API endpoint there, whose user
+  part is a working token (`https://<token>@<host>/<user>/`); the back-channel
+  endpoint and a delegation invite's capability URL have the same shape. The
+  owner can read them through the API anyway, but on screen they travel with a
+  screenshot, a screen share or a support session. Every string that is a URL
+  with a user part now shows `***` in its place (`https://***@<host>/<user>/`,
+  scheme, host and path kept), in the client data, the audit trail and data
+  rows and the error messages of the same page: a URL inside a longer text, in
+  a query or a fragment, and one percent-encoded in a query value too. Display
+  only: the access itself is unchanged. The helpers are `maskCredentials` and
+  `maskUrlCredentials` in `src/lib/maskCredentials.ts`; the
+  `AccessExtras` slot still receives the raw access (see Extension points).
+
 ## 0.14.0 - 2026-10-06
 
 ### Added

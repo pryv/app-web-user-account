@@ -43,6 +43,9 @@ const MAX_SCANNED_LENGTH = 2000;
 
 /**
  * `text` with URLs and `userinfo@host` parts replaced, cut at 300 characters.
+ * For logs: nothing of the endpoint is kept. On screen, `maskCredentials` in
+ * `src/lib/maskCredentials.ts` keeps the host and path and masks only the
+ * token; the two contracts differ on purpose.
  * The text is cut before matching and every quantifier that can backtrack is
  * bounded, so a hostile message costs linear time.
  */
