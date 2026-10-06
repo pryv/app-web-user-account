@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Alert } from "../ui";
 import { PermissionList } from "./PermissionList";
 import { ConsentActions } from "./ConsentActions";
-import { consentEntries, type OfferPermission } from "../../lib/consent";
+import { consentEntries, pickText, type OfferPermission } from "../../lib/consent";
 import type { StreamLabelResolver } from "../../lib/streamLabels";
 
 /** A cross-account messaging offer, as `cmc.readOffer` returns it. */
@@ -82,7 +82,10 @@ export function CmcOfferBlock({
   notice,
   actionsBlocked,
 }: CmcOfferBlockProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // The requester's statement in the interface language, not whichever
+  // language the requester happened to list first.
+  const consentText = pickText(offer?.consent, i18n.language || "en");
   return (
     <>
       {heading}
@@ -104,8 +107,10 @@ export function CmcOfferBlock({
             )}{" "}
             {t("cmc.requestingAccess")}
           </p>
-          {offer.consent && Object.values(offer.consent)[0] && (
-            <p className="mb-4 text-sm text-muted">{Object.values(offer.consent)[0]}</p>
+          {consentText !== "" && (
+            <p className="mb-4 text-sm text-muted" data-testid="cmc-consent-text">
+              {consentText}
+            </p>
           )}
           <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
           {notice}

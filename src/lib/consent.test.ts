@@ -138,11 +138,19 @@ describe("permissionLabel + pickText", () => {
     expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
   });
 
-  it("pickText prefers the requested language, then en, then first", () => {
+  it("pickText prefers the requested language, then its base, then en, then first", () => {
     expect(pickText({ en: "Hello", fr: "Bonjour" }, "fr")).toBe("Bonjour");
     expect(pickText({ en: "Hello", fr: "Bonjour" })).toBe("Hello");
     expect(pickText({ de: "Hallo" })).toBe("Hallo");
     expect(pickText(null)).toBe("");
+    expect(pickText(undefined, "fr")).toBe("");
+  });
+
+  it("[PKTB] pickText falls back from a regional language to its base, whatever the key order", () => {
+    expect(pickText({ en: "Hello", fr: "Bonjour" }, "fr-CH")).toBe("Bonjour");
+    expect(pickText({ "fr-CH": "Grüezi-Bonjour", fr: "Bonjour" }, "fr-CH")).toBe("Grüezi-Bonjour");
+    expect(pickText({ de: "Hallo", en: "Hello" }, "fr-CH")).toBe("Hello");
+    expect(pickText({ fr: "Bonjour", en: "Hello" }, "en-GB")).toBe("Hello");
   });
 });
 
