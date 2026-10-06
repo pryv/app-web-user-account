@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 /**
@@ -10,6 +10,9 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
  * known, and, when the calling app names the account it expects (`username=`)
  * and the session is another one, asks to switch account instead.
  */
+
+/** When set, answers `username()` in place of the endpoint's host label. */
+const lookup = vi.hoisted(() => ({ impl: null as null | (() => Promise<string>) }));
 
 vi.mock("pryv", () => ({
   default: {
@@ -22,6 +25,7 @@ vi.mock("pryv", () => ({
         this.endpoint = apiEndpoint;
       }
       async username() {
+        if (lookup.impl) return lookup.impl();
         const name = new URL(this.apiEndpoint).hostname.split(".")[0];
         if (name === "unreachable") throw new Error("network down");
         return name;
@@ -89,6 +93,8 @@ async function signInTarget(): Promise<URLSearchParams> {
 describe("[CMRS] /cmc-accept names the account that answers", () => {
   afterEach(() => {
     cleanup();
+    vi.useRealTimers();
+    lookup.impl = null;
     localStorage.clear();
     cmcMock.readOffer.mockReset();
     cmcMock.acceptInvite.mockReset();
@@ -166,6 +172,61 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     expect(block.textContent).toContain("Could not confirm which account is signed in.");
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+  });
+
+  it("[CMS8] while the account is looked up: Approve / Decline shown but disabled, then enabled", async () => {
+    signedIn();
+    offer();
+    let resolve: (name: string) => void = () => {};
+    lookup.impl = () => new Promise<string>((r) => (resolve = r));
+    renderPage();
+    expect((await screen.findByTestId("cmc-checking-account")).textContent).toBe("Checking the signed-in account…");
+    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(cmcMock.acceptInvite).not.toHaveBeenCalled();
+    await act(async () => resolve("alice"));
+    expect((await screen.findByTestId("cmc-approving-as")).textContent).toContain("alice");
+    expect(screen.queryByTestId("cmc-checking-account")).toBeNull();
+    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("[CMS9] a lookup that does not answer in time: sign in again, a late name changes nothing", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    signedIn();
+    offer();
+    let resolve: (name: string) => void = () => {};
+    lookup.impl = () => new Promise<string>((r) => (resolve = r));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    renderPage();
+    await act(async () => {});
+    expect(screen.getByTestId("cmc-checking-account")).toBeTruthy();
+    await act(async () => {
+      vi.advanceTimersByTime(4000);
+    });
+    warn.mockRestore();
+    expect(screen.getByTestId("cmc-switch-account").textContent).toContain("Could not confirm which account is signed in.");
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    await act(async () => resolve("alice"));
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    expect(screen.getByTestId("cmc-switch-account")).toBeTruthy();
+  });
+
+  it("[CMS10] a username= that cannot name an account is not compared nor shown", async () => {
+    signedIn();
+    offer();
+    const crafted = "call 0800 000 000 to unlock your account";
+    renderPage({ username: crafted });
+    await screen.findByTestId("cmc-approving-as");
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+    expect(document.body.textContent).not.toContain("0800");
+    expect((screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
+    cleanup();
+    renderPage({ username: "a".repeat(61) });
+    await screen.findByTestId("cmc-approving-as");
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
   });
 
   it("[CMS7] Approve answers with the session the page named", async () => {

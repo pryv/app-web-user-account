@@ -26,7 +26,7 @@ export interface CmcOfferBlockProps {
   labelFor?: StreamLabelResolver;
   /** Which action is in flight: disables both buttons. */
   busy: "accept" | "refuse" | null;
-  /** Disables both buttons. */
+  /** Disables both buttons (and, with `decided`, its Change button). */
   disabled?: boolean;
   /** Disables Approve only (Decline stays available). */
   approveDisabled?: boolean;

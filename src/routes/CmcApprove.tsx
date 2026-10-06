@@ -16,6 +16,10 @@ import { hasUsableEmail, missingEmailErrorKey, readsAccountEmail } from "../lib/
 import { maskUrlCredentials } from "../lib/maskCredentials";
 import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
 import { useStreamLabels } from "../lib/useConsentDisplay";
+import { isValidUsername } from "../lib/username";
+
+/** Longest wait for the signed-in account's name before asking to sign in again (as `/auth`). */
+const ACCOUNT_LOOKUP_WAIT_MS = 4000;
 
 /**
  * What the page hands back to the app that sent the invite: the outcome only.
@@ -43,9 +47,11 @@ interface AcceptParams {
   returnUrl: string | null;
   mode: "popup" | "redirect";
   /**
-   * The account the calling app expects to answer (`username=`), or null. An
-   * email cannot be compared with the session's username: it only pre-fills
-   * the sign-in form, like any `username` hint.
+   * The account the calling app expects to answer (`username=`, lowercased),
+   * or null. Only a value that can be a username counts: the page shows it, so
+   * a crafted link cannot put arbitrary text there. An email (or any other
+   * value) is not compared; it only pre-fills the sign-in form, like any
+   * `username` hint.
    */
   expectedUsername: string | null;
 }
@@ -54,14 +60,15 @@ function parseCmcParams(search: string): AcceptParams {
   const p = new URLSearchParams(search);
   const returnUrl = p.get("returnUrl");
   const mode = (p.get("mode") as "popup" | "redirect" | null) ?? (returnUrl ? "redirect" : "popup");
-  const hint = p.get("username")?.trim() || null;
+  // Lowered first: usernames are lowercase-only, and the rule rejects capitals.
+  const hint = p.get("username")?.trim().toLowerCase() ?? "";
   return {
     capabilityUrl: p.get("capabilityUrl") ?? p.get("capability"),
     scopeStreamId: p.get("scopeStreamId"),
     accessName: p.get("accessName"),
     returnUrl,
     mode,
-    expectedUsername: hint != null && !hint.includes("@") ? hint : null,
+    expectedUsername: isValidUsername(hint) ? hint : null,
   };
 }
 
@@ -180,21 +187,40 @@ export default function CmcApprove() {
     setAccount({ status: "loading" });
     if (!connection) return;
     let cancelled = false;
+    // The lookup is a network call: a stalled one must not leave the actions
+    // disabled with no way out. Past the wait, ask to sign in again; a name
+    // arriving later is ignored (the page does not change under the user).
+    const giveUp = setTimeout(() => {
+      console.warn("cmc-accept: the signed-in account could not be read in time");
+      cancelled = true;
+      setAccount({ status: "unknown" });
+    }, ACCOUNT_LOOKUP_WAIT_MS);
     connection
       .username()
       .then((username) => {
         if (!cancelled) setAccount({ status: "known", username });
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         console.warn("cmc-accept: could not read the signed-in account:", loggableError(err));
-        if (!cancelled) setAccount({ status: "unknown" });
-      });
+        setAccount({ status: "unknown" });
+      })
+      .finally(() => clearTimeout(giveUp));
     return () => {
       cancelled = true;
+      clearTimeout(giveUp);
     };
     // The session's account (its endpoint) decides; the object identity does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountEndpoint]);
+
+  const signedInAs = account.status === "known" ? account.username : null;
+  const wrongAccount =
+    signedInAs != null &&
+    params.expectedUsername != null &&
+    params.expectedUsername !== signedInAs.toLowerCase();
+  /** Approve / Decline answer with the session: only once it is known to be the right account. */
+  const mayAnswer = signedInAs != null && !wrongAccount;
 
   /** Sign out, sign in (as someone else), and come back to this same request. */
   function switchAccount() {
@@ -264,7 +290,7 @@ export default function CmcApprove() {
   }
 
   async function approve() {
-    if (!connection || !params.capabilityUrl || !params.scopeStreamId) return;
+    if (!connection || !params.capabilityUrl || !params.scopeStreamId || !mayAnswer) return;
     setWorking("accept");
     setError(null);
     try {
@@ -284,7 +310,7 @@ export default function CmcApprove() {
   }
 
   async function decline() {
-    if (!connection || !params.capabilityUrl || !params.scopeStreamId) return;
+    if (!connection || !params.capabilityUrl || !params.scopeStreamId || !mayAnswer) return;
     setWorking("refuse");
     setError(null);
     try {
@@ -318,17 +344,15 @@ export default function CmcApprove() {
     );
   }
 
-  const signedInAs = account.status === "known" ? account.username : null;
-  const wrongAccount =
-    signedInAs != null &&
-    params.expectedUsername != null &&
-    params.expectedUsername.toLowerCase() !== signedInAs.toLowerCase();
-
-  // Who answers, said right above the actions. Without a known account (or
-  // with another one than the app expects), the actions are replaced by a way
-  // to sign in as the right person.
+  // Who answers, said right above the actions (while it is looked up, why they
+  // are disabled). Without a known account (or with another one than the app
+  // expects), the actions are replaced by a way to sign in as the right person.
   const accountLine =
-    signedInAs != null && !wrongAccount ? (
+    account.status === "loading" ? (
+      <p className="mb-4 text-sm text-muted" data-testid="cmc-checking-account">
+        {t("cmc.checkingAccount")}
+      </p>
+    ) : mayAnswer ? (
       <p className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" data-testid="cmc-approving-as">
         <span>{tNodes("cmc.approvingAs", { username: <strong>{signedInAs}</strong> })}</span>
         <button type="button" onClick={switchAccount} disabled={working !== null} className={LINK_BUTTON}>
@@ -363,7 +387,7 @@ export default function CmcApprove() {
         error={error}
         labelFor={labelFor}
         busy={working}
-        disabled={!offer || account.status !== "known"}
+        disabled={!offer || !mayAnswer}
         approveDisabled={emailState?.kind === "adding"}
         onApprove={() => void approve()}
         onDecline={() => void decline()}

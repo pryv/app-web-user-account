@@ -519,6 +519,7 @@
     "inviteForSelf": "For you ({{username}})",
     "inviteForManaged": "For {{username}}, whom you look after",
     "inviteAlreadyGivenOn": "Already given on {{date}}. It is kept as it is.",
+    "checkingAccount": "Checking the signed-in account…",
     "approvingAs": "You are approving as {{username}}.",
     "notYouSwitch": "Not you? Switch account",
     "switchAccount": "Switch account",
