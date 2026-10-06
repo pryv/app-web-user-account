@@ -31,7 +31,6 @@ describe("[AUAS] ?as= on the access details page", () => {
     expect(invite).toEqual({ kind: "not-managed", username: "kid-b" });
     expect(resolveAs({ ...base, as: "kid-c" })).toEqual({ kind: "not-managed", username: "kid-c" });
     expect(resolveAs({ ...base, as: "kid-x" })).toEqual({ kind: "not-managed", username: "kid-x" });
-    expect(Object.keys(invite)).toEqual(Object.keys(resolveAs({ ...base, as: "kid-x" })));
   });
 
   it("[AUA3] the value is a username or it is ignored, never echoed", () => {

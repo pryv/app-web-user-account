@@ -218,7 +218,7 @@ describe("[AXAS] open a managed account's access from a link", () => {
     await screen.findByText(/names an account that cannot exist/);
     expect(document.querySelector("b")).toBeNull();
     expect(document.body.textContent).not.toContain("<b>");
-    expect(document.body.textContent).not.toContain("kiddo</b>");
+    expect(document.body.textContent).not.toContain("kid</b>");
     expect(deleg.listControlled).not.toHaveBeenCalled();
   });
 
@@ -250,12 +250,25 @@ describe("[AXAS] open a managed account's access from a link", () => {
     signedIn();
     deleg.openControlled.mockRejectedValue(new DelegationError("not active", errorIds.NOT_ACTIVE));
     openPage("?as=kiddo");
-    (await screen.findByRole("button", { name: "Open as kiddo" })).click();
+    const open = await screen.findByRole("button", { name: "Open as kiddo" });
+    const heading = screen.getByRole("heading", { name: /Open as kiddo\?/ });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    open.focus();
+    open.click();
     await screen.findByText("This delegation is no longer active.");
+    // The heading took the focus once, when the offer first showed: not again after the failure.
+    expect(document.activeElement).not.toBe(heading);
     expect(screen.getByRole("heading", { name: /Open as kiddo\?/ })).toBeTruthy();
     expect(stored()).toBeNull();
     screen.getByRole("button", { name: "Stay on my account" }).click();
     await screen.findByText(/This access is not listed anymore/);
+  });
+
+  it("[AXA10] a page without as builds no delegation client and no parent connection", async () => {
+    actingFor("kiddo");
+    openPage("");
+    await screen.findByText("kid-app");
+    expect(deleg.builtOn).toEqual([]);
   });
 
   it("[AXA9] already acting for the account named: nothing to do, the page loads as it", async () => {

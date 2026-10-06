@@ -87,9 +87,10 @@ export default function AuditAccess() {
   // The managed accounts are listed, and opened, with the signed-in person's
   // OWN session: while the pages act for an account, the one kept to return to.
   const actingUsername = actingAs?.username ?? null;
+  // Built only when a link asked for an account: a page without `as` needs neither.
   const ownerConnection = useMemo<PryvConnection | null>(
-    () => (actingUsername != null ? storedParentConnection() : connection),
-    [actingUsername, connection],
+    () => (asRequested == null ? null : actingUsername != null ? storedParentConnection() : connection),
+    [asRequested, actingUsername, connection],
   );
   const ownerClient = useMemo(
     () => (ownerConnection ? Delegation.fromConnection(ownerConnection, { pryv: Pryv }) : null),
@@ -103,6 +104,8 @@ export default function AuditAccess() {
     void (async () => {
       // Shape, and the account the pages already act for: no listing needed.
       const first = resolveAs({ as: asRequested, selfUsername: null, actingUsername, controlled: [] });
+      // Without a list, `not-managed` here only means: a valid username, not the
+      // account acted for. Anything else is decided already.
       if (first.kind !== "not-managed") {
         if (!cancelled) setAsState(first.kind === "ignored" ? { kind: "ignored" } : { kind: "none" });
         return;
@@ -161,11 +164,18 @@ export default function AuditAccess() {
   }
 
   // The card's heading takes the focus when the offer shows.
+  // Once (a page shows at most one offer, `as` being read once): a failed Open
+  // comes back to the card without taking the focus away from where the person
+  // is (the error is announced as an alert).
   const offerHeading = useRef<HTMLHeadingElement>(null);
-  const offerShown = asState.kind === "offer";
+  const offerFocused = useRef(false);
+  const asKind = asState.kind;
   useEffect(() => {
-    if (offerShown) offerHeading.current?.focus();
-  }, [offerShown]);
+    if (asKind === "offer" && !offerFocused.current) {
+      offerFocused.current = true;
+      offerHeading.current?.focus();
+    }
+  }, [asKind]);
 
   const [details, setDetails] = useState<AccessDetails | null>(null);
   const [detailsMissing, setDetailsMissing] = useState(false);
