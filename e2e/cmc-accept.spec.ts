@@ -198,6 +198,8 @@ test.describe("/cmc-accept redirect mode", () => {
     const mock = await mockCmcPlatform(context);
     await page.goto(acceptPath({ mode: "redirect", returnUrl: RETURN_URL }));
     await expectOfferShown(page);
+    // The account that answers is named before the person approves.
+    await expect(page.getByTestId("cmc-approving-as")).toContainText("You are approving as alice.");
 
     await page.getByRole("button", { name: "Approve" }).click();
     await page.waitForURL("https://app.example.test/done?**");
@@ -212,6 +214,26 @@ test.describe("/cmc-accept redirect mode", () => {
       content: { capabilityUrl: CAPABILITY_URL },
     });
     expect(mock.accepterCalls.some((c) => c.method === "events.getOne")).toBe(true);
+  });
+
+  // An open link can be opened in a browser that holds someone else's session:
+  // the app names who should answer, and the page asks to switch account.
+  test("[CMA7] the app expects another account: Switch account, back to the request after sign-in", async ({ page, context }) => {
+    const mock = await mockCmcPlatform(context);
+    await page.goto(acceptPath({ mode: "redirect", returnUrl: RETURN_URL, username: "carol" }));
+    await expectOfferShown(page);
+    await expect(page.getByTestId("cmc-switch-account")).toContainText(
+      "This request is for carol, but you are signed in as alice.",
+    );
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Switch account" }).click();
+    await page.waitForURL(/\/signin\?/);
+    const target = new URL(page.url()).searchParams;
+    expect(target.get("next")).toBe("/cmc-accept");
+    expect(target.get("capabilityUrl")).toBe(CAPABILITY_URL);
+    await expect(page.locator("#username")).toHaveValue("carol");
+    expect(mock.accepterCalls.some((c) => c.method === "events.create")).toBe(false);
   });
 
   // An operator-trusted origin gets exactly the same result: the hand-off never

@@ -26,7 +26,7 @@ export interface CmcOfferBlockProps {
   labelFor?: StreamLabelResolver;
   /** Which action is in flight: disables both buttons. */
   busy: "accept" | "refuse" | null;
-  /** Disables both buttons. */
+  /** Disables both buttons (and, with `decided`, its Change button). */
   disabled?: boolean;
   /** Disables Approve only (Decline stays available). */
   approveDisabled?: boolean;
@@ -48,6 +48,11 @@ export interface CmcOfferBlockProps {
   given?: string | null;
   /** Rendered after the permissions, before the actions (e.g. the account has no email address). */
   notice?: ReactNode;
+  /**
+   * Rendered in place of Approve / Decline when the page cannot offer them
+   * (e.g. the signed-in account is not the one expected to answer).
+   */
+  actionsBlocked?: ReactNode;
 }
 
 /**
@@ -75,6 +80,7 @@ export function CmcOfferBlock({
   heading,
   given = null,
   notice,
+  actionsBlocked,
 }: CmcOfferBlockProps) {
   const { t } = useTranslation();
   return (
@@ -123,6 +129,8 @@ export function CmcOfferBlock({
             </button>
           )}
         </div>
+      ) : actionsBlocked != null ? (
+        actionsBlocked
       ) : (
         <ConsentActions
           busy={busy}
