@@ -28,6 +28,7 @@ import {
   type InviteDecision,
 } from "../lib/cmcInvites";
 import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
+import { isValidUsername } from "../lib/username";
 import {
   consentEntries,
   grantedPermissions,
@@ -1081,7 +1082,12 @@ export default function Auth() {
         });
         outcomes[i] = acceptedOutcome(res, invite.for === "target" && !asTarget);
       } catch (err: unknown) {
-        const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
+        // Named after the account that answered (see `inviteCredentials`). No
+        // "Switch account" here: a refused mandatory invite ends the request.
+        const answering = asTarget || owner == null ? username : owner.username;
+        const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), {
+          username: isValidUsername(answering) ? answering : null,
+        });
         // A wait that ended before the platform recorded the outcome is not a
         // failure: the accept usually completes moments later. Reported, and
         // the requester learns the truth from its inbox.

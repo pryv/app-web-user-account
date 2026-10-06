@@ -18,8 +18,12 @@
   approval from the invite's own requester (an account opening its own open-link invite) with
   `cmc-self-accept-forbidden`, which the page showed as a generic "could not approve". It now says
   "This invitation was created by this account ({username}); it must be approved by the person it was
-  sent to. If that is you on another account, switch account.", and replaces Approve / Decline with
-  "Switch account". The id handed back to the calling app is `cmc-self-accept-forbidden`.
+  sent to. If that is you on another account, switch account" and replaces Approve / Decline with
+  "Switch account". That screen shows only when the page is not driven by an app (link opened
+  directly): in popup or redirect mode the calling app receives `cmc-self-accept-forbidden` and should
+  open the page again with `username=` naming the account the invite was sent to. On `/auth`, a
+  consent invite refused for this reason names the account the same way, without the switch-account
+  advice.
 
 ## 0.15.0 - 2026-10-06
 

@@ -366,6 +366,23 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(flow.updateAccessState).toHaveBeenCalledTimes(1);
   });
 
+  it("[ACI29] a mandatory invite created by the signed-in account: named, and no switch account promised", async () => {
+    cmcMock.acceptInvite.mockRejectedValue(
+      Object.assign(new Error("CMC accept failed: cmc-self-accept-forbidden"), { id: "cmc-self-accept-forbidden" }),
+    );
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    decide(block, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(posted().status).toBe("REFUSED");
+    expect(String(posted().message)).toContain("cmc-self-accept-forbidden");
+    const shown = await screen.findByText(/This invitation was created by this account \(parent\)/);
+    expect(shown.textContent).toContain("from their own account");
+    expect(shown.textContent).not.toMatch(/switch account/i);
+  });
+
   it("[ACI11] an optional accept that fails is reported, and the grant proceeds", async () => {
     cmcMock.acceptInvite.mockImplementation(async (_conn: unknown, url: string) => {
       if (url === CAP_B) throw Object.assign(new Error("CMC accept failed"), { id: "cmc-capability-invalidated" });

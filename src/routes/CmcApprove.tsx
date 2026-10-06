@@ -10,7 +10,7 @@ import { storedServiceInfoUrl } from "../lib/sessionStore";
 import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
 import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
 import { signInLinkFor } from "../lib/handoffReturn";
-import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
+import { inviteFailure, OFFER_UNREADABLE_KEY, type InviteFailure } from "../lib/cmcAccept";
 import { loggableError, platformError } from "../lib/apiError";
 import { hasUsableEmail, missingEmailErrorKey, readsAccountEmail } from "../lib/accountEmail";
 import { maskUrlCredentials } from "../lib/maskCredentials";
@@ -132,7 +132,7 @@ export default function CmcApprove() {
 
   const [offer, setOffer] = useState<CmcOfferView | null>(null);
   const [loadingOffer, setLoadingOffer] = useState(false);
-  const [error, setError] = useState<{ message: string; tone: "danger" | "info"; switchAccount?: true } | null>(null);
+  const [error, setError] = useState<Omit<InviteFailure, "reason"> | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
   const labelFor = useStreamLabels(storedServiceInfoUrl());
@@ -301,8 +301,9 @@ export default function CmcApprove() {
       setDone("accepted");
       deliverResult({ ok: true, acceptEventId: res.acceptEventId }, params);
     } catch (err: unknown) {
-      const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), signedInAs);
-      setError({ message: failure.message, tone: failure.tone, switchAccount: failure.switchAccount });
+      const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), { username: signedInAs, canSwitchAccount: true });
+      const { reason: _reason, ...shown } = failure;
+      setError(shown);
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
@@ -320,8 +321,9 @@ export default function CmcApprove() {
       setDone("refused");
       deliverResult({ ok: false, reason: "declined-by-user" }, params);
     } catch (err: unknown) {
-      const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"), signedInAs);
-      setError({ message: failure.message, tone: failure.tone, switchAccount: failure.switchAccount });
+      const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"), { username: signedInAs, canSwitchAccount: true });
+      const { reason: _reason, ...shown } = failure;
+      setError(shown);
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);

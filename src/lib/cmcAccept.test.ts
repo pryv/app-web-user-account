@@ -33,22 +33,32 @@ describe("[CMAF] inviteFailure", () => {
     }
   });
 
-  it("explains an invite approved by the account that created it, and offers to switch account", () => {
-    const named = inviteFailure(cmcError(SELF_ACCEPT_FORBIDDEN_ID), "Could not approve.", "alice");
-    expect(named).toEqual({
+  it("explains an invite approved by the account that created it, and says to switch account where the page can", () => {
+    const err = cmcError(SELF_ACCEPT_FORBIDDEN_ID);
+    // /cmc-accept: named, and the page offers "Switch account".
+    expect(inviteFailure(err, "Could not approve.", { username: "alice", canSwitchAccount: true })).toEqual({
       reason: "cmc-self-accept-forbidden",
       message:
         "This invitation was created by this account (alice); it must be approved by the person it was sent to. If that is you on another account, switch account.",
       tone: "danger",
       switchAccount: true,
     });
-    // Without the account's name, the text still reads (no unresolved placeholder).
-    const unnamed = inviteFailure(cmcError(SELF_ACCEPT_FORBIDDEN_ID), "Could not approve.");
-    expect(unnamed.message).toMatch(/^This invitation was created by the signed-in account;/);
-    expect(unnamed.message).not.toContain("{{");
-    expect(unnamed.switchAccount).toBe(true);
+    // A page without that action (/auth): named, no switch promised.
+    expect(inviteFailure(err, "Could not approve.", { username: "alice" })).toEqual({
+      reason: "cmc-self-accept-forbidden",
+      message:
+        "This invitation was created by this account (alice); it must be approved by the person it was sent to, from their own account.",
+      tone: "danger",
+    });
+    // Without the account's name: no unresolved placeholder, no switch promised.
+    const unnamed = inviteFailure(err, "Could not approve.", { canSwitchAccount: true });
+    expect(unnamed.message).toBe(
+      "This invitation was created by the account approving it; it must be approved by the person it was sent to, from their own account.",
+    );
+    expect(unnamed.switchAccount).toBeUndefined();
     // Other outcomes do not offer it.
-    expect(inviteFailure(cmcError(errorIds.CAPABILITY_INVALID), "Could not approve.", "alice").switchAccount).toBeUndefined();
+    const other = inviteFailure(cmcError(errorIds.CAPABILITY_INVALID), "Could not approve.", { username: "alice", canSwitchAccount: true });
+    expect(other.switchAccount).toBeUndefined();
   });
 
   it("explains a grant refused to a token obtained through a delegation", () => {
