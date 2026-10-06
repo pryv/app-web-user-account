@@ -217,8 +217,8 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(flow.checkAppAccess.mock.invocationCallOrder[0]).toBeLessThan(cmcMock.readOffer.mock.invocationCallOrder[0]);
     const blocks = await inviteBlocks(2);
     expect(within(blocks[0]).getByTestId("cmc-requester").textContent).toBe("doctor@requester.test");
-    expect(blocks[0].textContent).toContain("required");
-    expect(blocks[1].textContent).toContain("optional");
+    expect(within(blocks[0]).getByTestId("cmc-invite-badge").textContent).toBe("Required");
+    expect(within(blocks[1]).getByTestId("cmc-invite-badge").textContent).toBe("Optional");
     // The page's Accept is Continue, disabled until every block is decided.
     expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
     expect(continueButton().disabled).toBe(true);
@@ -380,7 +380,7 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(String(posted().message)).toContain("cmc-self-accept-forbidden");
     const shown = await screen.findByText(/This invitation was created by this account/);
     expect(shown.textContent).toBe(
-      "A required consent invite could not be accepted (This invitation was created by this account (parent); it must be approved by the person it was sent to, from their own account.). The request was refused and the app was given no access.",
+      "A required consent request could not be accepted (This invitation was created by this account (parent); it must be approved by the person it was sent to, from their own account.). The request was refused and the app was given no access.",
     );
     expect(shown.textContent).not.toMatch(/switch account/i);
   });
@@ -571,7 +571,11 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     (await screen.findByRole("button", { name: /continue for kid-a/i })).click();
     await screen.findByText(/is requesting permission/);
     const [block] = await inviteBlocks(1);
-    expect(within(block).getByTestId("cmc-invite-for").textContent).toBe("For kid-a, whom you look after");
+    const group = block.closest("[data-testid=cmc-invite-group]") as HTMLElement;
+    expect(group.getAttribute("data-for")).toBe("target");
+    expect(within(group).getByRole("heading", { level: 2 }).textContent).toBe(
+      "Consents for kid-a, the account you look after",
+    );
     decide(block, "Approve");
     await waitFor(() => expect(continueButton().disabled).toBe(false));
     continueButton().click();
@@ -711,30 +715,51 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     await screen.findByText(/is requesting permission/);
   }
 
-  it("[ACI17] after \"who is this for?\", each block names the account its consent is for", async () => {
+  /** The account groups on screen, in display order, each with its heading and blocks. */
+  function inviteGroups() {
+    return screen.getAllByTestId("cmc-invite-group").map((g) => ({
+      for: g.getAttribute("data-for"),
+      heading: (g.querySelector("h2") as HTMLElement).textContent,
+      blocks: within(g).getAllByTestId("cmc-invite"),
+    }));
+  }
+
+  it("[ACI17] after \"who is this for?\", the blocks are grouped by the account their consent is for", async () => {
     await reachViaGrantFor(
       [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
       "kid-a",
     );
-    const blocks = await inviteBlocks(2);
-    expect(within(blocks[0]).getByTestId("cmc-invite-for").textContent).toBe("For kid-a, whom you look after");
-    expect(within(blocks[1]).getByTestId("cmc-invite-for").textContent).toBe("For you (parent)");
-    // Part of the heading, so the block is announced with it.
-    expect(within(blocks[0]).getByRole("heading").textContent).toContain("For kid-a, whom you look after");
+    await inviteBlocks(2);
+    const groups = inviteGroups();
+    // The signed-in account's consents first, then the managed account's.
+    expect(groups.map((g) => g.for)).toEqual(["self", "target"]);
+    expect(groups[0].heading).toBe("Consents for you (parent)");
+    expect(groups[1].heading).toBe("Consents for kid-a, the account you look after");
+    expect(within(groups[0].blocks[0]).getByTestId("cmc-requester").textContent).toBe("study@requester.test");
+    expect(within(groups[1].blocks[0]).getByTestId("cmc-requester").textContent).toBe("doctor@requester.test");
+    // The group is named once: no per-block account line.
+    expect(screen.queryByTestId("cmc-invite-for")).toBeNull();
+    // Each group is a labelled region, announced with its heading.
+    expect(screen.getByRole("region", { name: "Consents for kid-a, the account you look after" })).toBeTruthy();
   });
 
-  it("[ACI18] the carer picked their own account: a for: 'target' block reads \"For you\"", async () => {
+  it("[ACI18] the carer picked their own account: a for: 'target' block is in the \"for you\" group", async () => {
     await reachViaGrantFor([{ capabilityUrl: CAP_A, mandatory: true, for: "target" }], "parent");
-    const [block] = await inviteBlocks(1);
-    expect(within(block).getByTestId("cmc-invite-for").textContent).toBe("For you (parent)");
+    await inviteBlocks(1);
+    const groups = inviteGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0].for).toBe("self");
+    expect(groups[0].heading).toBe("Consents for you (parent)");
   });
 
-  it("[ACI19] (guard) without \"who is this for?\", the headings name no account", async () => {
+  it("[ACI19] (guard) without \"who is this for?\", the blocks are not grouped and name no account", async () => {
     await reachConsent(
       needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "target" }]),
     );
-    const blocks = await inviteBlocks(2);
-    for (const b of blocks) expect(within(b).queryByTestId("cmc-invite-for")).toBeNull();
+    await inviteBlocks(2);
+    expect(screen.queryAllByTestId("cmc-invite-group")).toHaveLength(0);
+    expect(screen.queryByTestId("cmc-invite-for")).toBeNull();
+    expect(screen.queryByText(/^Consents for/)).toBeNull();
   });
 
   it("[ACI20] an offer this account already accepted shows as given: no Approve/Decline, counts as accepted, nothing written", async () => {
@@ -774,13 +799,14 @@ describe("[ACI] /auth: consent invites in the access request", () => {
       [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
       "kid-a",
     );
-    const blocks = await inviteBlocks(2);
+    await inviteBlocks(2);
     expect(scopeMock.listGrants).toHaveBeenCalledWith("https://" + PAT + "@kid-a.core.test/");
     expect(scopeMock.listGrants).toHaveBeenCalledWith("https://parent-token@parent.core.test/");
-    expect((await within(blocks[0]).findByTestId("cmc-offer-given")).textContent).toBe("Already given. It is kept as it is.");
+    const [own, kid] = inviteGroups().map((g) => g.blocks[0]);
+    expect((await within(kid).findByTestId("cmc-offer-given")).textContent).toBe("Already given. It is kept as it is.");
     // The parent's own invite was not given on the parent's account: a full block.
-    expect(within(blocks[1]).getByRole("button", { name: "Approve" })).toBeTruthy();
-    decide(blocks[1], "Approve");
+    expect(within(own).getByRole("button", { name: "Approve" })).toBeTruthy();
+    decide(own, "Approve");
     await waitFor(() => expect(continueButton().disabled).toBe(false));
     continueButton().click();
     await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
@@ -815,5 +841,62 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     // The app-access rows, not the invite's (which carry their own list).
     expect(screen.getAllByText("Read “Journal”").length).toBeGreaterThan(0);
     expect(screen.queryByText("Read “diary”", { exact: false, ignore: "[data-testid=cmc-invite] *" })).toBeNull();
+  });
+
+  it("[ACI31] grouping is display only: the outcomes keep the request's order", async () => {
+    await reachViaGrantFor(
+      [{ capabilityUrl: CAP_A, mandatory: true, for: "target" }, { capabilityUrl: CAP_B, mandatory: true, for: "self" }],
+      "kid-a",
+    );
+    await inviteBlocks(2);
+    // On screen the signed-in account's group comes first...
+    const [own, kid] = inviteGroups().map((g) => g.blocks[0]);
+    expect(within(own).getByTestId("cmc-requester").textContent).toBe("study@requester.test");
+    decide(own, "Approve");
+    decide(kid, "Approve");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    continueButton().click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    // ...while the outcomes follow the request: CAP_A (the managed account's) first.
+    const eventOf = (url: string) => "ev-" + (cmcMock.acceptInvite.mock.calls.findIndex((c) => c[1] === url) + 1);
+    expect(posted().cmcInvites).toEqual([
+      { acceptEventId: eventOf(CAP_A), dataGrantAccessId: eventOf(CAP_A).replace("ev-", "grant-") },
+      { acceptEventId: eventOf(CAP_B), dataGrantAccessId: eventOf(CAP_B).replace("ev-", "grant-") },
+    ]);
+  });
+
+  it("[ACI32] no step counter; a Required / Optional badge; the refusal rule said once, and again on a declined required invite", async () => {
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    for (const b of blocks) {
+      const heading = within(b).getByRole("heading", { level: 2 });
+      expect(heading.textContent).toMatch(/^Consent request(Required|Optional)$/);
+    }
+    expect(document.body.textContent).not.toMatch(/\d+ of \d+/);
+    expect(screen.getByTestId("cmc-invites-pending").textContent).toContain(
+      "Declining a required one refuses the whole request.",
+    );
+    decide(blocks[0], "Decline");
+    decide(blocks[1], "Decline");
+    await waitFor(() => expect(continueButton().disabled).toBe(false));
+    expect(within(blocks[0]).getByTestId("cmc-offer-decision").textContent).toContain(
+      "Declined: continuing refuses the whole request",
+    );
+    expect(within(blocks[1]).getByTestId("cmc-offer-decision").textContent).toContain(
+      "Declined: the requester is told when you continue.",
+    );
+  });
+
+  it("[ACI33] each block leads with the requester's statement, at body size", async () => {
+    await reachConsent(needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }]));
+    const [block] = await inviteBlocks(1);
+    const statement = within(block).getByTestId("cmc-consent-text");
+    const requester = within(block).getByTestId("cmc-requester");
+    expect(statement.textContent).toBe("Share your diary.");
+    expect(statement.compareDocumentPosition(requester) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(statement.className).toContain("text-base");
+    expect(statement.className).not.toContain("text-muted");
   });
 });

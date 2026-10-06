@@ -188,10 +188,15 @@ function resolvedLabel(labelFor: StreamLabelResolver | undefined, streamId: stri
   }
 }
 
-/** Pick the best language variant from a localized text map. */
-export function pickText(t: LocalizableText | null, lang = "en"): string {
+/**
+ * Pick the best language variant from a localized text map: `lang` itself,
+ * then its base language (`fr-CH` -> `fr`), then `en`, then the first entry.
+ */
+export function pickText(t: LocalizableText | null | undefined, lang = "en"): string {
   if (t == null) return "";
   if (typeof t[lang] === "string") return t[lang];
+  const base = lang.split("-")[0];
+  if (typeof t[base] === "string") return t[base];
   if (typeof t.en === "string") return t.en;
   const first = Object.values(t)[0];
   return typeof first === "string" ? first : "";

@@ -190,8 +190,9 @@ export default function Oauth2Authorize() {
   // receives only the ticked subset.
   if (personalToken && oauthState.offer) {
     const offer = oauthState.offer;
-    // The offer's texts in the UI language when the app supplied it.
-    const lang = (i18nInstance.language || "en").split("-")[0];
+    // The offer's texts in the UI language when the app supplied it
+    // (`pickText` falls back from a regional variant to its base language).
+    const lang = i18nInstance.language || "en";
     const title = pickText(offer.title, lang);
     const description = pickText(offer.description, lang);
     const consentText = pickText(offer.consent, lang);
