@@ -1018,18 +1018,6 @@ export default function Auth() {
   }
 
   /**
-   * Whose consent invite `i` is, by the same rule as `inviteCredentials`;
-   * said only when the request went through "who is this for?" (without that
-   * step every invite is the signed-in account's).
-   */
-  function inviteAccountLabel(i: number): string | null {
-    if (owner == null) return null;
-    return invitesAsTarget(i)
-      ? t("cmc.inviteForManaged", { username })
-      : t("cmc.inviteForSelf", { username: owner.username });
-  }
-
-  /**
    * Answer every declined invite that can be answered (offer read, scope
    * known) with a refusal, as `/cmc-accept`'s Decline does, so the requester
    * is told rather than left waiting. Best-effort: a refusal that cannot be
@@ -1326,6 +1314,9 @@ export default function Auth() {
     // account, and never from a session acting for another account: the new
     // account's delegate is the user.
     const offersCreation = offersCreationFor(accessState.actAs, managedOnly, actingAs != null);
+    // Just registered in this window: say so and what comes next, until an
+    // account is created here (its own notice then takes over).
+    const registeredNotice = justRegistered != null && createdNotice == null;
     return (
       <Card>
         <h1 className="mb-2 text-2xl">
@@ -1336,6 +1327,16 @@ export default function Auth() {
             {tNodes("consent.grantManagedOnly", { app: <strong>{appName}</strong> })}
           </p>
         )}
+        {registeredNotice && (
+          <Alert tone="success">
+            <span data-testid="grant-registered">
+              {tNodes(
+                offersCreation && targets.length === 0 ? "consent.registeredNextCreate" : "consent.registeredNextChoose",
+                { username: <strong>{justRegistered}</strong>, app: <strong>{appName}</strong> },
+              )}
+            </span>
+          </Alert>
+        )}
         {listFailed ? (
           <Alert tone="info">{t(managedOnly ? "consent.grantListFailedManaged" : "consent.grantListFailed")}</Alert>
         ) : unavailable != null && (
@@ -1343,7 +1344,7 @@ export default function Auth() {
             {tNodes("consent.grantUnavailable", { username: <strong>{unavailable}</strong> })}
           </Alert>
         )}
-        {targets.length === 0 && !listFailed && (
+        {targets.length === 0 && !listFailed && !registeredNotice && (
           <p className="mb-3 text-sm text-muted">{t("consent.grantManagedNone")}</p>
         )}
         {targets.length > 0 && <fieldset className="mb-4 space-y-2">
@@ -1446,11 +1447,12 @@ export default function Auth() {
               // The app's own explanation comes before the technical breakdown.
               // Untrusted text: MarkdownLite builds React elements, never innerHTML.
               // Framed and captioned so the app's words never read as the platform's.
+              // Shown in full at body size: it is read before Continue.
               <div className="mb-3">
-                <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("consent.appMessageCaption")}</div>
+                <div className="mb-1 text-sm text-muted">{t("consent.appMessageCaption")}</div>
                 <div
                   data-testid="consent-message"
-                  className="max-h-48 overflow-y-auto rounded border border-divider p-3 text-sm"
+                  className="rounded border border-divider p-3 text-base"
                 >
                   <MarkdownLite text={consentMsg} />
                 </div>
@@ -1492,57 +1494,21 @@ export default function Auth() {
         >
           {invites != null && (
             <div className="mb-4">
-              {invites.map((invite, i) => {
-                const view = inviteViews[i];
-                const decision = inviteDecisions[i];
-                const accountLabel = inviteAccountLabel(i);
+              {inviteGroups().map((group) => {
+                const blocks = group.indices.map((i) => renderInvite(i, group.title != null));
+                if (group.title == null) return blocks;
                 return (
                   <section
-                    key={i}
-                    data-testid="cmc-invite"
-                    aria-labelledby={`cmc-invite-${i}-heading`}
+                    key={group.key}
+                    data-testid="cmc-invite-group"
+                    data-for={group.key}
+                    aria-labelledby={`cmc-group-${group.key}`}
                     className="mt-4 border-t border-divider pt-4"
                   >
-                    <CmcOfferBlock
-                      heading={
-                        <h2 id={`cmc-invite-${i}-heading`} className="mb-2 text-base font-semibold">
-                          {t("cmc.inviteHeading", { n: i + 1, count: invites.length })}{" "}
-                          <span className="text-sm font-normal text-muted">
-                            {invite.mandatory ? t("cmc.inviteMandatory") : t("cmc.inviteOptional")}
-                          </span>
-                          {accountLabel != null && (
-                            <span data-testid="cmc-invite-for" className="mt-1 block text-sm">
-                              {accountLabel}
-                            </span>
-                          )}
-                        </h2>
-                      }
-                      offer={view?.offer ?? null}
-                      loading={view?.loading ?? true}
-                      error={view?.error != null ? { message: view.error, tone: "danger" } : null}
-                      labelFor={labelFor}
-                      busy={null}
-                      disabled={finishing !== null || view == null || view.loading}
-                      approveDisabled={view?.offer == null || view.scope == null}
-                      onApprove={() => decide(i, "approve")}
-                      onDecline={() => decide(i, "decline")}
-                      decided={decision === "approve" || decision === "decline" ? decision : null}
-                      onChange={() => decide(i, null)}
-                      given={
-                        view?.given != null
-                          ? view.given.created != null
-                            ? t("cmc.inviteAlreadyGivenOn", { date: formatSince(view.given.created) })
-                            : t("cmc.inviteAlreadyGiven")
-                          : null
-                      }
-                      notice={emailNotice(
-                        inviteEmailEndpoint(i),
-                        invitesAsTarget(i) ? username : null,
-                        view?.offer?.requester.username
-                          ? `${view.offer.requester.username}@${view.offer.requester.host}`
-                          : t("cmc.unidentifiedRequester"),
-                      )}
-                    />
+                    <h2 id={`cmc-group-${group.key}`} className="mb-1 text-base font-semibold">
+                      {group.title}
+                    </h2>
+                    {blocks}
                   </section>
                 );
               })}
@@ -1557,6 +1523,87 @@ export default function Auth() {
         </ConsentPanel>
       </Card>
     );
+
+    /**
+     * The invite blocks by account: when the request went through "who is
+     * this for?", the signed-in account's consents, then those of the account
+     * the access is granted for, each under one heading. Display only: every
+     * decision and outcome stays indexed by the invite's position in the
+     * request.
+     */
+    function inviteGroups(): Array<{ key: "self" | "target"; title: string | null; indices: number[] }> {
+      if (invites == null) return [];
+      const all = invites.map((_, i) => i);
+      if (owner == null) return [{ key: "self", title: null, indices: all }];
+      return [
+        {
+          key: "self" as const,
+          title: t("cmc.groupForSelf", { username: owner.username }),
+          indices: all.filter((i) => !invitesAsTarget(i)),
+        },
+        {
+          key: "target" as const,
+          title: t("cmc.groupForManaged", { username }),
+          indices: all.filter((i) => invitesAsTarget(i)),
+        },
+      ].filter((g) => g.indices.length > 0);
+    }
+
+    function renderInvite(i: number, inGroup: boolean) {
+      if (invites == null) return null;
+      const invite = invites[i];
+      const view = inviteViews[i];
+      const decision = inviteDecisions[i];
+      const Heading = inGroup ? "h3" : "h2";
+      return (
+        <section
+          key={i}
+          data-testid="cmc-invite"
+          aria-labelledby={`cmc-invite-${i}-heading`}
+          className={inGroup ? "mt-3 border-t border-divider pt-3" : "mt-4 border-t border-divider pt-4"}
+        >
+          <CmcOfferBlock
+            heading={
+              <Heading id={`cmc-invite-${i}-heading`} className="mb-2 text-base font-semibold">
+                {t("cmc.inviteTitle")}
+                <span
+                  data-testid="cmc-invite-badge"
+                  className="ml-2 rounded border border-divider px-1.5 py-0.5 align-middle text-xs font-normal text-muted"
+                >
+                  {invite.mandatory ? t("cmc.badgeRequired") : t("cmc.badgeOptional")}
+                </span>
+              </Heading>
+            }
+            mandatory={invite.mandatory === true}
+            offer={view?.offer ?? null}
+            loading={view?.loading ?? true}
+            error={view?.error != null ? { message: view.error, tone: "danger" } : null}
+            labelFor={labelFor}
+            busy={null}
+            disabled={finishing !== null || view == null || view.loading}
+            approveDisabled={view?.offer == null || view.scope == null}
+            onApprove={() => decide(i, "approve")}
+            onDecline={() => decide(i, "decline")}
+            decided={decision === "approve" || decision === "decline" ? decision : null}
+            onChange={() => decide(i, null)}
+            given={
+              view?.given != null
+                ? view.given.created != null
+                  ? t("cmc.inviteAlreadyGivenOn", { date: formatSince(view.given.created) })
+                  : t("cmc.inviteAlreadyGiven")
+                : null
+            }
+            notice={emailNotice(
+              inviteEmailEndpoint(i),
+              invitesAsTarget(i) ? username : null,
+              view?.offer?.requester.username
+                ? `${view.offer.requester.username}@${view.offer.requester.host}`
+                : t("cmc.unidentifiedRequester"),
+            )}
+          />
+        </section>
+      );
+    }
   }
 
   // Continuing with the account just created in this window: no card. And

@@ -225,12 +225,13 @@ describe("[AMEL] /auth missing email", () => {
     await screen.findByText(/access to:/);
     screen.getByRole("button", { name: /continue for kid-a/i }).click();
     await screen.findByText(/is requesting permission/);
-    const blocks = await inviteBlocks(2);
-    const notice = await within(blocks[0]).findByTestId("missing-email");
+    // Grouped by account: the person's own consents first, then the managed account's.
+    const [own, kid] = await inviteBlocks(2);
+    const notice = await within(kid).findByTestId("missing-email");
     expect(notice.textContent).toContain("kid-a has no email address: add one so doctor@requester.test can reach them.");
     await waitFor(() => expect(account.calls).toContain(PARENT + " account.get"));
     expect(account.calls).toContain(KID + " account.get");
-    expect(within(blocks[1]).queryByTestId("missing-email")).toBeNull();
+    expect(within(own).queryByTestId("missing-email")).toBeNull();
   });
 
   it("[AME4] one account, one address: an add on one block settles every block on that account", async () => {

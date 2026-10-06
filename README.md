@@ -261,8 +261,9 @@ Every route accepts these query parameters:
   open-pryv.io release newer than 2.0.0-rc.35, an older core refuses an entry
   carrying it). After the user signs
   in, the consent screen shows the app access first, then one block per invite
-  (who asks, their consent text, what they ask for) with its own Approve and
-  Decline; the app access's Accept becomes "Continue", enabled once every
+  (their consent text, in the interface language when the requester provides
+  it, then who asks and what they ask for, marked Required or Optional) with
+  its own Approve and Decline; the app access's Accept becomes "Continue", enabled once every
   invite has a decision (Reject still refuses the whole request). Approving or
   declining an invite only records the choice; on Continue the page, in this
   order:
@@ -303,10 +304,11 @@ Every route accepts these query parameters:
   is (its streams named as the request names them), and handed over with the
   outcomes.
 
-  When the request went through "who is this for?", each block says whose
-  consent it is, by the same rule its accept follows: "For you (username)" for
-  the signed-in account, "For username, whom you look after" for the managed
-  account chosen there. An invite whose offer the account it applies to
+  When the request went through "who is this for?", the blocks are grouped by
+  whose consent they are, by the same rule their accept follows: "Consents for
+  you (username)" for the signed-in account first, then "Consents for username,
+  the account you look after" for the managed account chosen there. The
+  grouping is display only: the outcomes keep the request's order. An invite whose offer the account it applies to
   already accepted (a live grant on that account carrying the offer's event id
   in `clientData.cmc.offerEventId`) shows as "Already given on {date}", with no
   Approve or Decline: it counts as accepted (it satisfies `mandatory`), nothing

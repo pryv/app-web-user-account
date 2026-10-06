@@ -529,8 +529,9 @@ test.describe("[ACI] /auth with consent invites", () => {
     await expect(blocks).toHaveCount(2);
     await expect(blocks.nth(0).getByTestId("cmc-requester")).toHaveText("bob@example.test");
     await expect(blocks.nth(1).getByTestId("cmc-requester")).toHaveText("bob@example.test");
-    await expect(blocks.nth(0)).toContainText("required");
-    await expect(blocks.nth(1)).toContainText("optional");
+    await expect(blocks.nth(0).getByTestId("cmc-invite-badge")).toHaveText("Required");
+    await expect(blocks.nth(1).getByTestId("cmc-invite-badge")).toHaveText("Optional");
+    await expect(blocks.nth(0)).not.toContainText("of 2");
 
     const cont = page.getByRole("button", { name: "Continue" });
     await expect(cont).toBeDisabled();

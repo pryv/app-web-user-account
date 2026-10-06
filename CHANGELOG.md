@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **A consent statement shows in the reader's language**
+  ([#23](https://github.com/pryv/app-web-user-account/issues/23)). On `/auth` and `/cmc-accept`, a
+  requester's consent text given in several languages showed whichever language it listed first. It
+  now shows the interface language, then its base language (`fr` for `fr-CH`), then English, then
+  the first one. A scope-update message on `/cmc-scope-update` now honours a regional variant too.
+
+### Changed
+
+- **The `/auth` path through "who is this for?" with consent invites is easier to read**
+  ([#23](https://github.com/pryv/app-web-user-account/issues/23)):
+  - right after creating an account in the same window, the next step opens with "Your account
+    {username} is ready" and says what comes next, instead of the bare step;
+  - on `/auth`, the optional password of the managed-account creation form is folded ("Set a password
+    for this account (optional)"); username and email stay in sight. `/account/delegation` is
+    unchanged;
+  - each consent invite leads with the requester's statement at body size, then who asks and what is
+    shared; the app's own message is shown in full, at body size, without the scroll box;
+  - when the request went through "who is this for?", the invites are grouped under "Consents for
+    you ({username})" and "Consents for {username}, the account you look after", instead of one account
+    line per invite. Display only: the outcomes posted keep the request's order;
+  - "Consent invite {n} of {count}" is gone: each invite is headed "Consent request" with a Required or
+    Optional badge. That declining a required invite refuses the whole request is said once in the
+    line under the invites, and again in the decision line of a required invite once declined.
+
 ## 0.16.0 - 2026-10-06
 
 ### Fixed

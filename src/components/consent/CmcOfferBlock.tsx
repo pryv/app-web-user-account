@@ -53,12 +53,18 @@ export interface CmcOfferBlockProps {
    * (e.g. the signed-in account is not the one expected to answer).
    */
   actionsBlocked?: ReactNode;
+  /**
+   * Declining refuses the whole request (`/auth` invites): the decision line
+   * says so once declined.
+   */
+  mandatory?: boolean;
 }
 
 /**
- * One cross-account offer: who asks (the capability's account, the
- * self-asserted name shown only as its own claim), the requester's consent
- * text, what it asks for, and its own Approve / Decline. Shared by
+ * One cross-account offer: the requester's consent text first (in the
+ * interface language), who asks (the capability's account, the self-asserted
+ * name shown only as its own claim), what it asks for, and its own
+ * Approve / Decline. Shared by
  * `/cmc-accept` (one offer, acted on at once) and `/auth` (one block per
  * invite of an access request, decided before anything is written).
  *
@@ -81,6 +87,7 @@ export function CmcOfferBlock({
   given = null,
   notice,
   actionsBlocked,
+  mandatory = false,
 }: CmcOfferBlockProps) {
   const { t, i18n } = useTranslation();
   // The requester's statement in the interface language, not whichever
@@ -93,25 +100,26 @@ export function CmcOfferBlock({
       {error && <Alert tone={error.tone}>{error.message}</Alert>}
       {offer && (
         <>
-          <p className="mb-4 text-sm">
+          {/* The statement is what the person agrees to: read first, at body size. */}
+          {consentText !== "" && (
+            <p className="mb-3 text-base text-ink" data-testid="cmc-consent-text">
+              {consentText}
+            </p>
+          )}
+          <p className="mb-2 text-sm text-muted">
             {/* The account comes from the capability itself (verified); the
                 display name is what the requester says about itself, so it is
                 shown as such and never in place of the account. */}
-            <strong data-testid="cmc-requester">
+            <strong data-testid="cmc-requester" className="text-ink">
               {offer.requester.username
                 ? `${offer.requester.username}@${offer.requester.host}`
                 : t("cmc.unidentifiedRequester")}
             </strong>
             {offer.requester.displayName && (
-              <span className="text-muted"> {t("cmc.callsItself", { name: offer.requester.displayName })}</span>
+              <span> {t("cmc.callsItself", { name: offer.requester.displayName })}</span>
             )}{" "}
             {t("cmc.requestingAccess")}
           </p>
-          {consentText !== "" && (
-            <p className="mb-4 text-sm text-muted" data-testid="cmc-consent-text">
-              {consentText}
-            </p>
-          )}
           <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
           {notice}
         </>
@@ -122,7 +130,13 @@ export function CmcOfferBlock({
         </p>
       ) : decided != null ? (
         <div className="flex items-center justify-between gap-3 text-sm" data-testid="cmc-offer-decision">
-          <span>{decided === "approve" ? t("cmc.inviteWillApprove") : t("cmc.inviteWillDecline")}</span>
+          <span>
+            {decided === "approve"
+              ? t("cmc.inviteWillApprove")
+              : mandatory
+                ? t("cmc.inviteWillDeclineMandatory")
+                : t("cmc.inviteWillDecline")}
+          </span>
           {onChange && (
             <button
               type="button"

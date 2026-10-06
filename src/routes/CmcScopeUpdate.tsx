@@ -127,7 +127,7 @@ export default function CmcScopeUpdate() {
           typeof content.message === "string"
             ? content.message
             : content.message != null && typeof content.message === "object"
-              ? pickText(content.message as LocalizableText, (i18n.language || "en").split("-")[0])
+              ? pickText(content.message as LocalizableText, i18n.language || "en")
               : "";
         setProposal({
           newPermissions: content.newPermissions,

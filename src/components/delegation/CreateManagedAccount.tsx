@@ -122,6 +122,18 @@ export function CreateManagedAccount({
     await reload();
   }
 
+  const passwordField = (
+    <Field
+      id="managed-password"
+      label={t("profile.password")}
+      type="password"
+      autoComplete="new-password"
+      hint={t("delegation.managedPasswordHint")}
+      value={password}
+      onChange={(e) => setPassword(e.target.value)}
+    />
+  );
+
   const form: ReactNode = (
     <>
       {error && <Alert>{error}</Alert>}
@@ -143,15 +155,19 @@ export function CreateManagedAccount({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Field
-          id="managed-password"
-          label={t("profile.password")}
-          type="password"
-          autoComplete="new-password"
-          hint={t("delegation.managedPasswordHint")}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+        {/* Embedded in a sign-in flow, the optional password stays folded so
+            a person who only wants to continue is not slowed down by it; the
+            email stays visible (a request may need it). */}
+        {embedded ? (
+          <details className="mb-4" data-testid="managed-password-disclosure">
+            <summary className="cursor-pointer text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+              {t("delegation.managedPasswordToggle")}
+            </summary>
+            <div className="mt-3">{passwordField}</div>
+          </details>
+        ) : (
+          passwordField
+        )}
         {cores.length > 1 && (
           <div className="mb-4">
             <label htmlFor="managed-core" className="mb-1 block text-sm font-medium text-muted">
