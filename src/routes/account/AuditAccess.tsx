@@ -155,6 +155,11 @@ export default function AuditAccess() {
   // accesses still resolve; a fully deleted access keeps its audit trail.
   useEffect(() => {
     if (!connection || !accessId) return;
+    // A new connection (the pages now act for another account) or access id:
+    // nothing from the previous load may stay on screen next to the new one.
+    setDetails(null);
+    setDetailsMissing(false);
+    setDetailsError(null);
     let cancelled = false;
     void (async () => {
       try {
