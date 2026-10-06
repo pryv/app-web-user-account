@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import Pryv from "pryv";
 import { CmcError, errorIds } from "@pryv/cmc";
-import { inviteFailure } from "./cmcAccept";
+import { inviteFailure, SELF_ACCEPT_FORBIDDEN_ID } from "./cmcAccept";
 import { platformError } from "./apiError";
 import { GRANT_REQUIRES_OWNER_ID, GRANT_REQUIRES_OWNER_MESSAGE } from "./delegation";
 
@@ -31,6 +31,24 @@ describe("[CMAF] inviteFailure", () => {
       expect(f.message).not.toContain(id);
       expect(f.tone).toBe(tone);
     }
+  });
+
+  it("explains an invite approved by the account that created it, and offers to switch account", () => {
+    const named = inviteFailure(cmcError(SELF_ACCEPT_FORBIDDEN_ID), "Could not approve.", "alice");
+    expect(named).toEqual({
+      reason: "cmc-self-accept-forbidden",
+      message:
+        "This invitation was created by this account (alice); it must be approved by the person it was sent to. If that is you on another account, switch account.",
+      tone: "danger",
+      switchAccount: true,
+    });
+    // Without the account's name, the text still reads (no unresolved placeholder).
+    const unnamed = inviteFailure(cmcError(SELF_ACCEPT_FORBIDDEN_ID), "Could not approve.");
+    expect(unnamed.message).toMatch(/^This invitation was created by the signed-in account;/);
+    expect(unnamed.message).not.toContain("{{");
+    expect(unnamed.switchAccount).toBe(true);
+    // Other outcomes do not offer it.
+    expect(inviteFailure(cmcError(errorIds.CAPABILITY_INVALID), "Could not approve.", "alice").switchAccount).toBeUndefined();
   });
 
   it("explains a grant refused to a token obtained through a delegation", () => {

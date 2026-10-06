@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, act, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
+import { CmcError } from "@pryv/cmc";
 
 /**
  * [CMRS] /cmc-accept: the account that answers. Nothing in the link binds an
@@ -227,6 +228,30 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     renderPage({ username: "a".repeat(61) });
     await screen.findByTestId("cmc-approving-as");
     expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+  });
+
+  it("[CMS11] an invite created by the signed-in account: says so, offers Switch account instead of Approve", async () => {
+    signedIn();
+    offer();
+    cmcMock.acceptInvite.mockRejectedValue(new CmcError("CMC accept failed: cmc-self-accept-forbidden", "cmc-self-accept-forbidden"));
+    renderPage();
+    await screen.findByTestId("cmc-approving-as");
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(
+      await screen.findByText(
+        "This invitation was created by this account (alice); it must be approved by the person it was sent to. If that is you on another account, switch account.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/could not approve/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Decline" })).toBeNull();
+    // One way forward, not two: the "Not you?" line gives way to the button.
+    expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
+    fireEvent.click(within(screen.getByTestId("cmc-switch-account")).getByRole("button", { name: "Switch account" }));
+    const target = await signInTarget();
+    expect(target.get("next")).toBe("/cmc-accept");
+    expect(target.get("capabilityUrl")).toBe(CAPABILITY);
+    expect(localStorage.getItem("pryv.session.apiEndpoint")).toBeNull();
   });
 
   it("[CMS7] Approve answers with the session the page named", async () => {

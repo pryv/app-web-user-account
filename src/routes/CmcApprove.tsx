@@ -132,7 +132,7 @@ export default function CmcApprove() {
 
   const [offer, setOffer] = useState<CmcOfferView | null>(null);
   const [loadingOffer, setLoadingOffer] = useState(false);
-  const [error, setError] = useState<{ message: string; tone: "danger" | "info" } | null>(null);
+  const [error, setError] = useState<{ message: string; tone: "danger" | "info"; switchAccount?: true } | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
   const labelFor = useStreamLabels(storedServiceInfoUrl());
@@ -301,8 +301,8 @@ export default function CmcApprove() {
       setDone("accepted");
       deliverResult({ ok: true, acceptEventId: res.acceptEventId }, params);
     } catch (err: unknown) {
-      const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"));
-      setError({ message: failure.message, tone: failure.tone });
+      const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), signedInAs);
+      setError({ message: failure.message, tone: failure.tone, switchAccount: failure.switchAccount });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
@@ -320,8 +320,8 @@ export default function CmcApprove() {
       setDone("refused");
       deliverResult({ ok: false, reason: "declined-by-user" }, params);
     } catch (err: unknown) {
-      const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"));
-      setError({ message: failure.message, tone: failure.tone });
+      const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"), signedInAs);
+      setError({ message: failure.message, tone: failure.tone, switchAccount: failure.switchAccount });
       deliverResult({ ok: false, reason: failure.reason }, params);
     } finally {
       setWorking(null);
@@ -344,39 +344,48 @@ export default function CmcApprove() {
     );
   }
 
+  // The platform refused this account as the one answering (it created the
+  // invite): approving again would fail again, so the actions give way to
+  // "Switch account" (the error above says why).
+  const answerAsAnother = error?.switchAccount === true;
+
   // Who answers, said right above the actions (while it is looked up, why they
   // are disabled). Without a known account (or with another one than the app
   // expects), the actions are replaced by a way to sign in as the right person.
-  const accountLine =
-    account.status === "loading" ? (
-      <p className="mb-4 text-sm text-muted" data-testid="cmc-checking-account">
-        {t("cmc.checkingAccount")}
-      </p>
-    ) : mayAnswer ? (
-      <p className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" data-testid="cmc-approving-as">
-        <span>{tNodes("cmc.approvingAs", { username: <strong>{signedInAs}</strong> })}</span>
-        <button type="button" onClick={switchAccount} disabled={working !== null} className={LINK_BUTTON}>
-          {t("cmc.notYouSwitch")}
-        </button>
-      </p>
-    ) : null;
+  const accountLine = answerAsAnother ? null : account.status === "loading" ? (
+    <p className="mb-4 text-sm text-muted" data-testid="cmc-checking-account">
+      {t("cmc.checkingAccount")}
+    </p>
+  ) : mayAnswer ? (
+    <p className="mb-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm" data-testid="cmc-approving-as">
+      <span>{tNodes("cmc.approvingAs", { username: <strong>{signedInAs}</strong> })}</span>
+      <button type="button" onClick={switchAccount} disabled={working !== null} className={LINK_BUTTON}>
+        {t("cmc.notYouSwitch")}
+      </button>
+    </p>
+  ) : null;
 
-  const actionsBlocked =
-    account.status === "unknown" || wrongAccount ? (
-      <div data-testid="cmc-switch-account">
-        <Alert tone="info">
-          {wrongAccount
-            ? tNodes("cmc.expectedOtherAccount", {
-                expected: <strong>{params.expectedUsername}</strong>,
-                username: <strong>{signedInAs}</strong>,
-              })
-            : t("cmc.accountUnconfirmed")}
-        </Alert>
-        <Button type="button" onClick={switchAccount}>
-          {t("cmc.switchAccount")}
-        </Button>
-      </div>
-    ) : undefined;
+  const actionsBlocked = answerAsAnother ? (
+    <div data-testid="cmc-switch-account">
+      <Button type="button" onClick={switchAccount}>
+        {t("cmc.switchAccount")}
+      </Button>
+    </div>
+  ) : account.status === "unknown" || wrongAccount ? (
+    <div data-testid="cmc-switch-account">
+      <Alert tone="info">
+        {wrongAccount
+          ? tNodes("cmc.expectedOtherAccount", {
+              expected: <strong>{params.expectedUsername}</strong>,
+              username: <strong>{signedInAs}</strong>,
+            })
+          : t("cmc.accountUnconfirmed")}
+      </Alert>
+      <Button type="button" onClick={switchAccount}>
+        {t("cmc.switchAccount")}
+      </Button>
+    </div>
+  ) : undefined;
 
   return (
     <Card>

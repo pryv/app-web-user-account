@@ -13,6 +13,13 @@
   known (when it cannot be read within a few seconds, it asks to sign in again). The calling app can
   name the account it expects with `username=`: when another account is signed in, the page asks to
   switch account instead of offering Approve. A value that cannot be a username is ignored.
+- **`/cmc-accept` explains an invite approved by the account that created it**
+  ([pryv/open-pryv.io#150](https://github.com/pryv/open-pryv.io/issues/150)). The platform refuses an
+  approval from the invite's own requester (an account opening its own open-link invite) with
+  `cmc-self-accept-forbidden`, which the page showed as a generic "could not approve". It now says
+  "This invitation was created by this account ({username}); it must be approved by the person it was
+  sent to. If that is you on another account, switch account.", and replaces Approve / Decline with
+  "Switch account". The id handed back to the calling app is `cmc-self-accept-forbidden`.
 
 ## 0.15.0 - 2026-10-06
 
