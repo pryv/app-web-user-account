@@ -4,8 +4,9 @@ import { QRCodeSVG } from "qrcode.react";
 import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../../components/ui";
-import { useConfirm } from "../../components/ConfirmDialog";
+import { usePasswordPrompt } from "../../components/PasswordPrompt";
 import { formatDateTime } from "../../lib/dates";
+import { apiErrorIds } from "../../lib/apiError";
 import { useSession } from "../../lib/useSession";
 
 interface Access {
@@ -29,13 +30,18 @@ interface Access {
  * /confirm + /deactivate); these aren't exposed via lib-js's batch API. The
  * activate route answers 302 with a JSON body and no Location header, so a
  * default (follow) fetch returns the body readably.
+ *
+ * Turning MFA off, or enrolling over an active enrolment (which replaces it),
+ * needs a step-up: the account password, asked in an in-app dialog and sent
+ * in the body. This app holds no second factor, so it always steps up with
+ * the password.
  */
 type EnrollMethod = "totp" | "sms";
 
 export default function Security() {
   const { t } = useTranslation();
   const { connection } = useSession();
-  const [confirm, confirmDialog] = useConfirm();
+  const [askPassword, passwordDialog] = usePasswordPrompt();
 
   // MFA enable flow state
   const [enrollMethod, setEnrollMethod] = useState<EnrollMethod | null>(null);
@@ -116,19 +122,32 @@ export default function Security() {
 
   // POST mfa/activate. The route answers 302 with a JSON body and no Location
   // header, so a default (follow) fetch returns the body; parse it regardless
-  // of the 3xx status.
+  // of the 3xx status. Over an active enrolment the server asks for a step-up:
+  // the password is then asked and the call made again with it. Resolves null
+  // when that prompt is cancelled.
   async function activate(
     payload: Record<string, unknown>,
-  ): Promise<{ mfaToken?: string; otpauthUri?: string; secret?: string; method?: string }> {
+  ): Promise<{ mfaToken?: string; otpauthUri?: string; secret?: string; method?: string } | null> {
     const c = rest();
-    const res = await fetch(c.endpoint + "mfa/activate", {
-      method: "POST",
-      headers: { Authorization: c.token, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const text = await res.text().catch(() => "");
-    if (res.status >= 400) {
-      throw new Error(t("security.activateFailed", { status: res.status, body: text.slice(0, 200) }));
+    const post = async (body: Record<string, unknown>) => {
+      const res = await fetch(c.endpoint + "mfa/activate", {
+        method: "POST",
+        headers: { Authorization: c.token, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, text: await res.text().catch(() => "") };
+    };
+    let { status, text } = await post(payload);
+    if (status === 400 && apiErrorIds(text).includes("step-up-required")) {
+      const password = await askPassword(t("security.stepUpReplace"), { confirmLabel: t("common.continue") });
+      if (password == null) return null;
+      ({ status, text } = await post({ ...payload, password }));
+      if (status === 403 && apiErrorIds(text).includes("invalid-step-up")) {
+        throw new Error(t("security.wrongPassword"));
+      }
+    }
+    if (status >= 400) {
+      throw new Error(t("security.activateFailed", { status, body: text.slice(0, 200) }));
     }
     try {
       return text ? JSON.parse(text) : {};
@@ -143,6 +162,11 @@ export default function Security() {
     setEnrollError(null);
     try {
       const body = await activate({ method: "totp" });
+      if (body == null) {
+        // The password prompt was cancelled: back to the method chooser.
+        setEnrollMethod(null);
+        return;
+      }
       setEnrollMfaToken(body.mfaToken ?? null);
       setOtpauthUri(body.otpauthUri ?? null);
       setTotpSecret(body.secret ?? null);
@@ -162,6 +186,7 @@ export default function Security() {
     setEnrollError(null);
     try {
       const body = await activate({ method: "sms", phone });
+      if (body == null) return; // password prompt cancelled; the form stays as typed
       setEnrollMfaToken(body.mfaToken ?? null);
     } catch (err: unknown) {
       setEnrollError(err instanceof Error ? err.message : t("security.errorStartEnroll"));
@@ -204,7 +229,14 @@ export default function Security() {
 
   async function deactivate() {
     if (!connection) return;
-    if (!(await confirm(t("security.confirmDisable"), { confirmLabel: t("security.disable"), danger: true }))) return;
+    // The password is both the confirmation and the step-up the server asks for.
+    const password = await askPassword(
+      <>
+        {t("security.confirmDisable")} {t("security.stepUpDisable")}
+      </>,
+      { confirmLabel: t("security.disable"), danger: true },
+    );
+    if (password == null) return;
     setDisableBusy(true);
     setDisableError(null);
     setDisableNotice(null);
@@ -213,10 +245,13 @@ export default function Security() {
       const res = await fetch(c.endpoint + "mfa/deactivate", {
         method: "POST",
         headers: { Authorization: c.token, "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ password }),
       });
       if (!res.ok) {
         const body = await res.text();
+        if (res.status === 403 && apiErrorIds(body).includes("invalid-step-up")) {
+          throw new Error(t("security.wrongPassword"));
+        }
         throw new Error(t("security.deactivateFailed", { status: res.status, body: body.slice(0, 200) }));
       }
       setDisableNotice(t("security.mfaNowOff"));
@@ -230,7 +265,7 @@ export default function Security() {
 
   return (
     <section className="space-y-4">
-      {confirmDialog}
+      {passwordDialog}
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
           {t("security.mfaHeading")}

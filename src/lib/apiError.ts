@@ -57,6 +57,23 @@ export function redactUrls(text: string): string {
     .slice(0, 300);
 }
 
+/**
+ * The platform error ids of a raw REST response body (`error.id`, then the
+ * more specific `error.data.id` some refusals carry). For the routes the app
+ * calls with `fetch` rather than through a client library. Empty when the
+ * body is not a JSON error.
+ */
+export function apiErrorIds(body: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return [];
+  }
+  const error = field(parsed, "error");
+  return [field(error, "id"), field(field(error, "data"), "id")].filter(isNonEmptyString);
+}
+
 function field(value: unknown, key: string): unknown {
   return value != null && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined;
 }

@@ -1,5 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { loggableError, redactUrls } from "./apiError";
+import { apiErrorIds, loggableError, redactUrls } from "./apiError";
+
+describe("[APIR] error ids of a raw REST body", () => {
+  it("[APIR1] reads error.id and error.data.id, in that order", () => {
+    expect(apiErrorIds(JSON.stringify({ error: { id: "invalid-step-up", message: "x" } }))).toEqual(["invalid-step-up"]);
+    expect(apiErrorIds(JSON.stringify({ error: { id: "invalid-parameters-format", data: { id: "step-up-required" } } })))
+      .toEqual(["invalid-parameters-format", "step-up-required"]);
+  });
+
+  it("[APIR2] anything else reads as no id", () => {
+    for (const body of ["", "not json", "null", "[]", JSON.stringify({ ok: true }), JSON.stringify({ error: { id: 42 } })]) {
+      expect(apiErrorIds(body)).toEqual([]);
+    }
+  });
+});
 
 describe("[APIL] errors as they are logged", () => {
   it("[APIL1] URLs and token@host parts never reach the log line", () => {
