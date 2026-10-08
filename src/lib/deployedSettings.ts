@@ -9,6 +9,7 @@
  *   {
  *     "serviceInfoUrl": "https://reg.example.com/service/info",
  *     "trustedApiOrigins": ["https://core.example.com"],
+ *     "returnPolicy": { "trustedOrigins": ["https://app.example.com"], "otherOrigins": "confirm" },
  *     "legal": { "terms": { "en": "https://..." }, "privacy": "https://..." },
  *     "appCatalogUrl": "https://assets.example.com/apps/list.json",
  *     "theme": { "default": "system", "userChoice": true }
@@ -41,10 +42,29 @@ export interface DeployedSettings {
    */
   allowedServiceInfoUrls?: string[];
   trustedApiOrigins?: string[];
+  /**
+   * What the pages do with a caller-supplied return address (see
+   * returnTarget.ts). Unset: every http(s) address is followed, as before.
+   */
+  returnPolicy?: Partial<ReturnPolicy>;
   legal?: LegalSettings;
   appCatalogUrl?: string;
   /** Only the keys the file sets validly; see getThemeSettings() for defaults. */
   theme?: Partial<ThemeSettings>;
+}
+
+/** What happens with a return address on an origin that is not trusted. */
+export type ReturnAction = "follow" | "confirm" | "stay";
+
+const RETURN_ACTIONS: readonly ReturnAction[] = ["follow", "confirm", "stay"];
+
+/**
+ * The operator's return policy: `trustedOrigins` are always followed (as is
+ * this app's own origin); any other origin gets `otherOrigins`.
+ */
+export interface ReturnPolicy {
+  trustedOrigins: string[];
+  otherOrigins: ReturnAction;
 }
 
 /**
@@ -91,6 +111,17 @@ function themeSettings(raw: unknown): Partial<ThemeSettings> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** `{ trustedOrigins, otherOrigins }`, keeping only valid values; undefined when none is. */
+function returnPolicySettings(raw: unknown): Partial<ReturnPolicy> | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
+  const json = raw as Record<string, unknown>;
+  const out: Partial<ReturnPolicy> = {};
+  const trusted = origins(json.trustedOrigins);
+  if (trusted) out.trustedOrigins = trusted;
+  if (RETURN_ACTIONS.includes(json.otherOrigins as ReturnAction)) out.otherOrigins = json.otherOrigins as ReturnAction;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /** Narrow an untrusted settings.json body onto `DeployedSettings`. */
 export function parseDeployedSettings(raw: unknown): DeployedSettings {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
@@ -107,6 +138,8 @@ export function parseDeployedSettings(raw: unknown): DeployedSettings {
   }
   const trusted = origins(json.trustedApiOrigins);
   if (trusted) out.trustedApiOrigins = trusted;
+  const returnPolicy = returnPolicySettings(json.returnPolicy);
+  if (returnPolicy) out.returnPolicy = returnPolicy;
   const legal = parseLegalSettings(json.legal);
   if (legal) out.legal = legal;
   const appCatalogUrl = url(json.appCatalogUrl);
@@ -200,6 +233,14 @@ export class PlatformNotAllowedError extends Error {
 /** Extra trusted core origins from settings.json ([] when unset). */
 export function getTrustedApiOrigins(): string[] {
   return current.trustedApiOrigins ?? [];
+}
+
+/** The operator's return policy; unset parts default to "no restriction". */
+export function getReturnPolicy(): ReturnPolicy {
+  return {
+    trustedOrigins: current.returnPolicy?.trustedOrigins ?? [],
+    otherOrigins: current.returnPolicy?.otherOrigins ?? "follow",
+  };
 }
 
 /** The deployment's legal-document links, or null. */

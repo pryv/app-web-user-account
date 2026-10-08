@@ -24,6 +24,7 @@
 
 import { httpUrlOrNull } from "./safeRedirect";
 import { inPopupOrFrame } from "./backTo";
+import { returnDecision } from "./returnTarget";
 import type { CmcInvite, CmcInviteOutcome } from "./cmcInvites";
 
 export interface Permission {
@@ -390,8 +391,9 @@ function completeInPlace(fallback?: CloseFallback): void {
 /**
  * Close the window. A pop-up opened by the app closes; a tab the page did not
  * open cannot be closed by script (a phone tab reached by redirection), so a
- * short moment later, if the window is still open: a tab with a way back goes
- * back to the app (`replace`, so Back does not return to a decided request),
+ * short moment later, if the window is still open: a tab with a way back the
+ * operator's return policy follows (returnTarget.ts) goes back to the app
+ * (`replace`, so Back does not return to a decided request),
  * anything else calls `onStillOpen` (the "request complete" card). A pop-up
  * (`window.opener` set) is never navigated to the app: that would load the app
  * inside the pop-up. Nor is a page shown in a frame (it would load the app in
@@ -403,9 +405,12 @@ export function closeOrFallback(fallback?: CloseFallback): void {
   if (fallback == null) return;
   setTimeout(() => {
     if (window.closed) return;
-    const back = fallback.backUrl ? httpUrlOrNull(fallback.backUrl) : null;
-    if (back && !inPopupOrFrame()) {
-      window.location.replace(back.href);
+    // `backUrl` is caller-built: followed by itself only as the operator's
+    // return policy says (returnTarget.ts); otherwise the card, whose header
+    // back link shows the host and is the user's to click.
+    const back = returnDecision(fallback.backUrl);
+    if (back?.action === "follow" && !inPopupOrFrame()) {
+      window.location.replace(back.target.href);
       return;
     }
     fallback.onStillOpen?.();

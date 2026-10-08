@@ -10,7 +10,9 @@ import { useStreamLabels } from "../lib/useConsentDisplay";
 import { PermissionList } from "../components/consent/PermissionList";
 import { ConsentActions } from "../components/consent/ConsentActions";
 import { consentEntries, pickText, type LocalizableText, type OfferPermission } from "../lib/consent";
-import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
+import { trustedOpenerOrigin } from "../lib/safeRedirect";
+import { navigateTo, resultReturn, type ReturnOutcome } from "../lib/returnTarget";
+import { ReturnNotice } from "../components/consent/ReturnNotice";
 import { answeredRequestMessage, scopeUpdateFailure, scopeUpdateSuccessNote } from "../lib/scopeUpdate";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { useApprovingAccount } from "../lib/useApprovingAccount";
@@ -35,24 +37,26 @@ function parseParams(search: string): ScopeUpdateParams {
   };
 }
 
-function deliverResult(
-  res: {
-    ok: boolean;
-    updateEventId?: string;
-    action?: "accept" | "refuse";
-    reason?: string;
-    peerNotified?: boolean;
-  },
-  params: ScopeUpdateParams,
-): void {
+interface ScopeUpdateOutcome {
+  ok: boolean;
+  updateEventId?: string;
+  action?: "accept" | "refuse";
+  reason?: string;
+  peerNotified?: boolean;
+}
+
+/**
+ * Hand the outcome back; in redirect mode, under the operator's return
+ * policy. Returns what the page shows when it did not leave, else null.
+ */
+function deliverResult(res: ScopeUpdateOutcome, params: ScopeUpdateParams): ReturnOutcome | null {
   if (params.mode === "redirect" && params.returnUrl) {
-    // Only navigate back to an absolute http(s) returnUrl — a `javascript:`
-    // or `data:` value would execute in this trusted origin.
-    const target = httpUrlOrNull(params.returnUrl);
-    if (!target) return;
-    target.searchParams.set("cmcScopeUpdateResult", JSON.stringify(res));
-    window.location.assign(target.toString());
-    return;
+    // An absolute http(s) URL only (a `javascript:` / `data:` value would
+    // execute in this trusted origin), then as the operator's policy says.
+    const outcome = resultReturn(params.returnUrl, "cmcScopeUpdateResult", res, "cmc-scope-update");
+    if (outcome.kind !== "follow") return outcome;
+    navigateTo(outcome.href);
+    return null;
   }
   if (window.opener) {
     // This payload carries no token, but still pin the postMessage to the
@@ -65,6 +69,7 @@ function deliverResult(
     );
     window.close();
   }
+  return null;
 }
 
 /**
@@ -101,7 +106,12 @@ export default function CmcScopeUpdate() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
   const [doneNote, setDoneNote] = useState<string | null>(null);
+  const [returnOutcome, setReturnOutcome] = useState<ReturnOutcome | null>(null);
   const who = useApprovingAccount("/cmc-scope-update");
+
+  function deliver(res: ScopeUpdateOutcome): void {
+    setReturnOutcome(deliverResult(res, params));
+  }
 
   // Load the scope-request event to show WHAT the collector proposes —
   // the user should never approve an unseen permission set.
@@ -182,14 +192,11 @@ export default function CmcScopeUpdate() {
       })) as { updateAcceptEventId: string; peerNotified?: boolean };
       setDoneNote(scopeUpdateSuccessNote(res));
       setDone("accepted");
-      deliverResult(
-        { ok: true, updateEventId: res.updateAcceptEventId, action: "accept", peerNotified: res.peerNotified },
-        params,
-      );
+      deliver({ ok: true, updateEventId: res.updateAcceptEventId, action: "accept", peerNotified: res.peerNotified });
     } catch (err: unknown) {
       const failure = scopeUpdateFailure(err, t("cmc.errorCouldNotApprove"));
       setError(failure.message);
-      deliverResult({ ok: false, reason: failure.reason }, params);
+      deliver({ ok: false, reason: failure.reason });
     } finally {
       setWorking(null);
     }
@@ -205,14 +212,11 @@ export default function CmcScopeUpdate() {
       })) as { updateRefuseEventId: string; peerNotified?: boolean };
       setDoneNote(scopeUpdateSuccessNote(res));
       setDone("refused");
-      deliverResult(
-        { ok: true, updateEventId: res.updateRefuseEventId, action: "refuse", peerNotified: res.peerNotified },
-        params,
-      );
+      deliver({ ok: true, updateEventId: res.updateRefuseEventId, action: "refuse", peerNotified: res.peerNotified });
     } catch (err: unknown) {
       const failure = scopeUpdateFailure(err, t("cmc.errorCouldNotDecline"));
       setError(failure.message);
-      deliverResult({ ok: false, reason: failure.reason }, params);
+      deliver({ ok: false, reason: failure.reason });
     } finally {
       setWorking(null);
     }
@@ -230,6 +234,7 @@ export default function CmcScopeUpdate() {
             : t("cmc.scopeDeclinedBody")}
         </Alert>
         {doneNote && <p className="mb-2 text-sm text-muted">{doneNote}</p>}
+        <ReturnNotice outcome={returnOutcome} />
         <p className="text-sm text-muted">{t("cmc.closeWindow")}</p>
       </Card>
     );
@@ -244,6 +249,7 @@ export default function CmcScopeUpdate() {
       {loadError && <Alert>{loadError}</Alert>}
       {proposal?.answered && <Alert>{proposal.answered}</Alert>}
       {error && <Alert>{error}</Alert>}
+      <ReturnNotice outcome={returnOutcome} />
       {proposal && (
         <>
           {proposal.message && <p className="mb-4 text-sm text-muted">{proposal.message}</p>}

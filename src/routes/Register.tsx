@@ -7,6 +7,9 @@ import { getLegalSettings } from "../lib/deployedSettings";
 import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
 import { signedInTarget, registeredState } from "../lib/signInCompletion";
+import { continueSignedIn } from "../lib/accountActsGate";
+import { loggableError } from "../lib/apiError";
+import { useRegisterActs } from "../extensions/registerActs";
 import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 import { brand } from "../brand";
@@ -44,6 +47,8 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  // The operator's registration acts (src/extensions/registerActs.tsx).
+  const acts = useRegisterActs();
 
   const [hostings, setHostings] = useState<FlatHosting[] | null>(null);
   const [selectedHosting, setSelectedHosting] = useState<string>("");
@@ -129,6 +134,7 @@ export default function Register() {
       setError(t("emailVerification.errorVerifyFirst"));
       return;
     }
+    if (!acts.ready) return;
     setBusy(true);
     try {
       const { appId, serviceInfoUrl } = parseAuthParams(search);
@@ -165,28 +171,42 @@ export default function Register() {
       }
       // Sign the fresh account in directly (same path as /signin) so the
       // user doesn't have to re-enter the credentials they just chose.
+      let connection: PryvConnection;
       try {
-        const connection = (await service.login(
+        connection = (await service.login(
           username,
           password,
           appId,
         )) as unknown as PryvConnection;
         setConnection(connection, serviceInfoUrl);
-        // Same decision as every other sign-in: a pending access request goes
-        // back to /auth, then returnURL, then the hand-off page, then profile.
-        const target = signedInTarget(search, connection.endpoint);
-        const pending = hasPendingAccessRequest(search);
-        if (target.kind === "external") window.location.href = target.href;
-        // Replace, so /auth can still close this tab (popup mode) afterwards.
-        // /auth is told the account was just created here, so it continues
-        // with it rather than greeting a returning visitor.
-        else navigate(target.path, pending ? { replace: true, state: registeredState(username) } : { replace: false });
-        return;
       } catch {
         // Account exists but auto-sign-in failed (e.g. platform-side MFA
         // policy) — fall back to the confirmation card with the sign-in link.
         setDone(true);
+        return;
       }
+      // The operator's registration acts are written into the new account
+      // now; a failure does not undo the registration (the sign-in gate
+      // can ask again).
+      if (acts.onRegistered) {
+        try {
+          await acts.onRegistered(connection);
+        } catch (err: unknown) {
+          console.warn("register: the registration acts could not be recorded:", loggableError(err));
+        }
+      }
+      // Same decision as every other sign-in: a pending access request goes
+      // back to /auth, then returnURL, then the hand-off page, then profile.
+      const target = signedInTarget(search, connection.endpoint);
+      const pending = hasPendingAccessRequest(search);
+      // Replace, so /auth can still close this tab (popup mode) afterwards.
+      // /auth is told the account was just created here, so it continues
+      // with it rather than greeting a returning visitor.
+      // The account exists and is signed in: a failure from here on is logged,
+      // never reported as a failed registration.
+      await continueSignedIn(connection, target, navigate,
+        pending ? { replace: true, state: registeredState(username) } : { replace: false },
+      ).catch((err: unknown) => console.warn("register: could not continue after sign-in:", loggableError(err)));
     } catch (err: unknown) {
       // Route through the shared mapper so a verification-related refusal reads
       // as guidance rather than as the server's raw sentence.
@@ -396,10 +416,11 @@ export default function Register() {
             </label>
           </div>
         )}
+        {acts.element != null && <div className="mb-4" data-testid="register-acts">{acts.element}</div>}
         <Button
           type="submit"
           disabled={
-            busy || gateOn === null || (gateOn && emailProof == null) || (termsRequired && !accepted)
+            busy || gateOn === null || (gateOn && emailProof == null) || (termsRequired && !accepted) || !acts.ready
           }
         >
           {busy ? t("register.submitting") : t("register.submit")}

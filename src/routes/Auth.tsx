@@ -38,12 +38,13 @@ import {
   type OfferPermission,
 } from "../lib/consent";
 import { type PryvConnection } from "../lib/session";
+import { accountActsGate } from "../lib/accountActsGate";
 import { useSession } from "../lib/useSession";
 import { storedServiceInfoUrl, storedParentConnection } from "../lib/sessionStore";
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { chainedHandoffPath } from "../lib/handoffReturn";
-import { registeredAs } from "../lib/signInCompletion";
+import { registeredAs, resumeAs, resumeState } from "../lib/signInCompletion";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -227,13 +228,17 @@ export default function Auth() {
   // without the "Welcome back" card meant for a returning visitor. Read once,
   // then cleared from the history entry, so a reload shows the card again.
   const [justRegistered] = useState(() => registeredAs(location.state));
+  // Back from the operator's sign-in gate page, after signing in (or "Continue
+  // as") here: continue the same way, without saying an account was created.
+  const [resumingAs] = useState(() => resumeAs(location.state));
+  const continueWith = justRegistered ?? resumingAs;
   // "waiting" until the request and the stored session are known, "running"
   // while it continues, "off" otherwise (the card then shows as usual).
   const [autoContinue, setAutoContinue] = useState<"waiting" | "running" | "off">(
-    justRegistered != null ? "waiting" : "off",
+    continueWith != null ? "waiting" : "off",
   );
   useEffect(() => {
-    if (registeredAs(location.state) != null) {
+    if (registeredAs(location.state) != null || resumeAs(location.state) != null) {
       navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -560,13 +565,13 @@ export default function Auth() {
   // resolved, which happens first). Without a usable session (or for a request
   // already decided) there is nothing to continue: the page shows as usual.
   useEffect(() => {
-    if (autoContinue !== "waiting" || accessState == null || justRegistered == null) return;
+    if (autoContinue !== "waiting" || accessState == null || continueWith == null) return;
     if (!storedUsable || requestDone || accessState.status === "ACCEPTED" || accessState.status === "REFUSED") {
       setAutoContinue("off");
       return;
     }
     setAutoContinue("running");
-    void continueAsStored(justRegistered).finally(() => setAutoContinue("off"));
+    void continueAsStored(continueWith).finally(() => setAutoContinue("off"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoContinue, accessState, storedUsable, requestDone]);
 
@@ -589,6 +594,23 @@ export default function Auth() {
    * created in this window), only when the session is that account: otherwise
    * nothing happens and the card is shown.
    */
+  /**
+   * The operator's sign-in gate (src/extensions/signInGate.ts): when it names
+   * a page, go there first and come back to this request afterwards, which
+   * then continues as `asUser` (no "Welcome back" card again). True when the
+   * page left for the gate.
+   */
+  async function gateAccountActs(conn: PryvConnection, asUser: string): Promise<boolean> {
+    const gate = await accountActsGate(conn, {
+      target: { kind: "internal", path: location.pathname + location.search },
+      replace: true,
+      state: resumeState(asUser),
+    });
+    if (gate == null) return false;
+    navigate(gate);
+    return true;
+  }
+
   async function continueAsStored(expected?: string) {
     if (!storedConnection) return;
     const conn = storedConnection as unknown as { token?: string; endpoint: string };
@@ -606,6 +628,7 @@ export default function Auth() {
         console.warn("auth: the stored session is not the account just created; showing the sign-in card");
         return;
       }
+      if (await gateAccountActs(storedConnection, asUser)) return;
       setUsername(asUser);
       setPersonalToken(conn.token);
       setApiEndpoint(conn.endpoint);
@@ -1720,6 +1743,8 @@ export default function Auth() {
         // switch accounts instead.
         if (s.endpoint) {
           setConnection(s.connection as PryvConnection, flowSvcInfoUrl);
+          // Only with a stored session: the gate page and the way back need one.
+          if (s.connection && (await gateAccountActs(s.connection as PryvConnection, s.username))) return;
         }
         const outcome = await afterSignIn(endpoint, s.personalToken, s.username, (s.connection as PryvConnection) ?? null);
         if (outcome === "refused") {

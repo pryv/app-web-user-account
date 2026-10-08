@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Operators can restrict where a link sends users back to** (`settings.json` `returnPolicy`,
+  [#25](https://github.com/pryv/app-web-user-account/issues/25)). After the user answered, `/cmc-accept`
+  and `/cmc-scope-update` in redirect mode go to the link's `returnUrl`, and `/auth` in a tab goes to its
+  `backUrl`; anyone can build such a link. `returnPolicy.trustedOrigins` lists the origins always
+  followed (with this app's own); `returnPolicy.otherOrigins` says what happens with any other:
+  `"follow"`, `"confirm"` (a "Return to {host}" link the user clicks, carrying the same result) or
+  `"stay"`. Without `returnPolicy`, nothing changes: every http(s) address is followed, as before.
+  Popup mode and the header's back link are not affected. See README "Deploy: settings.json".
+- **Two extension points for acts a data controller must collect**
+  ([#26](https://github.com/pryv/app-web-user-account/issues/26)), both doing nothing by default:
+  - `src/extensions/registerActs.tsx` (`useRegisterActs`): content rendered above Create on the
+    register page, holding Create until ready, and a callback run with the new account's connection
+    after registration to record the acts (its failure does not fail the registration);
+  - `src/extensions/signInGate.ts` (`pendingAccountActs`): a page shown after every completed sign-in
+    (password, second factor, third-party provider, fresh registration, `/auth`) before the user goes
+    on, which then resumes where the sign-in was going with `resumeAfterAccountActs`. The pending
+    destination is kept in the tab's storage, never in the URL.
+
+  See README "Extension points".
+
 ## 0.17.1 - 2026-10-06
 
 ### Fixed

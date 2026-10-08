@@ -7,7 +7,9 @@ import { Card, Alert, Button } from "../components/ui";
 import { useSession } from "../lib/useSession";
 import { storedServiceInfoUrl } from "../lib/sessionStore";
 import { CmcOfferBlock, type CmcOfferView } from "../components/consent/CmcOfferBlock";
-import { httpUrlOrNull, trustedOpenerOrigin } from "../lib/safeRedirect";
+import { trustedOpenerOrigin } from "../lib/safeRedirect";
+import { navigateTo, resultReturn, type ReturnOutcome } from "../lib/returnTarget";
+import { ReturnNotice } from "../components/consent/ReturnNotice";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { useApprovingAccount } from "../lib/useApprovingAccount";
 import { ApprovingAccountBlocked, ApprovingAccountLine } from "../components/consent/ApprovingAccount";
@@ -63,16 +65,19 @@ function rowError(error: { id?: string; message?: string }, fallback: string): E
   return Object.assign(new Error(error.message ?? fallback), { id: error.id });
 }
 
-function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
+/**
+ * Hand the outcome back; in redirect mode, under the operator's return
+ * policy. Returns what the page shows when it did not leave, else null.
+ */
+function deliverResult(res: AcceptOutcome, params: AcceptParams): ReturnOutcome | null {
   const payload = outcomePayload(res);
   if (params.mode === "redirect" && params.returnUrl) {
-    // Only navigate back to an absolute http(s) returnUrl: a `javascript:`
-    // or `data:` value would execute in this trusted origin.
-    const target = httpUrlOrNull(params.returnUrl);
-    if (!target) return;
-    target.searchParams.set("cmcAcceptResult", JSON.stringify(payload));
-    window.location.assign(target.toString());
-    return;
+    // An absolute http(s) URL only (a `javascript:` / `data:` value would
+    // execute in this trusted origin), then as the operator's policy says.
+    const outcome = resultReturn(params.returnUrl, "cmcAcceptResult", payload, "cmc-accept");
+    if (outcome.kind !== "follow") return outcome;
+    navigateTo(outcome.href);
+    return null;
   }
   if (window.opener) {
     // Pin to the REAL opener (referrer) first; `returnUrl` is only a fallback
@@ -83,6 +88,7 @@ function deliverResult(res: AcceptOutcome, params: AcceptParams): void {
     window.opener.postMessage({ type: "cmc-accept-result", ...payload }, pinOrigin ?? "*");
     window.close();
   }
+  return null;
 }
 
 /**
@@ -114,7 +120,12 @@ export default function CmcApprove() {
   const [error, setError] = useState<Omit<InviteFailure, "reason"> | null>(null);
   const [working, setWorking] = useState<"accept" | "refuse" | null>(null);
   const [done, setDone] = useState<"accepted" | "refused" | null>(null);
+  const [returnOutcome, setReturnOutcome] = useState<ReturnOutcome | null>(null);
   const labelFor = useStreamLabels(storedServiceInfoUrl());
+
+  function deliver(res: AcceptOutcome): void {
+    setReturnOutcome(deliverResult(res, params));
+  }
 
   // Always try to read the offer (anonymous read via the capability access).
   useEffect(() => {
@@ -230,12 +241,12 @@ export default function CmcApprove() {
         accessName: params.accessName ?? undefined,
       });
       setDone("accepted");
-      deliverResult({ ok: true, acceptEventId: res.acceptEventId }, params);
+      deliver({ ok: true, acceptEventId: res.acceptEventId });
     } catch (err: unknown) {
       const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), { username: signedInAs, canSwitchAccount: true });
       const { reason: _reason, ...shown } = failure;
       setError(shown);
-      deliverResult({ ok: false, reason: failure.reason }, params);
+      deliver({ ok: false, reason: failure.reason });
     } finally {
       setWorking(null);
     }
@@ -250,12 +261,12 @@ export default function CmcApprove() {
         scopeStreamId: params.scopeStreamId,
       });
       setDone("refused");
-      deliverResult({ ok: false, reason: "declined-by-user" }, params);
+      deliver({ ok: false, reason: "declined-by-user" });
     } catch (err: unknown) {
       const failure = inviteFailure(err, t("cmc.errorCouldNotDecline"), { username: signedInAs, canSwitchAccount: true });
       const { reason: _reason, ...shown } = failure;
       setError(shown);
-      deliverResult({ ok: false, reason: failure.reason }, params);
+      deliver({ ok: false, reason: failure.reason });
     } finally {
       setWorking(null);
     }
@@ -272,6 +283,7 @@ export default function CmcApprove() {
             ? t("cmc.approvedBody")
             : t("cmc.declinedBody")}
         </Alert>
+        <ReturnNotice outcome={returnOutcome} />
         <p className="text-sm text-muted">{t("cmc.closeWindow")}</p>
       </Card>
     );
@@ -295,6 +307,7 @@ export default function CmcApprove() {
   return (
     <Card>
       <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
+      <ReturnNotice outcome={returnOutcome} />
       <CmcOfferBlock
         offer={offer}
         loading={loadingOffer}

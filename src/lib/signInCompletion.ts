@@ -77,3 +77,21 @@ export function registeredAs(state: unknown): string | null {
   const value = (state as { registeredAs?: unknown }).registeredAs;
   return typeof value === "string" && value !== "" ? value : null;
 }
+
+/**
+ * Router state for `/auth` when coming back from the operator's sign-in gate
+ * page (src/lib/accountActsGate.ts): the user had already signed in (or chosen
+ * "Continue as") as `username`, so `/auth` continues with that stored session
+ * instead of showing "Welcome back" again. Unlike `registeredState`, it does
+ * not say an account was just created. One-shot, like `registeredState`.
+ */
+export function resumeState(username: string): { resumeAs: string } {
+  return { resumeAs: username };
+}
+
+/** The account a `resumeState` names, or null for any other state. */
+export function resumeAs(state: unknown): string | null {
+  if (state == null || typeof state !== "object") return null;
+  const value = (state as { resumeAs?: unknown }).resumeAs;
+  return typeof value === "string" && value !== "" ? value : null;
+}

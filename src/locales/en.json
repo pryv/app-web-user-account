@@ -475,6 +475,8 @@
     "approvedBody": "The requesting app has been granted the access you approved.",
     "declinedBody": "The request was declined.",
     "closeWindow": "You can close this window.",
+    "returnNotAllowed": "This page does not send you back to the app that asked: go back to it yourself.",
+    "returnTo": "Return to {{host}}",
     "loadingOffer": "Loading offer…",
     "requestingAccess": "is requesting access:",
     "anApplication": "An application",

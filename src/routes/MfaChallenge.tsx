@@ -5,6 +5,7 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
+import { continueSignedIn } from "../lib/accountActsGate";
 import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 
@@ -56,12 +57,7 @@ export default function MfaChallenge() {
       // Same completion decision as a password or third-party sign-in. This
       // also restores `pryvServiceInfoUrl` on the profile fallback, which the
       // old inline `/account` default dropped.
-      const target = signedInTarget(search, connection.endpoint);
-      if (target.kind === "external") {
-        window.location.href = target.href;
-      } else {
-        navigate(target.path);
-      }
+      await continueSignedIn(connection, signedInTarget(search, connection.endpoint), navigate);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("mfa.verificationFailed"));
     } finally {

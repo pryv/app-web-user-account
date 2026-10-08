@@ -7,6 +7,7 @@ import { getService } from "../lib/service";
 import { PlatformNotAllowedError } from "../lib/deployedSettings";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
+import { continueSignedIn } from "../lib/accountActsGate";
 import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 import { parseSsoHash, ssoErrorMessage } from "../lib/ssoLanding";
@@ -105,12 +106,7 @@ export default function SsoLanding() {
         const { serviceInfoUrl } = parseAuthParams(search);
         setConnection(connection, serviceInfoUrl);
         // From here the flow finishes exactly like a password sign-in.
-        const target = signedInTarget(restoredSearch, connection.endpoint);
-        if (target.kind === "external") {
-          window.location.href = target.href;
-        } else {
-          navigate(target.path);
-        }
+        await continueSignedIn(connection, signedInTarget(restoredSearch, connection.endpoint), navigate);
       } catch (err: unknown) {
         const id = err != null && typeof err === "object" ? (err as { id?: string }).id : undefined;
         setError(

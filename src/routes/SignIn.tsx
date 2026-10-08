@@ -5,6 +5,8 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
+import { continueSignedIn } from "../lib/accountActsGate";
+import { loggableError } from "../lib/apiError";
 import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 import {
@@ -90,12 +92,9 @@ export default function SignIn() {
   }, [connection]);
 
   function completeSignedIn(conn: PryvConnection) {
-    const target = signedInTarget(search, conn.endpoint);
-    if (target.kind === "external") {
-      window.location.href = target.href;
-      return;
-    }
-    navigate(target.path);
+    continueSignedIn(conn, signedInTarget(search, conn.endpoint), navigate).catch((err: unknown) =>
+      console.warn("signin: could not continue after sign-in:", loggableError(err)),
+    );
   }
 
   function continueAs() {

@@ -11,6 +11,7 @@ import {
   updateAppAccess,
   type AccessState,
 } from "./accessFlow";
+import { _setDeployedSettingsForTest } from "./deployedSettings";
 
 /**
  * closeOrRedirect navigates to a query-supplied URL (`returnURL`). These guard against open-redirect / javascript:-scheme XSS
@@ -93,10 +94,12 @@ describe("[CLBX] closeOrFallback: close, else go back from a tab", () => {
     hrefSet = null;
     onStillOpen = vi.fn<() => void>();
     vi.useFakeTimers();
+    _setDeployedSettingsForTest(null);
   });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    _setDeployedSettingsForTest(null);
   });
 
   it("[CLB1] a window that closes (pop-up or tab): no navigation, no callback", () => {
@@ -166,6 +169,29 @@ describe("[CLBX] closeOrFallback: close, else go back from a tab", () => {
     closeOrRedirect("https://poll", { status: "REFUSED", returnURL: "javascript:alert(1)" } as AccessState, false, { backUrl: "https://app.test/back", onStillOpen });
     vi.advanceTimersByTime(CLOSE_CHECK_MS);
     expect(hrefSet).toBe(null);
+    expect(replaced).toBe("https://app.test/back");
+  });
+
+  it("[CLB9] with a return policy, a backUrl on another origin than the listed ones is not followed", () => {
+    for (const otherOrigins of ["confirm", "stay"] as const) {
+      _setDeployedSettingsForTest({ returnPolicy: { trustedOrigins: ["https://app.test"], otherOrigins } });
+      for (const backUrl of ["https://evil.example/", "https://sub.app.test/back"]) {
+        replaced = null;
+        onStillOpen = vi.fn<() => void>();
+        stubWindow({ closes: false, opener: null });
+        closeOrFallback({ backUrl, onStillOpen });
+        vi.advanceTimersByTime(CLOSE_CHECK_MS);
+        expect(replaced, `${otherOrigins} ${backUrl}`).toBe(null);
+        expect(onStillOpen, `${otherOrigins} ${backUrl}`).toHaveBeenCalledTimes(1);
+      }
+    }
+  });
+
+  it("[CLB10] with a return policy, a backUrl on a listed origin is still followed", () => {
+    _setDeployedSettingsForTest({ returnPolicy: { trustedOrigins: ["https://app.test"], otherOrigins: "stay" } });
+    stubWindow({ closes: false, opener: null });
+    closeOrFallback({ backUrl: "https://app.test/back", onStillOpen });
+    vi.advanceTimersByTime(CLOSE_CHECK_MS);
     expect(replaced).toBe("https://app.test/back");
   });
 });
