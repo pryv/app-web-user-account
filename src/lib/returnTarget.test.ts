@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { returnDecision } from "./returnTarget";
 import { _setDeployedSettingsForTest, parseDeployedSettings } from "./deployedSettings";
 
@@ -52,9 +52,12 @@ describe("[RETP] returnDecision", () => {
     expect(returnDecision("http://plain.example.org/", SELF)?.action).toBe("stay");
   });
 
-  it("[RET6] settings.json: an invalid otherOrigins is ignored (follow); a list without it follows other origins", () => {
-    _setDeployedSettingsForTest(parseDeployedSettings({ returnPolicy: { otherOrigins: "maybe" } }));
+  it("[RET6] settings.json: an invalid otherOrigins is ignored (follow) and said; a list without it follows other origins", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    _setDeployedSettingsForTest(parseDeployedSettings({ returnPolicy: { otherOrigins: "Stay" } }));
     expect(returnDecision("https://example.net/", SELF)?.action).toBe("follow");
+    expect(warn.mock.calls.flat().join(" ")).toContain("returnPolicy.otherOrigins");
+    warn.mockRestore();
     _setDeployedSettingsForTest(parseDeployedSettings({ returnPolicy: { trustedOrigins: ["https://app.example.org"] } }));
     expect(returnDecision("https://example.net/", SELF)?.action).toBe("follow");
     _setDeployedSettingsForTest(parseDeployedSettings({ returnPolicy: { otherOrigins: "confirm" } }));

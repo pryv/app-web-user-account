@@ -119,6 +119,10 @@ function returnPolicySettings(raw: unknown): Partial<ReturnPolicy> | undefined {
   const trusted = origins(json.trustedOrigins);
   if (trusted) out.trustedOrigins = trusted;
   if (RETURN_ACTIONS.includes(json.otherOrigins as ReturnAction)) out.otherOrigins = json.otherOrigins as ReturnAction;
+  else if (json.otherOrigins !== undefined) {
+    // Said, so a typo does not silently leave returns unrestricted.
+    console.warn(`settings.json: returnPolicy.otherOrigins must be one of ${RETURN_ACTIONS.join(", ")}; ignored, every other origin is followed`);
+  }
   return Object.keys(out).length > 0 ? out : undefined;
 }
 

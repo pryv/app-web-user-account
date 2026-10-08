@@ -12,6 +12,8 @@
   `"follow"`, `"confirm"` (a "Return to {host}" link the user clicks, carrying the same result) or
   `"stay"`. Without `returnPolicy`, nothing changes: every http(s) address is followed, as before.
   Popup mode and the header's back link are not affected. See README "Deploy: settings.json".
+  A `returnUrl` that is not an absolute http(s) URL is never followed (as before); the page now says
+  so instead of staying silent.
 - **Two extension points for acts a data controller must collect**
   ([#26](https://github.com/pryv/app-web-user-account/issues/26)), both doing nothing by default:
   - `src/extensions/registerActs.tsx` (`useRegisterActs`): content rendered above Create on the

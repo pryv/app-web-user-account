@@ -590,11 +590,6 @@ export default function Auth() {
     usernameHint.toLowerCase() !== (knownUsername ?? "").toLowerCase();
 
   /**
-   * Continue with the stored session. With `expected` (the account just
-   * created in this window), only when the session is that account: otherwise
-   * nothing happens and the card is shown.
-   */
-  /**
    * The operator's sign-in gate (src/extensions/signInGate.ts): when it names
    * a page, go there first and come back to this request afterwards, which
    * then continues as `asUser` (no "Welcome back" card again). True when the
@@ -611,6 +606,12 @@ export default function Auth() {
     return true;
   }
 
+  /**
+   * Continue with the stored session. With `expected` (the account just
+   * created in this window, or the one coming back from the sign-in gate),
+   * only when the session is that account: otherwise nothing happens and the
+   * card is shown.
+   */
   async function continueAsStored(expected?: string) {
     if (!storedConnection) return;
     const conn = storedConnection as unknown as { token?: string; endpoint: string };
