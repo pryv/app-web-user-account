@@ -7,6 +7,7 @@ import { Card, Button, Field, Alert } from "../../components/ui";
 import { usePasswordPrompt } from "../../components/PasswordPrompt";
 import { formatDateTime } from "../../lib/dates";
 import { apiErrorIds } from "../../lib/apiError";
+import { normalisePhone } from "../../lib/phone";
 import { useSession } from "../../lib/useSession";
 
 interface Access {
@@ -182,10 +183,17 @@ export default function Security() {
 
   async function startSms(e: React.FormEvent) {
     e.preventDefault();
+    // The server accepts E.164 only (e.g. +41791234567).
+    const e164 = normalisePhone(phone);
+    if (e164 == null) {
+      setEnrollError(t("security.phoneInvalid"));
+      return;
+    }
+    setPhone(e164);
     setEnrollBusy(true);
     setEnrollError(null);
     try {
-      const body = await activate({ method: "sms", phone });
+      const body = await activate({ method: "sms", phone: e164 });
       if (body == null) return; // password prompt cancelled; the form stays as typed
       setEnrollMfaToken(body.mfaToken ?? null);
     } catch (err: unknown) {
@@ -419,6 +427,7 @@ export default function Security() {
               autoComplete="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              hint={t("security.phoneHint")}
               required
             />
             <div className="flex gap-2">

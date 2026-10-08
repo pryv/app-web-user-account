@@ -253,6 +253,8 @@
     "recoveryCodesSave": "MFA enabled — save these recovery codes:",
     "enableSmsIntro": "Enable SMS-based MFA. We'll send a code to your phone to verify.",
     "phoneLabel": "Mobile phone (international format, e.g. +41…)",
+    "phoneHint": "Start with + and the country code; spaces and dashes are fine.",
+    "phoneInvalid": "Enter the number in international format: + then the country code and the number, e.g. +41 79 123 45 67.",
     "sendCode": "Send code",
     "sendingCode": "Sending code…",
     "codeSentTo": "We sent a code to",
