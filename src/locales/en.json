@@ -393,6 +393,7 @@
     "permissionOnStream": "{{level}} “{{name}}”",
     "permissionOnAllData": "{{level}} all your data",
     "featureSelfRevokeForbidden": "The app cannot revoke its own access (only you can)",
+    "featureWebhooksForbidden": "The app cannot register webhooks (automatic notifications sent to its servers)",
     "requiredByApp": "(required by this app)",
     "expiresAfterLabel": "Expires after:",
     "expiresAfterSeconds": "{{seconds}}s",

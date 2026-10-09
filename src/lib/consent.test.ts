@@ -135,6 +135,10 @@ describe("permissionLabel + pickText", () => {
     expect(permissionLabel({ feature: "selfRevoke", setting: "forbidden" })).toMatch(
       /cannot revoke its own access/,
     );
+    expect(permissionLabel({ feature: "webhooks", setting: "forbidden" })).toMatch(
+      /cannot register webhooks/,
+    );
+    expect(permissionLabel({ feature: "webhooks", setting: "allowed" })).toBe("webhooks: allowed");
     expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
   });
 

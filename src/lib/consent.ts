@@ -174,6 +174,9 @@ export function permissionLabel(p: OfferPermission, labelFor?: StreamLabelResolv
   if (f.feature === "selfRevoke" && f.setting === "forbidden") {
     return i18n.t("consent.featureSelfRevokeForbidden");
   }
+  if (f.feature === "webhooks" && f.setting === "forbidden") {
+    return i18n.t("consent.featureWebhooksForbidden");
+  }
   return `${f.feature}: ${f.setting}`;
 }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- The consent screen names the `webhooks: forbidden` feature permission ("The app cannot register
+  webhooks"), which open-pryv.io 2.0.0-rc.45 introduces; other unknown feature entries still show
+  as `feature: setting`.
+
 ## 0.19.0 - 2026-10-09
 
 Needs open-pryv.io 2.0.0-rc.44 or later to turn MFA off or replace it (older cores ignore the
