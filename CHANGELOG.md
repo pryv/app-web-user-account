@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.19.0 - 2026-10-09
+
+Needs open-pryv.io 2.0.0-rc.44 or later to turn MFA off or replace it (older cores ignore the
+password and keep working as before).
+
+### Changed
+
+- **Turning MFA off, or enrolling over an active enrolment (which replaces it), asks for the
+  account password** in an in-app dialog and sends it as the step-up open-pryv.io 2.0.0-rc.44
+  requires (`mfa.deactivate`, `mfa.activate`). A wrong password shows "wrong password"; cancelling
+  sends nothing.
+- **SMS enrolment normalises the phone number to the international (E.164) form** the server now
+  requires: spaces, dashes, dots, slashes and brackets are removed and a `00` prefix becomes `+`; a
+  number that is still not international is refused with an explanation before anything is sent,
+  and the field shows the expected format.
+
 ## 0.18.0 - 2026-10-08
 
 ### Added
