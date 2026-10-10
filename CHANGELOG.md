@@ -8,6 +8,17 @@
   webhooks"), which open-pryv.io 2.0.0-rc.45 introduces; other unknown feature entries still show
   as `feature: setting`.
 
+### Fixed
+
+- **"Delete my account" (Data rights) reached no route and answered 404** on both path-style and
+  DNS-style platforms: the app sent `DELETE {apiEndpoint}users/{username}`, while the platform
+  serves the deletion at the root of a core. The app now asks the register for the user's home core
+  (`POST {register}{username}/server`) and sends `DELETE {core}users/{username}` there with the
+  personal token; when that lookup is unavailable it uses the user endpoint without its
+  `{username}/` segment (the root of a path-style platform). Works with every released core. The
+  platform must allow it: `user-account.delete` includes `personalToken` (not in the default
+  configuration). Reported in #27.
+
 ## 0.19.0 - 2026-10-09
 
 Needs open-pryv.io 2.0.0-rc.44 or later to turn MFA off or replace it (older cores ignore the

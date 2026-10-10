@@ -8,13 +8,15 @@ import { useSession } from "../../lib/useSession";
 import { signinPath } from "../../lib/sessionPaths";
 import { storedServiceInfoUrl } from "../../lib/sessionStore";
 import { parseAuthParams } from "../../lib/authParams";
+import { accountDeletionUrl } from "../../lib/accountDeletion";
 
 /**
  * Data rights (GDPR / Art.17).
  *
- * Account delete: wired to `DELETE {apiEndpoint}users/{username}` (the
- * public `auth.delete` route). Requires the subject to re-confirm the
- * destructive action by typing their username.
+ * Account delete: wired to `DELETE {home core}users/{username}` (the public
+ * `auth.delete` route, served at a core's root, see `accountDeletionUrl`).
+ * Requires the subject to re-confirm the destructive action by typing their
+ * username.
  *
  * Export: hands off to `pryv-account-backup-webapp` (operator-hostable
  * sample that consumes the browser-isomorphic `@pryv/account-backup`
@@ -62,7 +64,10 @@ export default function DataRights() {
     setError(null);
     try {
       const c = connection as unknown as { endpoint: string; token: string };
-      const res = await fetch(c.endpoint + "users/" + encodeURIComponent(username), {
+      const info = await connection.service.info().catch(() => null);
+      const register = typeof info?.register === "string" ? info.register : null;
+      const url = await accountDeletionUrl({ register, endpoint: c.endpoint, username });
+      const res = await fetch(url, {
         method: "DELETE",
         headers: { Authorization: c.token },
       });
