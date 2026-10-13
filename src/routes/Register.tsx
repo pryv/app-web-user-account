@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
-import { getService } from "../lib/service";
+import { getService, type FlatHosting } from "../lib/service";
 import { getLegalSettings } from "../lib/deployedSettings";
 import { resolveLocalizedUrl, safeLegalUrl } from "../lib/legal";
 import { parseAuthParams, accessRequestSearch, hasPendingAccessRequest } from "../lib/authParams";
@@ -24,14 +24,6 @@ import {
   formatCodeInput,
 } from "../lib/emailVerification";
 
-interface FlatHosting {
-  key: string;
-  name?: string;
-  description?: string;
-  availableCore?: string;
-  available?: boolean;
-}
-
 /** Account registration via `Service.createUser`. */
 export default function Register() {
   const { t, i18n } = useTranslation();
@@ -47,12 +39,19 @@ export default function Register() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  // The operator's registration acts (src/extensions/registerActs.tsx).
-  const acts = useRegisterActs();
-
   const [hostings, setHostings] = useState<FlatHosting[] | null>(null);
   const [selectedHosting, setSelectedHosting] = useState<string>("");
   const [hostingsError, setHostingsError] = useState<string | null>(null);
+  // With several hostings the user picks one: the hosting decides where the
+  // account's data is stored, so a default must not stand for their choice.
+  // While the list loads (`null`) Create waits too: submitting then would send
+  // `auto`, the platform's first hosting.
+  const hostingsLoading = hostings == null;
+  const hostingMissing = hostings != null && hostings.length > 1 && selectedHosting === "";
+
+  // The operator's registration acts (src/extensions/registerActs.tsx), told
+  // which hosting is chosen so they can describe and record it.
+  const acts = useRegisterActs({ hosting: hostings?.find((h) => h.key === selectedHosting) ?? null });
 
   // Registration email gate. `null` until the service-info answers; the form
   // stays in its optional-email shape until we know the platform requires one.
@@ -102,8 +101,8 @@ export default function Register() {
         if (cancelled) return;
         const available = list.filter((h) => h.available !== false);
         setHostings(available);
-        // Pre-select the first available hosting (matches legacy behaviour).
-        if (available.length > 0) setSelectedHosting(available[0].key);
+        // A single hosting leaves nothing to choose; with several, none is pre-selected.
+        if (available.length === 1) setSelectedHosting(available[0].key);
       } catch (err: unknown) {
         if (cancelled) return;
         setHostingsError(err instanceof Error ? err.message : t("register.hostingsLoadError"));
@@ -124,6 +123,11 @@ export default function Register() {
     }
     if (password !== confirm) {
       setError(t("register.passwordMismatch"));
+      return;
+    }
+    if (hostingsLoading) return;
+    if (hostingMissing) {
+      setError(t("register.hostingRequired"));
       return;
     }
     if (termsRequired && !accepted) {
@@ -390,6 +394,11 @@ export default function Register() {
               className="w-full rounded border border-divider bg-card text-ink px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/40"
               required
             >
+              {selectedHosting === "" && (
+                <option value="" disabled>
+                  {t("register.hostingPlaceholder")}
+                </option>
+              )}
               {hostings.map((h) => (
                 <option key={h.key} value={h.key}>
                   {h.name || h.key}
@@ -420,7 +429,13 @@ export default function Register() {
         <Button
           type="submit"
           disabled={
-            busy || gateOn === null || (gateOn && emailProof == null) || (termsRequired && !accepted) || !acts.ready
+            busy ||
+            gateOn === null ||
+            (gateOn && emailProof == null) ||
+            hostingsLoading ||
+            hostingMissing ||
+            (termsRequired && !accepted) ||
+            !acts.ready
           }
         >
           {busy ? t("register.submitting") : t("register.submit")}

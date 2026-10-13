@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Register: no pre-selected hosting when the platform offers more than one.** The hosting decides
+  where the account's data is stored; the page selected the first one listed, so a user who never
+  opened the list was registered there without choosing. With several available hostings the list
+  now starts on "Choose where your data is hosted" and Create stays disabled until one is chosen. A
+  single hosting is still selected for the user. Reported in #28.
+
+### Added
+
+- `useRegisterActs({ hosting })` (`src/extensions/registerActs.tsx`): the acts hook receives the
+  chosen hosting (its `/reg/hostings` entry, `FlatHosting`, now exported from `src/lib/service.ts`)
+  or `null` while none is chosen, so an operator can describe the location and record it with the
+  registration acts. **A fork that replaces this file must accept the argument** (it may ignore it,
+  e.g. `useRegisterActs(_input: RegisterActsInput)`): a hook declared with no parameter fails the
+  build's type check. Depend on `input.hosting`, not on `input` (a new object every render).
+- Register: Create also waits while the hosting list loads; before, a submit in that moment sent
+  `auto`, which the platform resolves to its first hosting.
+
 ## 0.20.0 - 2026-10-10
 
 ### Added

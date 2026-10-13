@@ -116,6 +116,8 @@
     "emailLabel": "Email",
     "emailHint": "Optional, but required to reset your password.",
     "hostingLabel": "Hosting",
+    "hostingPlaceholder": "Choose where your data is hosted",
+    "hostingRequired": "Please choose a hosting to create your account.",
     "submit": "Create account",
     "submitting": "Creating…",
     "acceptLabel": "I accept the <terms>Terms & Conditions</terms> and I have read the <privacy>Privacy Policy</privacy>.",

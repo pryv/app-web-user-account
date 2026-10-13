@@ -16,6 +16,17 @@ import i18n from "../i18n";
  */
 let cached: { url: string; service: InstanceType<typeof Pryv.Service> } | null = null;
 
+/** One entry of `Service.flatHostings()` (the platform's `/reg/hostings`, flattened). */
+export interface FlatHosting {
+  key: string;
+  name?: string;
+  description?: string;
+  availableCore?: string;
+  available?: boolean;
+  region?: string;
+  zone?: string;
+}
+
 export function getService(search: string = window.location.search) {
   const serviceInfoUrl = parseAuthParams(search).serviceInfoUrl ?? getDefaultServiceInfoUrl();
   if (!serviceInfoUrl) {
