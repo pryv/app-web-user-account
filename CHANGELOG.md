@@ -4,24 +4,27 @@
 
 ### Added
 
-- **Group memberships (`/account/memberships`, new account tab).** An account that acts as a group
-  (a practice, a research team) approves its members here. A person who wants to join hands over a
-  membership request link (QR code or link); the administrator pastes it, or opens a link to this
-  page carrying it as `capabilityUrl`, sees who asks and for which teams, and approves it for the
+- **Group memberships (`/account/memberships`, new account tab "Group members").** An account
+  that acts as a group (a practice, a research team) approves its members here. A person who wants
+  to join hands over a membership request link (QR code or link); the administrator pastes it, or
+  opens a link to this page carrying it as `capabilityUrl` (read once, then taken out of the
+  address), sees who asks, for which teams, and which account is answering, and approves it for the
   teams ticked (`@pryv/cmc` `acceptMembership` with `grantedScopes`) or declines it
   (`declineMembership`). The page lists the members (account, teams, which delegate approved them,
   since when) with Revoke behind the page's own confirmation dialog (`revokeMembership`), and the
   recent offboarding sweeps: what was removed from other accounts when a membership ended, and each
-  access that could not be removed yet with the date it expires (`listSweeps`, "Check again" with
-  `getSweepStatus`). It works with the account's own session or a delegate's, and shows no token.
-  Needs `@pryv/cmc` 3.21.0 and a core that supports group memberships.
+  access that could not be removed yet with the date it expires ("Not finished", with "Check
+  again" through `getSweepStatus` while accesses are left). It works with the account's own session
+  or a delegate's, and shows no token. Needs `@pryv/cmc` 3.21.0 and a core that supports group
+  memberships.
 - **Consent screens say when an access can be passed on.** When an offer asks for a delegable
   access (`readOffer().accessType === 'app'`), `/cmc-accept` and each consent invite of `/auth`
   add: "This organisation can share this access with its team members. Each member's actions are
   recorded on your account." (catalog key `cmc.delegable`).
 - **A membership request opened on `/cmc-accept` reads as one**: the title, the requester line
   ("asks to join this account's group as a member, for these teams") and a notice that it is a
-  request to join the group, not a request for data (`readOffer().membership`).
+  request to join the group, not a request for data (`readOffer().membership`). That page approves
+  every team the request names; it links to Group members, where the teams can be chosen.
 
 ### Changed
 

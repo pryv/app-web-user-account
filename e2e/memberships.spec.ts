@@ -76,8 +76,9 @@ const SWEEP_EVENT = {
     member: { username: "frank", host: "example.test" },
     membershipAccessId: "m-9",
     reason: "revoke",
-    status: "completed",
-    failure: null,
+    // A sweep that left an access it could not remove ends this way.
+    status: "failed",
+    failure: { reason: "cmc-member-revoke-residual", detail: { childAccessId: "c2" } },
     records: [],
     outcome: [
       { childAccessId: "c1", result: "deleted" },
@@ -177,16 +178,23 @@ test.describe("[MEM] /account/memberships", () => {
     const mock = await mockGroupPlatform(context);
     await page.goto("/account/memberships?" + new URLSearchParams({ capabilityUrl: CAPABILITY_URL }).toString());
 
-    await expect(page.getByRole("link", { name: "Memberships" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Group members" })).toBeVisible();
     const request = page.getByTestId("membership-request");
     await expect(request.getByTestId("membership-requester")).toHaveText("bob@example.test");
+    // Read once, then out of the address: no tab link carries the token-bearing URL.
+    await expect(page).not.toHaveURL(/capabilityUrl/);
+    for (const href of await page.getByRole("navigation", { name: "Account sections" }).getByRole("link").evaluateAll(
+      (links) => links.map((l) => l.getAttribute("href") ?? ""),
+    )) {
+      expect(href).not.toContain("cap-token");
+    }
+    await expect(request.getByTestId("membership-approving-as")).toContainText("You are approving as alice.");
     await expect(request).toContainText("Please let me join the practice.");
     await expect(request.getByLabel("Team A")).toBeChecked();
     await request.getByLabel("Team B").uncheck();
     await request.getByRole("button", { name: "Approve" }).click();
 
     await expect(page.getByText("bob@example.test is now a member.")).toBeVisible();
-    await expect(page).not.toHaveURL(/capabilityUrl/);
     const create = mock.groupCalls.find((c) => c.method === "events.create");
     expect(create?.params).toMatchObject({
       streamIds: [":_cmc:apps:demo"],
@@ -207,7 +215,9 @@ test.describe("[MEM] /account/memberships", () => {
 
     const sweep = page.getByTestId("membership-sweep");
     await expect(sweep).toContainText("frank@example.test");
-    await expect(sweep.getByTestId("membership-sweep-status")).toHaveText("Done");
+    await expect(sweep.getByTestId("membership-sweep-status")).toHaveText("Not finished");
+    await expect(sweep.getByTestId("membership-sweep-residual")).toBeVisible();
+    await expect(sweep.getByRole("button", { name: "Check again" })).toBeVisible();
     await expect(sweep.getByTestId("membership-residuals")).toContainText("An access on patient@far.test could not be removed");
 
     await member.getByRole("button", { name: "Revoke" }).click();

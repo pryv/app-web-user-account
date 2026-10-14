@@ -176,7 +176,7 @@
       "apps": "Connected apps",
       "data": "Your data",
       "delegation": "Delegation",
-      "memberships": "Memberships"
+      "memberships": "Group members"
     }
   },
   "profile": {
@@ -551,9 +551,10 @@
     "inviteAlreadyGiven": "Already given. It is kept as it is.",
     "delegable": "This organisation can share this access with its team members. Each member's actions are recorded on your account.",
     "membershipRequesting": "asks to join this account's group as a member, for these teams:",
-    "membershipNotice": "This is a request to join your group, not a request for your data. If you approve, the requesting account becomes a member for these teams: it can invite people on the group's behalf and open the data they share with the group, each time under its own name. You can end the membership at any time from Memberships in your account.",
+    "membershipNotice": "This is a request to join your group, not a request for your data. If you approve, the requesting account becomes a member for these teams: it can invite people on the group's behalf and open the data they share with the group, each time under its own name. You can end the membership at any time from Group members in your account.",
     "membershipApproveTitle": "Approve membership request",
-    "membershipApprovedBody": "The membership is approved: the new member can now act for the group within the teams approved."
+    "membershipApprovedBody": "The membership is approved: the new member can now act for the group within the teams approved.",
+    "membershipChooseTeams": "Here the request is approved for every team it names. To choose the teams, <membersLink>open it in Group members</membersLink>."
   },
   "emailVerification": {
     "pageTitle": "Verify your email address",
@@ -706,6 +707,7 @@
     "teamsLegend": "Teams",
     "requestExplain": "Approving makes this person a member of the teams ticked: they can invite people on the group's behalf and open the data those people share with the group, each access under their own name. Untick a team to leave it out. You can revoke the membership at any time.",
     "tickOneTeam": "Tick at least one team, or decline the request.",
+    "approvingAsHint": "The membership is created on this account. If you administer the group as a delegate, open the group's account first (Delegation, Open), then this request.",
     "noticeApproved": "{{member}} is now a member.",
     "noticeDeclined": "The membership request from {{member}} was declined.",
     "errNotALink": "This is not a membership request link. Paste the whole link the person gave you.",
@@ -713,7 +715,7 @@
     "errNotMembership": "This link is not a membership request. If it is an invitation to share data, open it from the app that sent it.",
     "errPermissionsInvalid": "This request asks for more than team access, so it cannot be approved. Ask the person for a new request.",
     "errTeamsNotRequested": "A team ticked is not one the request asked for. Open the request again.",
-    "errNoTeams": "This request names no team of this account, so it cannot be approved. You can decline it.",
+    "errNoTeams": "This request names no team of this account, so it can be neither approved nor declined here. Close it and ask the person for a new request.",
     "errApprove": "Could not approve the membership.",
     "errDecline": "Could not decline the membership request.",
     "membersTitle": "Members",
@@ -746,8 +748,11 @@
     "sweepStatusPending": "In progress",
     "sweepStatusCompleted": "Done",
     "sweepStatusFailed": "Failed",
+    "sweepStatusResidual": "Not finished",
     "sweepCounts": "Removed: {{deleted}} · Already gone: {{absent}} · Not removed: {{residual}}",
-    "sweepFailed": "The removal stopped: {{reason}}.",
+    "sweepWhen": "{{reason}} · {{date}}",
+    "sweepResidual": "Some accesses could not be removed yet; the platform keeps trying until they expire.",
+    "sweepStopped": "The removal stopped:",
     "residualsTitle": "Not removed yet",
     "residual": "An access on {{account}} could not be removed; it expires on {{date}}.",
     "checkAgain": "Check again",

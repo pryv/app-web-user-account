@@ -16,14 +16,14 @@ import {
   accountLabel,
   acceptScopeFor,
   capabilityUrlFromInput,
-  isTeamStream,
   membershipFailure,
   requestedTeams,
   streamNamesOf,
+  sweepCheckable,
   sweepCounts,
-  sweepInProgress,
   sweepReasonKey,
-  sweepStatusKey,
+  sweepState,
+  sweepStateKey,
   teamName,
   type StreamNames,
 } from "../../lib/memberships";
@@ -49,7 +49,7 @@ interface OpenRequest {
 }
 
 /** Query parameters of a link to this page that carries a request. */
-const REQUEST_PARAMS = ["capabilityUrl", "capability", "scopeStreamId"];
+const REQUEST_PARAMS = ["capabilityUrl", "capability"];
 
 /**
  * Group memberships (administrator side).
@@ -69,7 +69,7 @@ const REQUEST_PARAMS = ["capabilityUrl", "capability", "scopeStreamId"];
  */
 export default function Memberships() {
   const { t } = useTranslation();
-  const { connection } = useSession();
+  const { connection, actingAs } = useSession();
   const { search, pathname } = useLocation();
   const navigate = useNavigate();
   const [confirm, confirmDialog] = useConfirm();
@@ -120,18 +120,43 @@ export default function Memberships() {
     };
   }, [connection]);
 
-  const params = new URLSearchParams(search);
-  const linkedUrl = params.get("capabilityUrl") ?? params.get("capability");
-  const linkedScope = params.get("scopeStreamId");
+  // The account that answers: the membership is created on it, whichever
+  // account that is (a delegate's own session is not the group's).
+  const [signedInAs, setSignedInAs] = useState<string | null>(null);
+  useEffect(() => {
+    if (!connection) return;
+    if (actingAs?.username) {
+      setSignedInAs(actingAs.username);
+      return;
+    }
+    let cancelled = false;
+    connection
+      .username()
+      .then((name) => {
+        if (!cancelled) setSignedInAs(name);
+      })
+      .catch(() => {
+        /* the line is left out */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, actingAs?.username]);
 
-  /** Leave the request's parameters out of the address once it is answered or closed. */
-  function dropRequestFromUrl() {
-    if (!REQUEST_PARAMS.some((p) => params.has(p))) return;
+  // A link carrying a request is consumed once: the request goes to the
+  // page's state and leaves the address at once, so the token-bearing URL
+  // does not ride on the other tabs' links or stay in the history, and coming
+  // back to the tab does not read it again.
+  const linkedUrl = new URLSearchParams(search).get("capabilityUrl") ?? new URLSearchParams(search).get("capability");
+  const [linked, setLinked] = useState<{ url: string; n: number } | null>(null);
+  useEffect(() => {
+    if (!linkedUrl) return;
+    setLinked((prev) => ({ url: linkedUrl, n: (prev?.n ?? 0) + 1 }));
     const rest = new URLSearchParams(search);
     for (const p of REQUEST_PARAMS) rest.delete(p);
     const q = rest.toString();
     navigate(pathname + (q ? "?" + q : ""), { replace: true });
-  }
+  }, [linkedUrl, search, pathname, navigate]);
 
   async function revoke(m: MemberRecord) {
     if (!connection) return;
@@ -190,14 +215,12 @@ export default function Memberships() {
       <MembershipRequest
         connection={connection}
         names={names}
-        linkedUrl={linkedUrl}
-        linkedScope={linkedScope}
+        linked={linked}
+        signedInAs={signedInAs}
         onAnswered={(text) => {
           setNotice(text);
-          dropRequestFromUrl();
           void load();
         }}
-        onClosed={dropRequestFromUrl}
       />
 
       <div>
@@ -281,19 +304,17 @@ function shownError(err: unknown, fallback: string): string {
 function MembershipRequest({
   connection,
   names,
-  linkedUrl,
-  linkedScope,
+  linked,
+  signedInAs,
   onAnswered,
-  onClosed,
 }: {
   connection: PryvConnection;
   names: StreamNames;
-  /** A request link this page was opened with (`?capabilityUrl=`). */
-  linkedUrl: string | null;
-  /** Where the calling link says to record the answer (`?scopeStreamId=`). */
-  linkedScope: string | null;
+  /** A request link this page was opened with (`?capabilityUrl=`), once taken out of the address. */
+  linked: { url: string; n: number } | null;
+  /** The account the session acts on: the membership is created on it. */
+  signedInAs: string | null;
   onAnswered: (notice: string) => void;
-  onClosed: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const [input, setInput] = useState("");
@@ -309,40 +330,44 @@ function MembershipRequest({
       setRequest(null);
       const capabilityUrl = capabilityUrlFromInput(raw);
       if (capabilityUrl == null) {
-        setError({ message: t("memberships.errNotALink"), tone: "danger" });
+        setError({ message: i18n.t("memberships.errNotALink"), tone: "danger" });
         return;
       }
       setLoading(true);
       try {
         const offer = (await cmc.readOffer(capabilityUrl)) as MembershipOffer;
         if (offer.membership !== true) {
-          setError({ message: t("memberships.errNotMembership"), tone: "danger" });
+          setError({ message: i18n.t("memberships.errNotMembership"), tone: "danger" });
           return;
         }
         const teams = requestedTeams(offer.requestedPermissions);
-        const scope = isTeamStream(linkedScope) ? linkedScope : acceptScopeFor(offer.requestedPermissions);
+        // Always derived from the request (the app its teams belong to), never
+        // from the link: where the group files the membership is the group's
+        // page's decision. A request mixing two apps is filed under the first;
+        // the platform refuses what is not a team stream.
+        const scope = acceptScopeFor(offer.requestedPermissions);
         setRequest({ capabilityUrl, offer, teams, scope });
         setSelected(teams);
       } catch (err: unknown) {
         console.warn("memberships: could not read the request:", loggableError(err));
-        setError({ message: t("memberships.errUnreadable"), tone: "danger" });
+        setError({ message: i18n.t("memberships.errUnreadable"), tone: "danger" });
       } finally {
         setLoading(false);
       }
     },
-    [linkedScope, t],
+    // `i18n` is stable: a language change does not read the request again.
+    [i18n],
   );
 
-  // Opened from a link carrying the request: read it at once.
+  // Opened from a link carrying the request: read it once.
   useEffect(() => {
-    if (linkedUrl) void open(linkedUrl);
-  }, [linkedUrl, open]);
+    if (linked) void open(linked.url);
+  }, [linked, open]);
 
   function close() {
     setRequest(null);
     setError(null);
     setInput("");
-    onClosed();
   }
 
   async function approve() {
@@ -473,6 +498,12 @@ function MembershipRequest({
             {request.teams.length > 0 && selected.length === 0 && (
               <p className="mb-3 text-sm text-danger">{t("memberships.tickOneTeam")}</p>
             )}
+            {signedInAs != null && (
+              <div className="mb-3 text-sm" data-testid="membership-approving-as">
+                <p>{t("cmc.approvingAs", { username: signedInAs })}</p>
+                <p className="text-xs text-muted">{t("memberships.approvingAsHint")}</p>
+              </div>
+            )}
             <ConsentActions
               busy={busy}
               disabled={request.scope == null}
@@ -496,7 +527,8 @@ function MembershipRequest({
 function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checking: boolean; onCheck: () => void }) {
   const { t } = useTranslation();
   const counts = sweepCounts(s.outcome);
-  const inProgress = sweepInProgress(s.status);
+  const state = sweepState(s);
+  const reason = t(sweepReasonKey(s.reason));
   return (
     <Card>
       <div data-testid="membership-sweep">
@@ -504,24 +536,35 @@ function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checki
           <div className="min-w-0">
             <div className="font-medium break-all">{accountLabel(s.member, t("memberships.unknownMember"))}</div>
             <div className="text-xs text-muted">
-              {t(sweepReasonKey(s.reason))}
-              {s.time != null && " · " + formatDateTime(s.time)}
+              {s.time != null ? t("memberships.sweepWhen", { reason, date: formatDateTime(s.time) }) : reason}
             </div>
           </div>
           <span
             data-testid="membership-sweep-status"
             className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
-              s.status === "failed" ? "bg-danger/10 text-danger" : inProgress ? "bg-info/10 text-info" : "bg-success/10 text-success"
+              state === "failed"
+                ? "bg-danger/10 text-danger"
+                : state === "done"
+                  ? "bg-success/10 text-success"
+                  : "bg-info/10 text-info"
             }`}
           >
-            {t(sweepStatusKey(s.status))}
+            {t(sweepStateKey(state))}
           </span>
         </div>
         <p className="mt-2 text-sm">
           {t("memberships.sweepCounts", { deleted: counts.deleted, absent: counts.absent, residual: counts.residual })}
         </p>
-        {s.failure != null && (
-          <p className="mt-1 text-sm text-danger">{t("memberships.sweepFailed", { reason: s.failure.reason })}</p>
+        {state === "residual" && (
+          <p className="mt-1 text-sm" data-testid="membership-sweep-residual">
+            {t("memberships.sweepResidual")}
+          </p>
+        )}
+        {/* Another reason: said, with its id for a support request; its detail is never shown. */}
+        {state === "failed" && (
+          <p className="mt-1 text-sm text-danger" data-testid="membership-sweep-stopped">
+            {t("memberships.sweepStopped")} <code className="break-all">{s.failure?.reason ?? ""}</code>
+          </p>
         )}
         {s.residuals.length > 0 && (
           <div className="mt-2">
@@ -538,7 +581,7 @@ function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checki
             </ul>
           </div>
         )}
-        {inProgress && (
+        {sweepCheckable(s) && (
           <div className="mt-2">
             <button
               type="button"

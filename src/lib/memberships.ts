@@ -156,15 +156,40 @@ export function sweepInProgress(status: string): boolean {
   return status === "pending" || status === "delivered";
 }
 
-/** Catalog key of a sweep status. */
-export function sweepStatusKey(status: string): string {
-  switch (status) {
-    case "completed":
+/**
+ * How a sweep is shown:
+ * - `running`: the platform is still working on it;
+ * - `residual`: it ran, and some accesses could not be removed yet (the
+ *   expected way a sweep ends when another platform is unreachable: they are
+ *   retried, and each one ends at its own expiry anyway);
+ * - `failed`: it stopped for another reason;
+ * - `done`.
+ */
+export type SweepState = "running" | "residual" | "failed" | "done";
+
+export function sweepState(sweep: { status: string; failure: { reason?: string } | null }): SweepState {
+  if (sweepInProgress(sweep.status)) return "running";
+  if (sweep.status === "failed") {
+    return sweep.failure?.reason === errorIds.MEMBER_REVOKE_RESIDUAL ? "residual" : "failed";
+  }
+  return "done";
+}
+
+/** Worth checking again: still running, or accesses are left to remove. */
+export function sweepCheckable(sweep: { status: string; residuals: ReadonlyArray<unknown> }): boolean {
+  return sweepInProgress(sweep.status) || sweep.residuals.length > 0;
+}
+
+/** Catalog key of a sweep's state. */
+export function sweepStateKey(state: SweepState): string {
+  switch (state) {
+    case "done":
       return "memberships.sweepStatusCompleted";
     case "failed":
       return "memberships.sweepStatusFailed";
-    case "delivered":
-    case "pending":
+    case "residual":
+      return "memberships.sweepStatusResidual";
+    case "running":
     default:
       return "memberships.sweepStatusPending";
   }

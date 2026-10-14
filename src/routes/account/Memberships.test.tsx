@@ -15,9 +15,9 @@ const conn = vi.hoisted(() => {
   const c = {
     api: vi.fn(),
     // One stable object, as the real session provides.
-    connection: {} as { api: unknown; apiEndpoint: string },
+    connection: {} as { api: unknown; apiEndpoint: string; username: () => Promise<string> },
   };
-  c.connection = { api: c.api, apiEndpoint: "https://session-token@group.core.test/" };
+  c.connection = { api: c.api, apiEndpoint: "https://session-token@group.core.test/", username: async () => "practice" };
   return c;
 });
 vi.mock("../../lib/useSession", () => ({
@@ -200,19 +200,48 @@ describe("[MBRP] memberships page", () => {
     expect(screen.queryByTestId("membership-request")).toBeNull();
   });
 
-  it("[MBP3] opened from a link carrying the request: read at once; Decline answers it and leaves the address clean", async () => {
-    const q = new URLSearchParams({ capabilityUrl: CAP, pryvServiceInfoUrl: "https://core.test/service/info" });
+  it("[MBP3] opened from a link carrying the request: read once, the address cleaned at once; Decline answers it", async () => {
+    // A `scopeStreamId` in the link is ignored: where the answer is filed comes from the request.
+    const q = new URLSearchParams({
+      capabilityUrl: CAP,
+      scopeStreamId: ":_cmc:apps:elsewhere",
+      pryvServiceInfoUrl: "https://core.test/service/info",
+    });
     renderPage("/account/memberships?" + q.toString());
     const block = await screen.findByTestId("membership-request");
+    // Before any answer, the token-bearing link has left the address (and so every tab link).
+    await waitFor(() => expect(screen.getByTestId("location").textContent).not.toContain("capabilityUrl"));
+    expect(screen.getByTestId("location").textContent).toContain("pryvServiceInfoUrl=");
+    expect(cmcMock.readOffer).toHaveBeenCalledTimes(1);
     fireEvent.click(within(block).getByRole("button", { name: "Decline" }));
     expect(await screen.findByText("The membership request from bob@bob.core.test was declined.")).toBeTruthy();
     expect(cmcMock.declineMembership).toHaveBeenCalledWith(conn.connection, CAP, { scopeStreamId: ":_cmc:apps:practice" });
     expect(cmcMock.acceptMembership).not.toHaveBeenCalled();
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe(
-        "/account/memberships?pryvServiceInfoUrl=" + encodeURIComponent("https://core.test/service/info"),
-      ),
-    );
+  });
+
+  it("[MBP3b] a linked request that cannot be read: said, and the link still leaves the address", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    cmcMock.readOffer.mockRejectedValue(new Error("gone"));
+    renderPage("/account/memberships?" + new URLSearchParams({ capabilityUrl: CAP }).toString());
+    expect(await screen.findByText(/This membership request could not be read/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/account/memberships"));
+  });
+
+  it("[MBP11] a request naming no team: said, and neither Approve nor Decline is offered", async () => {
+    cmcMock.readOffer.mockResolvedValue(membershipOffer({ requestedPermissions: [{ streamId: "diary", level: "read" }] }));
+    renderPage();
+    const block = await openPasted();
+    expect(block.textContent).toContain("it can be neither approved nor declined here");
+    expect((within(block).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(block).getByRole("button", { name: "Decline" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("[MBP12] names the account that answers, where the membership is created", async () => {
+    renderPage();
+    const block = await openPasted();
+    const line = await within(block).findByTestId("membership-approving-as");
+    expect(line.textContent).toContain("You are approving as practice.");
+    expect(line.textContent).toContain("The membership is created on this account.");
   });
 
   it("[MBP4] a link that is not a membership request is not offered for approval", async () => {
@@ -287,7 +316,45 @@ describe("[MBRP] memberships page", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Check again" }));
     await waitFor(() => expect(within(screen.getByTestId("membership-sweep")).getByTestId("membership-sweep-status").textContent).toBe("Done"));
     expect(cmcMock.getSweepStatus).toHaveBeenCalledWith(conn.connection, "sw-1");
-    expect(within(screen.getByTestId("membership-sweep")).queryByRole("button", { name: "Check again" })).toBeNull();
+    // Done, but an access is left: still worth checking again.
+    expect(within(screen.getByTestId("membership-sweep")).getByRole("button", { name: "Check again" })).toBeTruthy();
+  });
+
+  it("[MBP8b] a sweep that ended with accesses left is not a failure: its own state and sentence, and Check again", async () => {
+    cmcMock.listSweeps.mockResolvedValue({
+      items: [sweep("failed", { failure: { reason: errorIds.MEMBER_REVOKE_RESIDUAL, detail: { childAccessId: "c2", httpStatus: 503 } } })],
+      truncated: false,
+    });
+    renderPage();
+    const card = await screen.findByTestId("membership-sweep");
+    expect(within(card).getByTestId("membership-sweep-status").textContent).toBe("Not finished");
+    expect(within(card).getByTestId("membership-sweep-residual").textContent).toBe(
+      "Some accesses could not be removed yet; the platform keeps trying until they expire.",
+    );
+    expect(card.textContent).not.toContain(errorIds.MEMBER_REVOKE_RESIDUAL);
+    expect(within(card).queryByTestId("membership-sweep-stopped")).toBeNull();
+    expect(within(card).getByRole("button", { name: "Check again" })).toBeTruthy();
+  });
+
+  it("[MBP8c] a sweep stopped for another reason: Failed, the id for support, never its detail", async () => {
+    cmcMock.listSweeps.mockResolvedValue({
+      items: [
+        sweep("failed", {
+          failure: { reason: "cmc-handler-threw", detail: { peerErrorId: "peer-secret-id", httpStatus: 500 } },
+          residuals: [],
+          outcome: [],
+        }),
+      ],
+      truncated: false,
+    });
+    renderPage();
+    const card = await screen.findByTestId("membership-sweep");
+    expect(within(card).getByTestId("membership-sweep-status").textContent).toBe("Failed");
+    const stopped = within(card).getByTestId("membership-sweep-stopped");
+    expect(stopped.textContent).toBe("The removal stopped: cmc-handler-threw");
+    expect(stopped.querySelector("code")?.textContent).toBe("cmc-handler-threw");
+    expect(card.textContent).not.toContain("peer-secret-id");
+    expect(within(card).queryByRole("button", { name: "Check again" })).toBeNull();
   });
 
   it("[MBP9] lists that cannot be read are said, with no token shown", async () => {

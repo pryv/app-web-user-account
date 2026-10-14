@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { Link, useLocation } from "react-router-dom";
 import { cmc } from "../lib/pryvClient";
@@ -58,6 +58,14 @@ function parseCmcParams(search: string): AcceptParams {
     returnUrl,
     mode,
   };
+}
+
+/** The Group members page opened on this request, keeping the platform choice. */
+function membershipsLink(capabilityUrl: string, search: string): string {
+  const q = new URLSearchParams({ capabilityUrl });
+  const platform = new URLSearchParams(search).get("pryvServiceInfoUrl");
+  if (platform) q.set("pryvServiceInfoUrl", platform);
+  return "/account/memberships?" + q.toString();
 }
 
 /** A failed call's result row as an error carrying the platform's id (read by `platformError`). */
@@ -326,6 +334,23 @@ export default function CmcApprove() {
         actionsBlocked={actionsBlocked}
         notice={
           <>
+            {isMembership && params.capabilityUrl && (
+              // This page grants every team the request names; the Group
+              // members page lets the administrator choose them.
+              <p className="mb-3 text-sm text-muted" data-testid="cmc-membership-choose-teams">
+                <Trans
+                  i18nKey="cmc.membershipChooseTeams"
+                  components={{
+                    membersLink: (
+                      <Link
+                        to={membershipsLink(params.capabilityUrl, search)}
+                        className="text-primary hover:underline"
+                      />
+                    ),
+                  }}
+                />
+              </p>
+            )}
             {offer != null && emailState != null && (
               <MissingEmailNotice
                 username={actingAs?.username ?? null}

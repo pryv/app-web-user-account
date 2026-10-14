@@ -10,8 +10,10 @@ import {
   streamNamesOf,
   sweepCounts,
   sweepInProgress,
+  sweepCheckable,
   sweepReasonKey,
-  sweepStatusKey,
+  sweepState,
+  sweepStateKey,
   teamName,
 } from "./memberships";
 import i18n from "../i18n";
@@ -114,9 +116,24 @@ describe("[MBRL] memberships helpers", () => {
     expect(sweepInProgress("delivered")).toBe(true);
     expect(sweepInProgress("completed")).toBe(false);
     expect(sweepInProgress("failed")).toBe(false);
-    expect(sweepStatusKey("completed")).toBe("memberships.sweepStatusCompleted");
-    expect(sweepStatusKey("failed")).toBe("memberships.sweepStatusFailed");
-    expect(sweepStatusKey("delivered")).toBe("memberships.sweepStatusPending");
+    const residual = { reason: errorIds.MEMBER_REVOKE_RESIDUAL };
+    expect(sweepState({ status: "pending", failure: null })).toBe("running");
+    expect(sweepState({ status: "delivered", failure: null })).toBe("running");
+    expect(sweepState({ status: "completed", failure: null })).toBe("done");
+    expect(sweepState({ status: "failed", failure: residual })).toBe("residual");
+    expect(sweepState({ status: "failed", failure: { reason: "cmc-handler-threw" } })).toBe("failed");
+    expect(sweepState({ status: "failed", failure: null })).toBe("failed");
+    expect(sweepStateKey("done")).toBe("memberships.sweepStatusCompleted");
+    expect(sweepStateKey("failed")).toBe("memberships.sweepStatusFailed");
+    expect(sweepStateKey("residual")).toBe("memberships.sweepStatusResidual");
+    expect(sweepStateKey("running")).toBe("memberships.sweepStatusPending");
+    for (const state of ["done", "failed", "residual", "running"] as const) expect(i18n.exists(sweepStateKey(state))).toBe(true);
+    // Worth checking again while running, or while accesses are left.
+    expect(sweepCheckable({ status: "pending", residuals: [] })).toBe(true);
+    expect(sweepCheckable({ status: "failed", residuals: [{}] })).toBe(true);
+    expect(sweepCheckable({ status: "completed", residuals: [{}] })).toBe(true);
+    expect(sweepCheckable({ status: "completed", residuals: [] })).toBe(false);
+    expect(sweepCheckable({ status: "failed", residuals: [] })).toBe(false);
     for (const reason of ["revoke", "accesses.delete", "expired", "narrowed", "detach", "account-deleted", "new", null]) {
       const key = sweepReasonKey(reason);
       expect(i18n.exists(key)).toBe(true);

@@ -280,6 +280,11 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     expect(await screen.findByRole("heading", { name: "Approve membership request" })).toBeTruthy();
     expect(await screen.findByTestId("cmc-membership-notice")).toBeTruthy();
     expect(screen.queryByTestId("cmc-delegable-notice")).toBeNull();
+    // This page grants every team: it points to the page that lets the teams be chosen.
+    const choose = screen.getByTestId("cmc-membership-choose-teams");
+    expect(within(choose).getByRole("link", { name: "open it in Group members" }).getAttribute("href")).toBe(
+      "/account/memberships?" + new URLSearchParams({ capabilityUrl: CAPABILITY }).toString(),
+    );
     await screen.findByTestId("cmc-approving-as");
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(await screen.findByText(/The membership is approved/)).toBeTruthy();
