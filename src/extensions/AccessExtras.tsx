@@ -10,7 +10,8 @@ import type { AccessDetails } from "../lib/audit";
  * example which form or study a consent belongs to).
  *
  * `access` is the access as the page loaded it; `isSelf` is true when it is
- * the access the current session runs on. `isSelf` is resolved by a separate
+ * the access the current session runs on. A removed access loads too, from its
+ * deletion record: `access.deleted` (Unix seconds) is then set. `isSelf` is resolved by a separate
  * request: it can be `false` on the first render and become `true` later (it
  * stays `false` if that request fails), so read it on every render rather than
  * once on mount. The slot only adds content: it cannot change the details card,

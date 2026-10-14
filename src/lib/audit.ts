@@ -14,6 +14,7 @@ export const AUDIT_TYPE_VALID = "audit-log/pryv-api";
 export const AUDIT_TYPE_ERROR = "audit-log/pryv-api-error";
 
 export interface AuditQuery {
+  /** The access id, bare or with its `:<serial>` (the trail covers every version). */
   accessId: string;
   /** Unix time in SECONDS (Pryv API convention); omit for open-ended. */
   fromTime?: number;
@@ -36,12 +37,18 @@ export interface AuditEvent {
     query?: Record<string, unknown>;
     id?: string; // error id on error entries
     message?: string; // error message on error entries
+    /**
+     * Label the caller sent with its token (`Authorization: <token> <callerId>`).
+     * Chosen by the caller: never an authenticated identity.
+     */
+    callerId?: string;
   };
 }
 
 /**
  * An access as the access details page loads it (`accesses.get` with
- * `includeExpired`). Also the `access` prop of the `AccessExtras` extension.
+ * `includeExpired` and `includeDeletions`). Also the `access` prop of the
+ * `AccessExtras` extension.
  */
 export interface AccessDetails {
   id: string;
@@ -57,11 +64,65 @@ export interface AccessDetails {
   expires?: number | null;
   expired?: boolean;
   clientData?: Record<string, unknown>;
+  /** Set on a removed access (an `accessDeletions` record): when it was deleted, Unix seconds. */
+  deleted?: number;
 }
 
-/** Build the `events.get` params for one page of an access's audit trail. */
+/**
+ * An access reference as the platform stores it in `createdBy` / `modifiedBy`
+ * (of an access or an event): the access id, followed by `:<serial>` when the
+ * access was updated since, and by ` <callerId>` when the call carried one.
+ */
+export interface AccessAttribution {
+  /** The access id without its `:<serial>` suffix: the same for every version. */
+  base: string;
+  /** The label the caller sent with its token, if any (never verified). */
+  callerId?: string;
+}
+
+export function parseAttribution(ref: string): AccessAttribution {
+  const space = ref.indexOf(" ");
+  const accessRef = space === -1 ? ref : ref.slice(0, space);
+  const callerId = space === -1 ? "" : ref.slice(space + 1);
+  const colon = accessRef.indexOf(":");
+  const base = colon === -1 ? accessRef : accessRef.slice(0, colon);
+  return callerId ? { base, callerId } : { base };
+}
+
+/** Whether two access references (ids, attributions) name the same access. */
+export function sameAccess(a: string | undefined | null, b: string | undefined | null): boolean {
+  if (!a || !b) return false;
+  return parseAttribution(a).base === parseAttribution(b).base;
+}
+
+/**
+ * The response of `accesses.get` with `includeDeletions`, as one list: live
+ * (and expired) accesses first, then the removed ones (`deleted` set).
+ */
+export function accessesWithDeletions(res: {
+  accesses?: AccessDetails[];
+  accessDeletions?: AccessDetails[];
+}): AccessDetails[] {
+  return [...(res.accesses ?? []), ...(res.accessDeletions ?? [])];
+}
+
+/**
+ * The access a reference (an id, a `createdBy`) names in that list: the exact
+ * id first, then the same access under another version (`<id>:<serial>`).
+ */
+export function findAccess(list: AccessDetails[], ref: string | undefined | null): AccessDetails | undefined {
+  if (!ref) return undefined;
+  return list.find((a) => a.id === ref) ?? list.find((a) => sameAccess(a.id, ref));
+}
+
+/**
+ * Build the `events.get` params for one page of an access's audit trail.
+ * Every entry is filed under the access's base id (`access-<id>`), and those
+ * made under an updated version also under `access-<id>:<serial>`: querying
+ * the base stream lists the whole trail, before and after each update.
+ */
 export function buildAuditGetParams(q: AuditQuery): Record<string, unknown> {
-  const accessStream = AUDIT_ACCESS_STREAM_PREFIX + q.accessId;
+  const accessStream = AUDIT_ACCESS_STREAM_PREFIX + parseAttribution(q.accessId).base;
   const params: Record<string, unknown> = {
     // Filtering on an action too needs AND semantics — the streams-query
     // object form ({any} AND {all}); a plain array would mean OR.
@@ -133,15 +194,18 @@ export function buildDataGetParams(q: {
   return params;
 }
 
-/** Keep the events this access created or last modified. */
+/**
+ * Keep the events this access created or last modified, whatever its version
+ * and whether or not the call carried a caller label.
+ */
 export function filterEventsByAccess(events: DataEvent[], accessId: string): DataEvent[] {
-  return events.filter((e) => e.createdBy === accessId || e.modifiedBy === accessId);
+  return events.filter((e) => sameAccess(e.createdBy, accessId) || sameAccess(e.modifiedBy, accessId));
 }
 
 /** Which relation(s) tie an event to the access — for the badge column. */
 export function eventRelation(e: DataEvent, accessId: string): "created" | "modified" | "created + modified" {
-  const created = e.createdBy === accessId;
-  const modified = e.modifiedBy === accessId && e.modified !== e.created;
+  const created = sameAccess(e.createdBy, accessId);
+  const modified = sameAccess(e.modifiedBy, accessId) && e.modified !== e.created;
   if (created && modified) return "created + modified";
   return created ? "created" : "modified";
 }

@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **The access details page names who acted, even after an access is gone.**
+  - A deleted access now shows by name, with a "removed" mark and the date it was removed (the page
+    also loads the account's deletion records, `accesses.get` `includeDeletions`); "This access is
+    not listed anymore" is left for an access the platform no longer knows at all. The Revoke
+    button is not offered for a removed access.
+  - "Created by" and "Modified by" read "via <name of that access>", linking to its own page (marked
+    "(removed)" when it was deleted), instead of the raw access id. A reference carrying a version
+    (`<id>:<serial>`) or a caller label (`<id> <callerId>`) resolves to the same access; the raw
+    reference stays when it names no access of the account.
+  - An audit entry made with a caller label (`Authorization: <token> <callerId>`) shows it under
+    its source, as "Caller label (not verified)": the caller chooses it, it is not an identity.
+- `AccessExtras` (`src/extensions/AccessExtras.tsx`) now also mounts for a removed access, with
+  `access.deleted` (`AccessDetails`) set to its deletion time.
+
+### Fixed
+
+- "Data created / modified by this access" missed the events the access wrote with a caller label
+  or under a later version of the access: they are now listed.
+- The audit trail of an access that was updated listed only the calls made since its last update
+  (the page read the version's own audit stream, `access-<id>:<serial>`): it now reads the access's
+  base stream, which holds every call of every version. Links still open the access's current id.
+- The "this session" mark, and the warning that revoking the session's own access signs you out,
+  now also recognise that access when the page was opened with another version of its id.
+
 ## 0.21.0 - 2026-10-13
 
 ### Changed

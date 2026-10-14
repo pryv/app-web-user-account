@@ -7,6 +7,10 @@ import {
   buildDataGetParams,
   filterEventsByAccess,
   eventRelation,
+  parseAttribution,
+  sameAccess,
+  accessesWithDeletions,
+  findAccess,
   DATA_BATCH_LIMIT,
   AUDIT_TYPE_ERROR,
   AUDIT_TYPE_VALID,
@@ -21,6 +25,15 @@ describe("buildAuditGetParams", () => {
     expect(p.sortAscending).toBe(false);
     expect(p).not.toHaveProperty("fromTime");
     expect(p).not.toHaveProperty("types");
+  });
+
+  it("[ATB5] an updated access's trail is read from its base stream, every version included", () => {
+    expect(buildAuditGetParams({ accessId: "ck123:2", page: 0, pageSize: 15 }).streams).toEqual([
+      ":_audit:access-ck123",
+    ]);
+    expect(buildAuditGetParams({ accessId: "ck123:2", action: "events.get", page: 0, pageSize: 15 }).streams).toEqual([
+      { any: [":_audit:access-ck123"], all: [":_audit:action-events.get"] },
+    ]);
   });
 
   it("combines access and action streams with AND semantics", () => {
@@ -98,6 +111,50 @@ describe("data created/modified helpers", () => {
     expect(
       eventRelation({ id: "3", time: 1, type: "t/t", createdBy: "a1", created: 5, modified: 9, modifiedBy: "a1" }, "a1"),
     ).toBe("created + modified");
+  });
+});
+
+describe("[ATBN] access attribution", () => {
+  it("[ATB1] parses a stored reference with or without serial and caller label", () => {
+    expect(parseAttribution("ck1")).toEqual({ base: "ck1" });
+    expect(parseAttribution("ck1:3")).toEqual({ base: "ck1" });
+    expect(parseAttribution("ck1 member-42")).toEqual({ base: "ck1", callerId: "member-42" });
+    expect(parseAttribution("ck1:3 member-42")).toEqual({ base: "ck1", callerId: "member-42" });
+    // The caller label is free text: a colon or a space in it stays in it.
+    expect(parseAttribution("ck1 dr x:7")).toEqual({ base: "ck1", callerId: "dr x:7" });
+  });
+
+  it("[ATB2] sameAccess compares the access, whatever the version or caller label", () => {
+    expect(sameAccess("ck1:2 member", "ck1")).toBe(true);
+    expect(sameAccess("ck1", "ck1:5")).toBe(true);
+    expect(sameAccess("ck1", "ck2")).toBe(false);
+    expect(sameAccess(undefined, "ck1")).toBe(false);
+  });
+
+  it("[ATB3] lists live accesses first, then the removed ones, and finds either", () => {
+    const list = accessesWithDeletions({
+      accesses: [{ id: "live-1", name: "live" }, { id: "ver-1:2", name: "versioned" }],
+      accessDeletions: [{ id: "gone-1", name: "gone", deleted: 1789000000 }],
+    });
+    expect(list.map((a) => a.id)).toEqual(["live-1", "ver-1:2", "gone-1"]);
+    expect(findAccess(list, "gone-1")?.name).toBe("gone");
+    expect(findAccess(list, "gone-1 member-42")?.deleted).toBe(1789000000);
+    expect(findAccess(list, "ver-1")?.name).toBe("versioned");
+    expect(findAccess(list, "ver-1:1 member")?.name).toBe("versioned");
+    expect(findAccess(list, "nope")).toBeUndefined();
+    expect(findAccess(list, undefined)).toBeUndefined();
+    expect(accessesWithDeletions({})).toEqual([]);
+  });
+
+  it("[ATB4] data written with a caller label or under a later version counts for the access", () => {
+    const events = [
+      { id: "1", time: 1, type: "note/txt", createdBy: "a1 member-42" },
+      { id: "2", time: 2, type: "note/txt", createdBy: "zz", modifiedBy: "a1:2" },
+      { id: "3", time: 3, type: "note/txt", createdBy: "a10" },
+    ];
+    expect(filterEventsByAccess(events, "a1").map((e) => e.id)).toEqual(["1", "2"]);
+    expect(eventRelation(events[0], "a1")).toBe("created");
+    expect(eventRelation(events[1], "a1")).toBe("modified");
   });
 });
 

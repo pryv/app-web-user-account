@@ -10,14 +10,21 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
  * ordinary, revocable apps.
  */
 
-const conn = vi.hoisted(() => ({
-  accesses: [] as Array<Record<string, unknown>>,
-  selfId: "pat-1",
-  api: vi.fn(),
-  accessInfo: vi.fn(),
-}));
+const conn = vi.hoisted(() => {
+  const c = {
+    accesses: [] as Array<Record<string, unknown>>,
+    selfId: "pat-1",
+    api: vi.fn(),
+    accessInfo: vi.fn(),
+    // One stable connection object, as the real session provides: a new one
+    // per render would re-run every effect keyed on the connection.
+    connection: {} as { api: unknown; accessInfo: unknown },
+  };
+  c.connection = { api: c.api, accessInfo: c.accessInfo };
+  return c;
+});
 vi.mock("../../lib/useSession", () => ({
-  useSession: () => ({ connection: { api: conn.api, accessInfo: conn.accessInfo }, setConnection: vi.fn() }),
+  useSession: () => ({ connection: conn.connection, setConnection: vi.fn() }),
 }));
 vi.mock("../../lib/sessionPaths", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/sessionPaths")>()),
@@ -108,6 +115,13 @@ describe("[CAPD] connected apps: delegation plumbing", () => {
       expect(screen.queryByText(/managed by account delegation/i)).toBeNull();
       cleanup();
     }
+  });
+
+  it("[CAPD5] the details page settles: no refetch loop", async () => {
+    details("app-1");
+    await screen.findByRole("button", { name: /revoke/i });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(conn.api.mock.calls.length).toBeLessThan(10);
   });
 });
 
