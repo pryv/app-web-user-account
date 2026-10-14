@@ -13,5 +13,5 @@
     "auth",
     "oauth2-authorize"
   ],
-  "account": ["profile", "security", "apps", "delegation", "data"]
+  "account": ["profile", "security", "apps", "delegation", "memberships", "data"]
 }

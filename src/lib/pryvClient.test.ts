@@ -31,7 +31,19 @@ describe("[PCLC] cmc export", () => {
   // the dev server, are the regression tests for that.
   it("[PCL3] exposes the functions the approval pages call", async () => {
     const { cmc } = await import("./pryvClient");
-    for (const fn of ["readOffer", "acceptInvite", "refuseInvite", "acceptScopeUpdate", "refuseScopeUpdate"] as const) {
+    for (const fn of [
+      "readOffer",
+      "acceptInvite",
+      "refuseInvite",
+      "acceptScopeUpdate",
+      "refuseScopeUpdate",
+      "acceptMembership",
+      "declineMembership",
+      "listMembers",
+      "revokeMembership",
+      "listSweeps",
+      "getSweepStatus",
+    ] as const) {
       expect(typeof cmc[fn]).toBe("function");
     }
   });

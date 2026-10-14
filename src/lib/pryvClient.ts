@@ -18,6 +18,7 @@ export { Pryv, attachSocketIO };
 import * as cmcModule from "@pryv/cmc";
 export const cmc = cmcModule;
 export { errorIds as cmcErrorIds } from "@pryv/cmc";
+export type { MemberRecord, SweepRecord } from "@pryv/cmc";
 
 export {
   Delegation,

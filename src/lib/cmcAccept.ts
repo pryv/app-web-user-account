@@ -67,7 +67,8 @@ export function inviteFailure(err: unknown, fallback: string, context: InviteFai
     return { reason: GRANT_REQUIRES_OWNER_ID, message: grantRequiresOwnerMessage(), tone: "danger" };
   }
   const { id, message } = platformError(err, fallback);
-  const known = id != null ? OUTCOMES[id] : undefined;
+  // Own keys only: an id such as "constructor" must not match the prototype.
+  const known = id != null && Object.hasOwn(OUTCOMES, id) ? OUTCOMES[id] : undefined;
   if (id == null || known == null) return { reason: id ?? message, message, tone: "danger" };
   const { username, canSwitchAccount = false } = context;
   if (username && known.switchKey != null && canSwitchAccount) {

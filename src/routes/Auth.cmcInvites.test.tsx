@@ -899,4 +899,21 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     expect(statement.className).toContain("text-base");
     expect(statement.className).not.toContain("text-muted");
   });
+
+  it("[ACI34] a delegable offer says so in its own block only", async () => {
+    cmcMock.readOffer.mockImplementation(async (url: string) => ({
+      requester: { username: url === CAP_A ? "doctor" : "study", host: "requester.test" },
+      requestedPermissions: [{ streamId: "diary", level: "read" }],
+      mode: "single-use",
+      accessType: url === CAP_A ? "app" : "shared",
+    }));
+    await reachConsent(
+      needSignin([{ capabilityUrl: CAP_A, mandatory: true, for: "self" }, { capabilityUrl: CAP_B, mandatory: false, for: "self" }]),
+    );
+    const blocks = await inviteBlocks(2);
+    expect(within(blocks[0]).getByTestId("cmc-delegable-notice").textContent).toBe(
+      "This organisation can share this access with its team members. Each member's actions are recorded on your account.",
+    );
+    expect(within(blocks[1]).queryByTestId("cmc-delegable-notice")).toBeNull();
+  });
 });

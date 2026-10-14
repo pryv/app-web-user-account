@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Share2 } from "lucide-react";
 import { Alert } from "../ui";
 import { PermissionList } from "./PermissionList";
 import { ConsentActions } from "./ConsentActions";
@@ -13,6 +14,16 @@ export interface CmcOfferView {
   consent?: Record<string, string>;
   mode: string;
   features?: { chat?: boolean; systemMessaging?: boolean };
+  /**
+   * `'app'`: the grant would be delegable, the requester may create
+   * sub-accesses from it (said on the block). Absent from older clients.
+   */
+  accessType?: "shared" | "app";
+  /**
+   * The requester asks to join the answering account's group as a member:
+   * the block reads as a membership request, not as a data grant.
+   */
+  membership?: boolean;
 }
 
 export interface CmcOfferBlockProps {
@@ -70,6 +81,11 @@ export interface CmcOfferBlockProps {
  *
  * The `@pryv/cmc` accept contract is all-or-nothing, so every entry renders
  * locked.
+ *
+ * A delegable offer (`accessType: 'app'`) says so before the actions: the
+ * requester may pass parts of the access on, each under its own name. A
+ * membership offer reads as someone asking to join this account's group, for
+ * the teams listed, rather than as access to data.
  */
 export function CmcOfferBlock({
   offer,
@@ -118,9 +134,20 @@ export function CmcOfferBlock({
             {offer.requester.displayName && (
               <span> {t("cmc.callsItself", { name: offer.requester.displayName })}</span>
             )}{" "}
-            {t("cmc.requestingAccess")}
+            {offer.membership === true ? t("cmc.membershipRequesting") : t("cmc.requestingAccess")}
           </p>
           <PermissionList entries={consentEntries(offer.requestedPermissions, { labelFor })} />
+          {offer.membership === true && (
+            <p className="mb-3 text-sm text-muted" data-testid="cmc-membership-notice">
+              {t("cmc.membershipNotice")}
+            </p>
+          )}
+          {offer.accessType === "app" && (
+            <p className="mb-3 flex gap-2 text-sm text-ink" data-testid="cmc-delegable-notice">
+              <Share2 size={14} aria-hidden className="mt-[3px] shrink-0 text-muted" />
+              <span>{t("cmc.delegable")}</span>
+            </p>
+          )}
           {notice}
         </>
       )}

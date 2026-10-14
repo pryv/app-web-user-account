@@ -178,6 +178,16 @@ Every route accepts these query parameters:
   core that supports the review (open-pryv.io 2.0.0-rc.31 or later): an older
   core withdraws every consent whatever the choice, and the page says so
   after the removal.
+- `/account/memberships?capabilityUrl=<membership request link>`: group
+  memberships, opened on a member's request. An app that lets a person ask to
+  join a group (`@pryv/cmc` `requestMembership`) can show this link as the QR
+  code or link to hand to an administrator, rather than the bare capability
+  URL: the administrator opens it, signs in to the group account (or a
+  delegate's session) if needed, sees who asks and for which teams, and
+  approves or declines. A pasted bare capability URL works too. Once the
+  request is answered, `capabilityUrl` is dropped from the address. The page
+  also lists the group's members (with Revoke) and the offboarding sweeps run
+  when a membership ends. Needs a core that supports group memberships.
 - `/account/audit-access/<accessId>`: one access of the signed-in account (its
   details, Revoke, audit trail), the page the rows of `/account/apps` open. Link
   it when your app shows the user a consent or an app access and wants to send

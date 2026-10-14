@@ -74,6 +74,16 @@ interface MockOptions {
   acceptEventIds?: string[];
   /** Stamped on the offer as the requester's scope (`originStreamId`). Default: none. */
   offerOriginStreamId?: string;
+  /** Merged into the offer's `request` (e.g. `accessType`, `membership`). Default: none. */
+  offerRequest?: Record<string, unknown>;
+}
+
+/** The offer event the capability host serves, with the spec's options applied. */
+function offerEvent(opts: MockOptions) {
+  const content: Record<string, unknown> = { ...OFFER_EVENT.content };
+  if (opts.offerOriginStreamId) content.originStreamId = opts.offerOriginStreamId;
+  if (opts.offerRequest) content.request = { ...OFFER_EVENT.content.request, ...opts.offerRequest };
+  return { ...OFFER_EVENT, content };
 }
 
 function json(route: Route, body: unknown, status = 200) {
@@ -120,13 +130,7 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
     const calls = (route.request().postDataJSON() ?? []) as CoreCall[];
     const results = calls.map((c) =>
       c.method === "events.get"
-        ? {
-            events: [
-              opts.offerOriginStreamId
-                ? { ...OFFER_EVENT, content: { ...OFFER_EVENT.content, originStreamId: opts.offerOriginStreamId } }
-                : OFFER_EVENT,
-            ],
-          }
+        ? { events: [offerEvent(opts)] }
         : { error: { id: "unknown-resource", message: `unmocked ${c.method}` } },
     );
     return json(route, { meta: META, results });
@@ -473,6 +477,45 @@ test.describe("/cmc-accept without opener or returnUrl", () => {
     await expect(alert).toBeVisible();
     await expect(alert).toHaveClass(/bg-info/);
     await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
+  });
+});
+
+/**
+ * What the offer itself says, read by the real `@pryv/cmc` client: a
+ * delegable grant (`accessType: 'app'`) and a membership request change what
+ * the person is told before answering.
+ */
+test.describe("[CMO] /cmc-accept: what kind of offer it is", () => {
+  test("[CMO1] a delegable offer says so before Approve", async ({ page, context }) => {
+    await mockCmcPlatform(context, { offerRequest: { accessType: "app" } });
+    await page.goto(acceptPath({}));
+    await expectOfferShown(page);
+    await expect(page.getByTestId("cmc-delegable-notice")).toHaveText(
+      "This organisation can share this access with its team members. Each member's actions are recorded on your account.",
+    );
+  });
+
+  test("[CMO2] an ordinary offer has no delegable notice", async ({ page, context }) => {
+    await mockCmcPlatform(context);
+    await page.goto(acceptPath({}));
+    await expectOfferShown(page);
+    await expect(page.getByTestId("cmc-delegable-notice")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Approve request" })).toBeVisible();
+  });
+
+  test("[CMO3] a membership request reads as a request to join, not as a data grant", async ({ page, context }) => {
+    await mockCmcPlatform(context, {
+      offerRequest: {
+        membership: true,
+        allowUserChoice: true,
+        permissions: [{ streamId: ":_cmc:apps:demo:team-a", level: "contribute" }],
+      },
+    });
+    await page.goto(acceptPath({}));
+    await expect(page.getByTestId("cmc-requester")).toHaveText("bob@example.test");
+    await expect(page.getByRole("heading", { name: "Approve membership request" })).toBeVisible();
+    await expect(page.getByText(/asks to join this account's group as a member/)).toBeVisible();
+    await expect(page.getByTestId("cmc-membership-notice")).toContainText("not a request for your data");
   });
 });
 

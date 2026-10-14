@@ -265,4 +265,23 @@ describe("[CMRS] /cmc-accept names the account that answers", () => {
     const [conn] = cmcMock.acceptInvite.mock.calls[0] as [{ apiEndpoint: string }];
     expect(conn.apiEndpoint).toBe("https://tok@alice.core.test/");
   });
+
+  it("[CMS8] a membership request reads as one, from the title to the outcome", async () => {
+    signedIn();
+    cmcMock.readOffer.mockResolvedValue({
+      requester: { username: "bob", host: "requester.test" },
+      requestedPermissions: [{ streamId: ":_cmc:apps:practice:team-a", level: "contribute" }],
+      mode: "single-use",
+      membership: true,
+      accessType: "shared",
+    });
+    cmcMock.acceptInvite.mockResolvedValue({ acceptEventId: "evt-1" });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Approve membership request" })).toBeTruthy();
+    expect(await screen.findByTestId("cmc-membership-notice")).toBeTruthy();
+    expect(screen.queryByTestId("cmc-delegable-notice")).toBeNull();
+    await screen.findByTestId("cmc-approving-as");
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    expect(await screen.findByText(/The membership is approved/)).toBeTruthy();
+  });
 });

@@ -4,6 +4,7 @@ import Security from "./routes/account/Security";
 import ConnectedApps from "./routes/account/ConnectedApps";
 import DataRights from "./routes/account/DataRights";
 import DelegationPage from "./routes/account/Delegation";
+import Memberships from "./routes/account/Memberships";
 
 /** One tab of the account section: nav entry and route. */
 export interface AccountTab {
@@ -26,6 +27,7 @@ export const ACCOUNT_TABS: AccountTab[] = [
   { path: "security", label: "account.nav.security", element: <Security /> },
   { path: "apps", label: "account.nav.apps", element: <ConnectedApps /> },
   { path: "delegation", label: "account.nav.delegation", element: <DelegationPage /> },
+  { path: "memberships", label: "account.nav.memberships", element: <Memberships /> },
   { path: "data", label: "account.nav.data", element: <DataRights /> },
 ];
 

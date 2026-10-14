@@ -67,3 +67,49 @@ describe("[COBK] CmcOfferBlock consent statement", () => {
     expect(screen.queryByTestId("cmc-consent-text")).toBeNull();
   });
 });
+
+describe("[COBD] CmcOfferBlock: delegable and membership offers", () => {
+  afterEach(() => cleanup());
+
+  function renderOffer(extra: Partial<CmcOfferView>) {
+    render(
+      <CmcOfferBlock
+        offer={{ ...offer({}), requestedPermissions: [{ streamId: ":_cmc:apps:practice:team-a", level: "contribute" }], ...extra }}
+        loading={false}
+        error={null}
+        busy={null}
+        onApprove={() => {}}
+        onDecline={() => {}}
+      />,
+    );
+  }
+
+  it("[COB4] a delegable offer (accessType 'app') says so, before the actions", () => {
+    renderOffer({ accessType: "app" });
+    const notice = screen.getByTestId("cmc-delegable-notice");
+    expect(notice.textContent).toBe(
+      "This organisation can share this access with its team members. Each member's actions are recorded on your account.",
+    );
+    const approve = screen.getByRole("button", { name: "Approve" });
+    expect(notice.compareDocumentPosition(approve) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("[COB5] no notice for a shared offer, or when the client does not say", () => {
+    renderOffer({ accessType: "shared" });
+    expect(screen.queryByTestId("cmc-delegable-notice")).toBeNull();
+    cleanup();
+    renderOffer({});
+    expect(screen.queryByTestId("cmc-delegable-notice")).toBeNull();
+  });
+
+  it("[COB6] a membership offer reads as a request to join the group, not as a data grant", () => {
+    renderOffer({ membership: true });
+    expect(screen.getByText(/asks to join this account's group as a member/)).toBeTruthy();
+    expect(screen.queryByText(/is requesting access/)).toBeNull();
+    expect(screen.getByTestId("cmc-membership-notice").textContent).toContain("not a request for your data");
+    cleanup();
+    renderOffer({ membership: false });
+    expect(screen.getByText(/is requesting access/)).toBeTruthy();
+    expect(screen.queryByTestId("cmc-membership-notice")).toBeNull();
+  });
+});

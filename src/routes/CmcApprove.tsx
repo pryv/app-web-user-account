@@ -272,6 +272,9 @@ export default function CmcApprove() {
     }
   }
 
+  // A member asking to join this account's group: the page says so.
+  const isMembership = offer?.membership === true;
+
   if (done) {
     return (
       <Card>
@@ -280,7 +283,9 @@ export default function CmcApprove() {
         </h1>
         <Alert tone={done === "accepted" ? "success" : "danger"}>
           {done === "accepted"
-            ? t("cmc.approvedBody")
+            ? isMembership
+              ? t("cmc.membershipApprovedBody")
+              : t("cmc.approvedBody")
             : t("cmc.declinedBody")}
         </Alert>
         <ReturnNotice outcome={returnOutcome} />
@@ -306,7 +311,7 @@ export default function CmcApprove() {
 
   return (
     <Card>
-      <h1 className="mb-2 text-2xl">{t("cmc.approveTitle")}</h1>
+      <h1 className="mb-2 text-2xl">{isMembership ? t("cmc.membershipApproveTitle") : t("cmc.approveTitle")}</h1>
       <ReturnNotice outcome={returnOutcome} />
       <CmcOfferBlock
         offer={offer}
