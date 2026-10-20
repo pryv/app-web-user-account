@@ -41,6 +41,7 @@
     its source, as "Caller label (not verified)": the caller chooses it, it is not an identity.
 - `AccessExtras` (`src/extensions/AccessExtras.tsx`) now also mounts for a removed access, with
   `access.deleted` (`AccessDetails`) set to its deletion time.
+- `@pryv/cmc` raised to `^3.21.0` (group memberships).
 
 ### Fixed
 
