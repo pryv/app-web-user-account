@@ -155,14 +155,15 @@ export default function Register() {
       const { appId, serviceInfoUrl } = parseAuthParams(search);
       const service = getService(search);
       const externalId = (await requestExternalId.current) ?? null;
+      let externalIdNotLinked = false;
       if ((gateOn === true && emailProof != null) || externalId != null) {
         // The email proof and the external id ride on the create-account
         // call, which the client's createUser does not send: post it directly.
         // The server links the id when it can (`externalIdLinked`); a new
-        // account needs no confirmation.
+        // account needs no confirmation. When it could not, /auth says so.
         const info = (await service.info()) as unknown as { register: string };
         const withProof = gateOn === true && emailProof != null;
-        await registerWithProof(info.register, {
+        const created = await registerWithProof(info.register, {
           appId,
           username,
           password,
@@ -173,6 +174,7 @@ export default function Register() {
           ...(withProof ? { emailProof: emailProof as string } : {}),
           ...(externalId != null ? { externalId: registrationExternalId(externalId) } : {}),
         });
+        externalIdNotLinked = externalId != null && created.externalIdLinked === false;
       } else {
         // Email is optional; generate a placeholder when empty so the server's
         // required-field check passes (mirrors legacy `generateRandomEmailIfNeeded`).
@@ -225,7 +227,7 @@ export default function Register() {
       // The account exists and is signed in: a failure from here on is logged,
       // never reported as a failed registration.
       await continueSignedIn(connection, target, navigate,
-        pending ? { replace: true, state: registeredState(username) } : { replace: false },
+        pending ? { replace: true, state: registeredState(username, { externalIdNotLinked }) } : { replace: false },
       ).catch((err: unknown) => console.warn("register: could not continue after sign-in:", loggableError(err)));
     } catch (err: unknown) {
       // Route through the shared mapper so a verification-related refusal reads

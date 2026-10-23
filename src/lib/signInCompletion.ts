@@ -67,8 +67,15 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
  * from the history entry once read (the mount effect next to `justRegistered`
  * in `src/routes/Auth.tsx`), so a reload or a later visit shows the card again.
  */
-export function registeredState(username: string): { registeredAs: string } {
-  return { registeredAs: username };
+export function registeredState(
+  username: string,
+  opts: { externalIdNotLinked?: boolean } = {},
+): { registeredAs: string; externalIdNotLinked?: true } {
+  // `externalIdNotLinked`: the request's external id was sent with the
+  // registration and the server did not link it, so `/auth` says so.
+  return opts.externalIdNotLinked === true
+    ? { registeredAs: username, externalIdNotLinked: true }
+    : { registeredAs: username };
 }
 
 /** The account a `registeredState` names, or null for any other state. */
@@ -76,6 +83,12 @@ export function registeredAs(state: unknown): string | null {
   if (state == null || typeof state !== "object") return null;
   const value = (state as { registeredAs?: unknown }).registeredAs;
   return typeof value === "string" && value !== "" ? value : null;
+}
+
+/** True when a `registeredState` says the external id was not linked. */
+export function registeredExternalIdNotLinked(state: unknown): boolean {
+  if (registeredAs(state) == null) return false;
+  return (state as { externalIdNotLinked?: unknown }).externalIdNotLinked === true;
 }
 
 /**

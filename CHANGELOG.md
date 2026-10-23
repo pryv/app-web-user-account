@@ -13,9 +13,12 @@
   (`POST {apiEndpoint}account/external-ids`), "Not now" posts `externalIdDeclined: true`. A claim
   refused (the record is linked to another account, or this account already holds another record
   of that namespace) is said and the accept goes on without linking; too many attempts or no answer
-  can be retried or skipped. Nothing is asked when the access is granted on a managed account.
+  can be retried or skipped. A lookup that cannot tell (no answer, rate-limited) still asks: the
+  claim decides. Asked once per account: a retried accept as the same account reuses the answer.
+  Nothing is asked when the access is granted on a managed account.
   "Create account" from `/auth` links the new account at creation: the register page reads the id
-  again from the poll and sends it in the create-account body. The blinded value is never rendered,
+  again from the poll and sends it in the create-account body; when the server could not link it
+  (`externalIdLinked: false`), the consent step says so. The blinded value is never rendered,
   never in a URL, never in browser storage. New catalog keys under `externalId.*`. Needs a core
   that supports external ids.
 

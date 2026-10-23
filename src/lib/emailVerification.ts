@@ -164,9 +164,14 @@ export interface RegisterWithProofPayload {
 export async function registerWithProof(
   registerUrl: string,
   payload: RegisterWithProofPayload,
-): Promise<{ username: string; apiEndpoint: string }> {
+): Promise<{ username: string; apiEndpoint: string; externalIdLinked?: boolean }> {
   const body = await postJson(registerUrl + "users", payload);
-  return { username: body.username as string, apiEndpoint: body.apiEndpoint as string };
+  return {
+    username: body.username as string,
+    apiEndpoint: body.apiEndpoint as string,
+    // Only on a registration that sent an external id.
+    ...(typeof body.externalIdLinked === "boolean" ? { externalIdLinked: body.externalIdLinked } : {}),
+  };
 }
 
 /** POST {apiEndpoint}account/verify-email with { appId, token }. Returns the verified address. */

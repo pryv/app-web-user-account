@@ -44,7 +44,7 @@ import { storedServiceInfoUrl, storedParentConnection } from "../lib/sessionStor
 import { accessRequestSearch, parseAuthParams } from "../lib/authParams";
 import { parseBackTo } from "../lib/backTo";
 import { chainedHandoffPath } from "../lib/handoffReturn";
-import { registeredAs, resumeAs, resumeState } from "../lib/signInCompletion";
+import { registeredAs, registeredExternalIdNotLinked, resumeAs, resumeState } from "../lib/signInCompletion";
 import { getAllowedPlatforms, platformNotAllowedMessage, PlatformNotAllowedError } from "../lib/deployedSettings";
 import { resolvePollPlatform } from "../lib/pollPlatform";
 import { consentMessage } from "../lib/consentMessage";
@@ -258,6 +258,9 @@ function AuthFlow({
   // without the "Welcome back" card meant for a returning visitor. Read once,
   // then cleared from the history entry, so a reload shows the card again.
   const [justRegistered] = useState(() => registeredAs(location.state));
+  // That registration sent the request's external id and the server did not
+  // link it: said on the consent panel.
+  const [registeredNotLinked] = useState(() => registeredExternalIdNotLinked(location.state));
   // Back from the operator's sign-in gate page, after signing in (or "Continue
   // as") here: continue the same way, without saying an account was created.
   const [resumingAs] = useState(() => resumeAs(location.state));
@@ -298,8 +301,9 @@ function AuthFlow({
   );
   const [externalIdStatus, setExternalIdStatus] = useState<ExternalIdStatus | null>(null);
   const externalIdLookup = useRef<Promise<ExternalIdStatus> | null>(null);
-  // The answer given in the dialog, kept so a retried accept does not ask again.
-  const externalIdAnswer = useRef<ExternalIdLinkAnswer | null>(null);
+  // The answer given in the dialog and the account it was given for, kept so a
+  // retried accept as that account does not ask again.
+  const externalIdAnswer = useRef<{ username: string; answer: ExternalIdLinkAnswer } | null>(null);
 
   // A deployment restricted to some platforms handles a request only when BOTH
   // the poll URL and the link's service-info param belong to an allowed one.
@@ -1063,9 +1067,11 @@ function AuthFlow({
    * account holds, ask whether to link it to the account signed in, and claim
    * it on "Link". True when the user declined ("Not now"), for
    * `externalIdDeclined`. Nothing is asked when an account already holds the
-   * id, when that could not be told, or when the access is granted on another
-   * account than the one signed in (the claim takes that account's own
-   * personal token). Asked once: a retried accept reuses the answer.
+   * id, or when the access is granted on another account than the one signed
+   * in (the claim takes that account's own personal token). A lookup that
+   * could not tell (no register URL, network error, rate limit) still asks:
+   * the claim decides, and a refusal is explained in the dialog. Asked once
+   * per account: a retried accept as the same account reuses the answer.
    */
   async function settleExternalId(
     endpoint: string,
@@ -1074,20 +1080,23 @@ function AuthFlow({
     personal: string | null,
   ): Promise<boolean> {
     if (externalId == null || externalIdLookup.current == null) return false;
-    if (externalIdAnswer.current != null) return externalIdAnswer.current === "declined";
+    const remembered = externalIdAnswer.current;
+    if (remembered != null && remembered.username.toLowerCase() === asUser.toLowerCase()) {
+      return remembered.answer === "declined";
+    }
     const onAnotherAccount =
       hint != null ||
       grantFor != null ||
       (owner != null && owner.username.toLowerCase() !== asUser.toLowerCase());
     if (onAnotherAccount || personal == null) return false;
-    if ((await externalIdLookup.current) !== "unclaimed") return false;
+    if ((await externalIdLookup.current) === "claimed") return false;
     const id = externalId;
     const answer = await askExternalIdLink({
       label: id.label,
       username: asUser,
       claim: () => claimExternalId(endpoint, personal, id),
     });
-    externalIdAnswer.current = answer;
+    externalIdAnswer.current = { username: asUser, answer };
     return answer === "declined";
   }
 
@@ -1644,6 +1653,13 @@ function AuthFlow({
 
     return (
       <Card>
+        {registeredNotLinked && externalId != null && (
+          <Alert tone="info">
+            <span data-testid="external-id-not-linked">
+              {t("externalId.registeredNotLinked", { label: externalId.label })}
+            </span>
+          </Alert>
+        )}
         <ConsentPanel
           app={{
             name: requestingApp?.name ?? accessState.requestingAppId ?? "",

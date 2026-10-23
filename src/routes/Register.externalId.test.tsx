@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 /**
  * [RGXI] Registering from an access request that carries an external id: the
@@ -39,12 +39,15 @@ const REGISTER = "https://reg.core.test/";
 const BLINDED = "blinded-7f3a9c-secret-value";
 const ENTRY = `/register?poll=${encodeURIComponent(POLL)}&pryvServiceInfoUrl=${encodeURIComponent(SI)}`;
 
+let linked = true;
 const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-  ({ status: 201, ok: true, json: async () => ({ username: "alice1", apiEndpoint: "https://alice1.core.test/", externalIdLinked: true }) }) as Response,
+  ({ status: 201, ok: true, json: async () => ({ username: "alice1", apiEndpoint: "https://alice1.core.test/", externalIdLinked: linked }) }) as Response,
 );
 
+/** The page landed on, with the router state it was handed. */
 function Landed() {
-  return <p data-testid="landed">landed</p>;
+  const { state } = useLocation();
+  return <p data-testid="landed">{JSON.stringify(state ?? null)}</p>;
 }
 
 function renderAt(entry: string) {
@@ -74,6 +77,7 @@ describe("[RGXI] register with an external id on the access request", () => {
     service.flatHostings.mockResolvedValue([{ key: "h1", available: true }]);
     service.createUser.mockResolvedValue({});
     service.login.mockResolvedValue({ endpoint: "https://alice1.core.test/", token: "t" });
+    linked = true;
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
     localStorage.clear();
@@ -107,6 +111,21 @@ describe("[RGXI] register with an external id on the access request", () => {
     expect(JSON.stringify({ ...localStorage })).not.toContain(BLINDED);
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(BLINDED);
     expect(document.body.innerHTML).not.toContain(BLINDED);
+    // Linked: /auth is not told otherwise.
+    expect(JSON.parse(screen.getByTestId("landed").textContent!)).toEqual({ registeredAs: "alice1" });
+  });
+
+  it("[RGXI4] not linked by the server (externalIdLinked: false): /auth is told, so it can say so", async () => {
+    linked = false;
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      externalId: { namespace: "clinic-a", label: "Clinic A", blindedValue: BLINDED, mode: "hint" },
+    });
+    renderAt(ENTRY);
+    await fillAndSubmit();
+    const landed = await screen.findByTestId("landed");
+    expect(JSON.parse(landed.textContent!)).toEqual({ registeredAs: "alice1", externalIdNotLinked: true });
+    expect(landed.textContent).not.toContain(BLINDED);
   });
 
   it("[RGXI2] (guard) a request without an external id registers as before", async () => {

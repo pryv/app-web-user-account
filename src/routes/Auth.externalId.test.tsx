@@ -287,13 +287,42 @@ describe("[AXI] /auth with an external id (hint mode)", () => {
     expect(screen.queryByTestId("external-id-claimed")).toBeNull();
   });
 
-  it("[AXI7] lookup failed (unknown): no dialog, no claim, no flag", async () => {
+  it("[AXI7] lookup failed (unknown): no claimed notice, the question is still asked and the claim decides", async () => {
     lookupAnswer = "network-error";
+    claimAnswers = [{ status: 201 }];
     openAuth();
     await acceptAsAlice();
+    const dialog = await screen.findByTestId("external-id-dialog");
+    expect(screen.queryByTestId("external-id-claimed")).toBeNull();
+    within(dialog).getByRole("button", { name: "Link" }).click();
     const body = await acceptedPost();
     expect(body.externalIdDeclined).toBeUndefined();
-    expect(claimCalls()).toHaveLength(0);
-    expect(screen.queryByTestId("external-id-claimed")).toBeNull();
+    expect(claimCalls()).toHaveLength(1);
+  });
+
+  it("[AXI7b] lookup rate-limited (429): asked; a claim refused because another account holds it is explained", async () => {
+    lookupAnswer = { status: 429 };
+    claimAnswers = [{ status: 409, body: { error: { id: "external-id-already-claimed", data: { reason: "value-taken" } } } }];
+    openAuth();
+    await acceptAsAlice();
+    const dialog = await screen.findByTestId("external-id-dialog");
+    within(dialog).getByRole("button", { name: "Link" }).click();
+    await within(dialog).findByText("This record is already linked to another account.");
+    within(dialog).getByRole("button", { name: "Continue" }).click();
+    expect((await acceptedPost()).externalIdDeclined).toBeUndefined();
+  });
+
+  it("[AXI8] asked once: an accept retried as the same account reuses the answer", async () => {
+    flow.updateAccessState
+      .mockResolvedValueOnce({ status: 400, errorId: "invalid-parameters-format" })
+      .mockResolvedValue({ status: 200 });
+    openAuth();
+    await acceptAsAlice();
+    within(await screen.findByTestId("external-id-dialog")).getByRole("button", { name: "Not now" }).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalledTimes(1));
+    (await screen.findByRole("button", { name: "Accept" })).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId("external-id-dialog")).toBeNull();
+    expect(flow.updateAccessState.mock.calls[1][1].externalIdDeclined).toBe(true);
   });
 });
