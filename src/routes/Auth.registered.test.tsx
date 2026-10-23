@@ -163,4 +163,20 @@ describe("[ARG] /auth right after creating an account in this window", () => {
     expect(screen.queryByTestId("grant-registered")).toBeNull();
     warn.mockRestore();
   });
+
+  const EXTERNAL_ID = { externalId: { namespace: "clinic-a", label: "Clinic A", blindedValue: "b-value", mode: "hint" } };
+
+  it("[ARG8] the registration did not link the request's external id: the consent panel says so", async () => {
+    openAuth(registeredState("alice", { externalIdNotLinked: true }), EXTERNAL_ID);
+    await screen.findByRole("button", { name: "Accept" });
+    expect(screen.getByTestId("external-id-not-linked").textContent).toBe(
+      "Clinic A: your new account could not be linked to this record. Another account may already be linked to it.",
+    );
+  });
+
+  it("[ARG9] (guard) linked at registration: nothing said", async () => {
+    openAuth(registeredState("alice"), EXTERNAL_ID);
+    await screen.findByRole("button", { name: "Accept" });
+    expect(screen.queryByTestId("external-id-not-linked")).toBeNull();
+  });
 });

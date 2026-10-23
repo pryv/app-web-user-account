@@ -114,6 +114,14 @@ export interface AccessState {
    * outcome per invite, in the request's order (a hint for the requester).
    */
   cmcInvites?: CmcInvite[] | CmcInviteOutcome[];
+  /**
+   * The external id the app asks to link (see `lib/externalId`), on the
+   * NEED_SIGNIN poll only, with the namespace's display label. Read through
+   * `externalIdOf`; the blinded value is never rendered or stored.
+   */
+  externalId?: { namespace: string; label?: string; blindedValue: string; mode?: string };
+  /** Posted with ACCEPTED when the user chose not to link the request's external id. */
+  externalIdDeclined?: true;
 }
 
 /** A failed poll-URL read; `status` is the HTTP status. */

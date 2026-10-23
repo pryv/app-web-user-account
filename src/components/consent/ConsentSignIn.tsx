@@ -53,6 +53,7 @@ export function ConsentSignIn({
   cancelDisabled = false,
   disabled = false,
   externalError = null,
+  notice,
   footer,
 }: {
   makeService: () => SignInService;
@@ -78,6 +79,8 @@ export function ConsentSignIn({
   disabled?: boolean;
   /** Flow-level error to display (e.g. a failed Cancel/refuse). */
   externalError?: string | null;
+  /** A flow-level notice shown above the form (e.g. which account to sign in with). */
+  notice?: ReactNode;
   /**
    * Extra content under the form (register / password-reset links…). As a
    * function it receives whether this form's sign-in is running, so a footer
@@ -205,6 +208,7 @@ export function ConsentSignIn({
     <Card>
       <h1 className="mb-1 text-2xl">{heading ?? t("common.signInTitle")}</h1>
       {prompt && <p className="mb-6 text-sm text-muted">{prompt}</p>}
+      {notice}
       {error && <Alert>{error}</Alert>}
       <form onSubmit={submitLogin}>
         <Field
