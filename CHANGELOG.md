@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **External ids on `/auth` (hint mode).** An access request may carry `externalId` (a record of
+  the inviting service, for example a patient file, to link to the account). The page looks it up
+  once the request is loaded (`POST {register}ext-id/cores`). When an account already holds it,
+  the sign-in step says so ("{label}: a Pryv account is already linked to this record. Sign in
+  with that account."), never which account. When none does, a built-in dialog asks after sign-in,
+  before `ACCEPTED` is posted, whether to link it to the account signed in: "Link" claims it
+  (`POST {apiEndpoint}account/external-ids`), "Not now" posts `externalIdDeclined: true`. A claim
+  refused (the record is linked to another account, or this account already holds another record
+  of that namespace) is said and the accept goes on without linking; too many attempts or no answer
+  can be retried or skipped. Nothing is asked when the access is granted on a managed account.
+  "Create account" from `/auth` links the new account at creation: the register page reads the id
+  again from the poll and sends it in the create-account body. The blinded value is never rendered,
+  never in a URL, never in browser storage. New catalog keys under `externalId.*`. Needs a core
+  that supports external ids.
+
 ## 0.22.0 - 2026-10-20
 
 ### Added

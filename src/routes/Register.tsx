@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Trans, useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
@@ -14,6 +14,7 @@ import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 import { brand } from "../brand";
 import { usernameRules, isValidUsername, normalizeUsernameInput } from "../lib/username";
+import { registrationExternalId, requestExternalIdFromSearch, type RequestExternalId } from "../lib/externalId";
 import {
   registrationRequiresVerifiedEmail,
   requestEmailChallenge,
@@ -72,6 +73,16 @@ export default function Register() {
   const termsUrl = resolveLocalizedUrl(legal?.terms, lang) ?? serviceTerms;
   const privacyUrl = resolveLocalizedUrl(legal?.privacy, lang);
   const termsRequired = termsUrl != null || privacyUrl != null;
+
+  // Reached from an access request that carries an external id: the new
+  // account is linked to it at creation. Read again from the poll (the query
+  // carries only the poll URL), kept in memory only, never rendered.
+  const requestExternalId = useRef<Promise<RequestExternalId | null> | null>(null);
+  useEffect(() => {
+    requestExternalId.current = hasPendingAccessRequest(search)
+      ? requestExternalIdFromSearch(search)
+      : null;
+  }, [search]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,19 +154,24 @@ export default function Register() {
     try {
       const { appId, serviceInfoUrl } = parseAuthParams(search);
       const service = getService(search);
-      if (gateOn === true && emailProof != null) {
-        // The gate needs the proof carried on the create-account call, which
-        // the client's createUser does not send, so post it directly.
+      const externalId = (await requestExternalId.current) ?? null;
+      if ((gateOn === true && emailProof != null) || externalId != null) {
+        // The email proof and the external id ride on the create-account
+        // call, which the client's createUser does not send: post it directly.
+        // The server links the id when it can (`externalIdLinked`); a new
+        // account needs no confirmation.
         const info = (await service.info()) as unknown as { register: string };
+        const withProof = gateOn === true && emailProof != null;
         await registerWithProof(info.register, {
           appId,
           username,
           password,
-          email,
+          email: withProof || email.length > 0 ? email : randomLocalPart() + "@pryv.io",
           hosting: selectedHosting || (await firstAvailableHosting(service, t("register.noHostingAvailable"))),
           language,
           invitationToken: "enjoy",
-          emailProof,
+          ...(withProof ? { emailProof: emailProof as string } : {}),
+          ...(externalId != null ? { externalId: registrationExternalId(externalId) } : {}),
         });
       } else {
         // Email is optional; generate a placeholder when empty so the server's

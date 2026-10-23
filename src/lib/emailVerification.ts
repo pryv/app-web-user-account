@@ -151,10 +151,16 @@ export interface RegisterWithProofPayload {
   hosting: string;
   language: string;
   invitationToken: string;
-  emailProof: string;
+  /** The email-verification proof, when the platform requires a verified email. */
+  emailProof?: string;
+  /** The access request's external id, linked to the account at creation. */
+  externalId?: { namespace: string; blindedValue: string; mode: string };
 }
 
-/** POST {register}users with the proof alongside the usual create-account payload. */
+/**
+ * POST {register}users with what the client's `createUser` does not send
+ * (the email proof, the external id) alongside the usual create-account payload.
+ */
 export async function registerWithProof(
   registerUrl: string,
   payload: RegisterWithProofPayload,

@@ -56,6 +56,12 @@ import { isSessionRejected } from "../lib/sessionErrors";
 import { loggableError, platformError } from "../lib/apiError";
 import { hasUsableEmail, missingEmailErrorKey, readAccountEmail, readsAccountEmail, setAccountEmail } from "../lib/accountEmail";
 import { maskUrlCredentials } from "../lib/maskCredentials";
+import { claimExternalId, externalIdOf, lookupExternalId, type ExternalIdStatus } from "../lib/externalId";
+import {
+  useExternalIdLinkDialog,
+  type ExternalIdLinkAnswer,
+  type ExternalIdLinkQuestion,
+} from "../components/consent/ExternalIdLinkDialog";
 import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
@@ -213,11 +219,35 @@ function parseAuthQuery(search: string): AuthQuery {
  * reported, not refused); only then is the app access
  * created, and ACCEPTED carries one outcome per invite.
  *
+ * An access request may also carry an external id (`externalId`, see
+ * `lib/externalId`): a record of the inviting service to link to the account.
+ * It is looked up once loaded; when an account already holds it, the sign-in
+ * step says so (never which account). When none does, the page asks, before
+ * the ACCEPTED post, whether to link it to the account signed in ("Link" or
+ * "Not now"); "Not now" posts `externalIdDeclined: true`. The blinded value
+ * stays in memory: never rendered, never in a URL, never in browser storage.
+ *
  * Mirrors app-web-auth3's `Authorization.vue` + `bits/Permissions.vue` +
  * `ops/{login,check_access,accept_access,refuse_access,close_or_redirect,
  * mfa_verify}` — same wire shape, same outcomes.
  */
 export default function Auth() {
+  // The external-id dialog sits beside the flow, so it shows over whichever
+  // step the accept started from.
+  const [askExternalIdLink, externalIdDialog] = useExternalIdLinkDialog();
+  return (
+    <>
+      <AuthFlow askExternalIdLink={askExternalIdLink} />
+      {externalIdDialog}
+    </>
+  );
+}
+
+function AuthFlow({
+  askExternalIdLink,
+}: {
+  askExternalIdLink: (q: ExternalIdLinkQuestion) => Promise<ExternalIdLinkAnswer>;
+}) {
   const { t } = useTranslation();
   const location = useLocation();
   const { search } = location;
@@ -259,6 +289,17 @@ export default function Auth() {
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [serviceInfo, setServiceInfo] = useState<{ register?: string; support?: string; api?: string } | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
+
+  // The request's external id (null without one), in memory only. The lookup
+  // starts once the platform's register is known; the accept waits for it.
+  const externalId = useMemo(
+    () => (accessState?.status === "NEED_SIGNIN" ? externalIdOf(accessState) : null),
+    [accessState],
+  );
+  const [externalIdStatus, setExternalIdStatus] = useState<ExternalIdStatus | null>(null);
+  const externalIdLookup = useRef<Promise<ExternalIdStatus> | null>(null);
+  // The answer given in the dialog, kept so a retried accept does not ask again.
+  const externalIdAnswer = useRef<ExternalIdLinkAnswer | null>(null);
 
   // A deployment restricted to some platforms handles a request only when BOTH
   // the poll URL and the link's service-info param belong to an allowed one.
@@ -665,6 +706,8 @@ export default function Auth() {
       return;
     }
     let cancelled = false;
+    // Hands the platform's register URL to the external-id lookup (null: none known).
+    let registerForLookup: (registerUrl: string | null) => void = () => {};
     void (async () => {
       try {
         // Checked before anything is fetched from the link.
@@ -682,6 +725,17 @@ export default function Auth() {
         const state = await loadAccessState(query.pollUrl!);
         if (cancelled) return;
         setAccessState(state);
+        const requestExternalId = state.status === "NEED_SIGNIN" ? externalIdOf(state) : null;
+        if (requestExternalId != null) {
+          externalIdLookup.current = new Promise<string | null>((resolve) => {
+            registerForLookup = resolve;
+          })
+            .then((registerUrl) => (registerUrl ? lookupExternalId(registerUrl, requestExternalId) : "unknown" as const))
+            .then((status) => {
+              if (!cancelled) setExternalIdStatus(status);
+              return status;
+            });
+        }
         // Service-info comes from (in order) the allowed platform's own (restricted
         // deployments), the access-state, the pryvServiceInfoUrl query param, or a
         // same-core derivation from the poll URL.
@@ -689,15 +743,20 @@ export default function Auth() {
         if (!svcInfoUrl && !state.serviceInfo) {
           svcInfoUrl = deriveServiceInfoUrlFromPollUrl(query.pollUrl!);
         }
+        let info: { register?: string; support?: string; api?: string } | null = null;
         if (trustedInfo) {
+          info = trustedInfo;
           setServiceInfo(trustedInfo);
         } else if (state.serviceInfo) {
-          setServiceInfo(state.serviceInfo as { register?: string; support?: string; api?: string });
+          info = state.serviceInfo as { register?: string; support?: string; api?: string };
+          setServiceInfo(info);
         } else if (svcInfoUrl) {
           const r = await fetch(svcInfoUrl, { headers: { Accept: "application/json" } });
           if (cancelled) return;
-          setServiceInfo(await r.json());
+          info = await r.json();
+          setServiceInfo(info);
         }
+        registerForLookup(typeof info?.register === "string" ? info.register : null);
         // If the state is already ACCEPTED (re-open), short-circuit through close_or_redirect.
         if (state.status === "ACCEPTED" || state.status === "REFUSED") {
           closeOrRedirect(query.pollUrl!, state, query.cli, closeFallback);
@@ -706,6 +765,7 @@ export default function Auth() {
           setRequestDone(true);
         }
       } catch (err: unknown) {
+        registerForLookup(null);
         if (cancelled) return;
         // Reloaded after this tab decided the request and the server has
         // since forgotten it: that is completion, not an error.
@@ -932,6 +992,7 @@ export default function Auth() {
     if (!accessState || !query.pollUrl) return null;
     const apiEp = buildApiEndpointWithToken(endpoint, token);
     const acceptedUsername = asUser ?? username;
+    const externalIdDeclined = await settleExternalId(endpoint, acceptedUsername, hint, creatorToken ?? null);
 
     // Shape H: when the request asked for shared-secret delivery, is not a
     // consent-form request (the server needs the token to verify the grant),
@@ -973,6 +1034,8 @@ export default function Auth() {
     });
     // One outcome per consent invite, only when the request carried some.
     if (inviteOutcomes != null) accepted.cmcInvites = inviteOutcomes;
+    // Only on a request with an external id, and only when the user said "Not now".
+    if (externalIdDeclined) accepted.externalIdDeclined = true;
     let result = await updateAccessState(query.pollUrl, accepted);
     if (result.errorId === "consent-check-unavailable") {
       // The server could not verify the grant, which says nothing about the
@@ -993,6 +1056,39 @@ export default function Auth() {
     if (grantFor != null || hint != null) setPersonalToken(null);
     closeOrRedirect(query.pollUrl, { ...accessState, ...accepted }, query.cli, acceptFallback);
     return null;
+  }
+
+  /**
+   * Before the ACCEPTED post: when the request carries an external id that no
+   * account holds, ask whether to link it to the account signed in, and claim
+   * it on "Link". True when the user declined ("Not now"), for
+   * `externalIdDeclined`. Nothing is asked when an account already holds the
+   * id, when that could not be told, or when the access is granted on another
+   * account than the one signed in (the claim takes that account's own
+   * personal token). Asked once: a retried accept reuses the answer.
+   */
+  async function settleExternalId(
+    endpoint: string,
+    asUser: string,
+    hint: DelegationHint | undefined,
+    personal: string | null,
+  ): Promise<boolean> {
+    if (externalId == null || externalIdLookup.current == null) return false;
+    if (externalIdAnswer.current != null) return externalIdAnswer.current === "declined";
+    const onAnotherAccount =
+      hint != null ||
+      grantFor != null ||
+      (owner != null && owner.username.toLowerCase() !== asUser.toLowerCase());
+    if (onAnotherAccount || personal == null) return false;
+    if ((await externalIdLookup.current) !== "unclaimed") return false;
+    const id = externalId;
+    const answer = await askExternalIdLink({
+      label: id.label,
+      username: asUser,
+      claim: () => claimExternalId(endpoint, personal, id),
+    });
+    externalIdAnswer.current = answer;
+    return answer === "declined";
   }
 
   /** What to tell the user when the register refused the grant. */
@@ -1637,6 +1733,14 @@ export default function Auth() {
     );
   }
 
+  // On the sign-in steps below: an account already holds the request's
+  // external id. Said, never which one.
+  const claimedNotice = externalId != null && externalIdStatus === "claimed" ? (
+    <Alert tone="info">
+      <span data-testid="external-id-claimed">{t("externalId.claimedNotice", { label: externalId.label })}</span>
+    </Alert>
+  ) : null;
+
   // Continuing with the account just created in this window: no card. And
   // while a signed-in continue runs ("Continue as", "Continue for"), the
   // request is being checked: not the sign-in form, which the page would
@@ -1675,6 +1779,7 @@ export default function Auth() {
             app: <strong>{requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"))}</strong>,
           })}
         </p>
+        {claimedNotice}
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
           {busy
@@ -1723,6 +1828,7 @@ export default function Auth() {
       // after check-app has answered but before any consent panel exists.
       // Without this the message would be set and never rendered.
       externalError={error}
+      notice={claimedNotice}
       prompt={
         <>
           {tNodes("consent.signinPromptApp", {

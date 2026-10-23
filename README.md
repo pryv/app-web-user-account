@@ -338,6 +338,48 @@ Every route accepts these query parameters:
   request, readable by whoever holds the poll URL while it lives, as for
   `next` above.
 
+  **A record to link to the account (`externalId`).** The access request may
+  carry `externalId: { namespace, blindedValue, mode? }` (needs a core that
+  supports external ids; `mode` is `"hint"`, the only mode a core accepts for
+  now). The waiting poll gives it back with the namespace's display name,
+  `externalId: { namespace, label, blindedValue, mode }`, and this page:
+  - looks it up once the request is loaded (`POST {register}ext-id/cores`,
+    no auth): held by an account, held by none, or unknown (the lookup failed);
+  - when an account holds it, says so on the sign-in step ("{label}: a Pryv
+    account is already linked to this record. Sign in with that account."),
+    never which account;
+  - when none does, asks after sign-in, before posting `ACCEPTED`, in its own
+    dialog: "Link this record to your account?", naming the label and the
+    account about to be linked, and what linking means (the service that
+    invited the user will be able to find this account for that record).
+    "Link" claims it for that account (`POST {apiEndpoint}account/external-ids`
+    with the personal token), then accepts. A claim refused because the record
+    is linked to another account, or because this account already holds
+    another record of that namespace, is said, and the accept goes on without
+    linking; a claim refused for too many attempts, or not answered, can be
+    retried or skipped. "Not now" (or Escape) accepts with
+    `externalIdDeclined: true`, so your app learns the user chose not to link;
+  - asks nothing when an account holds it, when the lookup failed, or when the
+    access is granted on an account the user manages (the claim needs that
+    account's own personal token). The answer is kept for the request: a
+    retried accept does not ask again.
+
+  "Create account" from this page carries the same id into the new account:
+  the register page reads it again from the poll (its query carries only the
+  poll URL) and sends it in the create-account body (`POST {register}users`),
+  so the account is linked at creation without a question.
+
+  The blinded value is never rendered, never put in a URL, and never written
+  to `localStorage` or `sessionStorage`: it lives only in the page's memory,
+  read from the poll, and travels only in POST bodies. The texts are under
+  `externalId.*` in the catalog (`claimedNotice`, `linkTitle`, `linkBody`,
+  `linkConsequence`, `link`, `linking`, `notNow`, `retry`, `continue`,
+  `continueWithoutLinking`, `errorValueTaken`, `errorNamespaceTaken`,
+  `errorRateLimited`, `errorFailed`). The dialog uses the same theme tokens as
+  the other built-in dialogs (`bg-card`, `border-divider`, `text-muted`, the
+  `primary` button, the `danger` alert for a refused claim); the sign-in
+  notice is an `info` alert.
+
   **Accounts the user manages (`actAs`).** On a platform running account
   delegation (`features.delegation` in its service info), a signed-in user who
   actively manages other accounts is asked which account the access is for:

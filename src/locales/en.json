@@ -757,5 +757,21 @@
     "residual": "An access on {{account}} could not be removed; it expires on {{date}}.",
     "checkAgain": "Check again",
     "checking": "Checking…"
+  },
+  "externalId": {
+    "claimedNotice": "{{label}}: a {{account}} is already linked to this record. Sign in with that account.",
+    "linkTitle": "Link this record to your account?",
+    "linkBody": "The {{label}} record of this request will be linked to the account {{username}}.",
+    "linkConsequence": "This record will be linked to this account; the service that invited you will be able to find this account for that record.",
+    "link": "Link",
+    "linking": "Linking…",
+    "notNow": "Not now",
+    "retry": "Try again",
+    "continue": "Continue",
+    "continueWithoutLinking": "Continue without linking",
+    "errorValueTaken": "This record is already linked to another account.",
+    "errorNamespaceTaken": "This account is already linked to another record of {{label}}.",
+    "errorRateLimited": "Too many attempts for now. Try again in a moment, or continue without linking.",
+    "errorFailed": "The record could not be linked. Try again, or continue without linking."
   }
 }
