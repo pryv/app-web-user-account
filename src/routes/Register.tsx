@@ -10,7 +10,7 @@ import { signedInTarget, registeredState } from "../lib/signInCompletion";
 import { continueSignedIn } from "../lib/accountActsGate";
 import { loggableError } from "../lib/apiError";
 import { useRegisterActs } from "../extensions/registerActs";
-import { registerEmailPolicy } from "../extensions/registerEmail";
+import { registerEmailPolicy, type RegisterEmailPolicy } from "../extensions/registerEmail";
 import { type PryvConnection } from "../lib/session";
 import { useSession } from "../lib/useSession";
 import { brand } from "../brand";
@@ -37,8 +37,8 @@ export default function Register() {
   const [username, setUsername] = useState("");
   // The operator's email slot (src/extensions/registerEmail.ts), read once:
   // the email to start with, and whether one is required.
-  const [emailPolicy] = useState(() => registerEmailPolicy(search));
-  const [email, setEmail] = useState(emailPolicy.prefill ?? "");
+  const [emailPolicy] = useState(() => readEmailPolicy(search));
+  const [email, setEmail] = useState(emailPolicy.prefill);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
@@ -161,8 +161,10 @@ export default function Register() {
     }
     if (!acts.ready) return;
     // A placeholder address only when the email is optional and left blank.
-    const emailToSend = () =>
-      email.length > 0 || emailPolicy.required ? email : randomLocalPart() + "@pryv.io";
+    const emailToSend = () => {
+      const trimmed = email.trim();
+      return trimmed.length > 0 || emailPolicy.required ? trimmed : randomLocalPart() + "@pryv.io";
+    };
     setBusy(true);
     try {
       const { appId, serviceInfoUrl } = parseAuthParams(search);
@@ -523,6 +525,25 @@ async function firstAvailableHosting(service: unknown, noneMessage: string): Pro
     if (available) return available.key;
   }
   throw new Error(noneMessage);
+}
+
+/**
+ * The operator's email slot, read defensively since a fork writes it: a
+ * policy that throws is logged and leaves the email optional and empty; a
+ * `prefill` that is not a string reads as empty, and only `required: true`
+ * requires the email.
+ */
+function readEmailPolicy(search: string): { prefill: string; required: boolean } {
+  try {
+    const policy = registerEmailPolicy(search) as Partial<RegisterEmailPolicy> | null | undefined;
+    return {
+      prefill: typeof policy?.prefill === "string" ? policy.prefill : "",
+      required: policy?.required === true,
+    };
+  } catch (err: unknown) {
+    console.warn("register: the registration email policy failed, the email stays optional:", loggableError(err));
+    return { prefill: "", required: false };
+  }
 }
 
 function randomLocalPart(): string {

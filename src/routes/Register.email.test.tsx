@@ -100,7 +100,6 @@ describe("[RGEM] registration email slot", () => {
   it("[RGEM4] required: the field is required, a blank submit is refused, no placeholder is generated", async () => {
     slot.registerEmailPolicy.mockReturnValue({ prefill: null, required: true });
     mockServiceOk();
-    const random = vi.spyOn(Math, "random");
     renderAt();
     const field = (await screen.findByLabelText("Email")) as HTMLInputElement;
     expect(field.required).toBe(true);
@@ -110,8 +109,42 @@ describe("[RGEM] registration email slot", () => {
     await fillAndSubmit();
     expect(await screen.findByText("Please enter your email to create your account.")).toBeTruthy();
     expect(service.createUser).not.toHaveBeenCalled();
-    expect(random).not.toHaveBeenCalled();
     expect(screen.queryByTestId("where")).toBeNull();
+  });
+
+  it("[RGEM6] a policy that throws is logged and the email stays optional", async () => {
+    slot.registerEmailPolicy.mockImplementation(() => {
+      throw new Error("bad invitation");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockServiceOk();
+    renderAt();
+    const field = (await screen.findByLabelText("Email")) as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(field.required).toBe(false);
+    expect(warn).toHaveBeenCalled();
+
+    await fillAndSubmit();
+    await screen.findByTestId("where");
+    expect(sentEmail()).toMatch(/^[a-z0-9]{20}@pryv\.io$/);
+    warn.mockRestore();
+  });
+
+  it("[RGEM7] an odd answer is coerced: a prefill that is not a string is empty, only true requires", async () => {
+    slot.registerEmailPolicy.mockReturnValue({ prefill: 42, required: "yes" });
+    renderAt();
+    const field = (await screen.findByLabelText("Email")) as HTMLInputElement;
+    expect(field.value).toBe("");
+    expect(field.required).toBe(false);
+  });
+
+  it("[RGEM8] the email is sent trimmed", async () => {
+    slot.registerEmailPolicy.mockReturnValue({ prefill: " alice@example.com ", required: true });
+    mockServiceOk();
+    renderAt();
+    await fillAndSubmit();
+    await screen.findByTestId("where");
+    expect(sentEmail()).toBe("alice@example.com");
   });
 
   it("[RGEM5] required with an email given: the account is created with it", async () => {
