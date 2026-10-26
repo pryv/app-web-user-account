@@ -74,7 +74,8 @@
     "notMe": "Not me — use another account",
     "failed": "Sign-in failed.",
     "or": "or",
-    "withProvider": "Sign in with {{provider}}"
+    "withProvider": "Sign in with {{provider}}",
+    "returnNotAllowed": "You are signed in. This page does not send you on to the address in the sign-in link: go back to your app yourself."
   },
   "password": {
     "label": "Password",
