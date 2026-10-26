@@ -12,6 +12,9 @@
  * - `lookupExternalId`: whether some account already holds the id (the
  *   register's `ext-id/cores`, no auth). It never says which account.
  * - `claimExternalId`: link the id to the signed-in account (personal token).
+ * - `namespaceHolding`: whether an account holds some id in the namespace (its
+ *   own list, personal token, no value sent), to tell a known non-holder
+ *   before anything is granted in forced mode.
  */
 
 import { loadAccessState } from "./accessFlow";
@@ -24,12 +27,22 @@ export interface RequestExternalId {
   /** The namespace's display name (the namespace itself when it has none). */
   label: string;
   blindedValue: string;
-  /** "hint" (the user decides); "forced" is not offered yet and is treated as "hint". */
+  /**
+   * "hint": the user decides whether to link it. "forced": only the account
+   * that holds it may accept (the server checks; the page never offers a link).
+   */
   mode: "hint" | "forced";
 }
 
 /** What the lookup said: held by an account, held by none, or could not be told. */
 export type ExternalIdStatus = "claimed" | "unclaimed" | "unknown";
+
+/**
+ * Whether an account holds an id in the request's namespace (from its own
+ * list, which carries namespaces and dates only): "holds" (some id of that
+ * namespace, not necessarily this one), "none", or "unknown" (not readable).
+ */
+export type NamespaceHolding = "holds" | "none" | "unknown";
 
 /** How a claim ended. */
 export type ClaimOutcome =
@@ -123,6 +136,34 @@ export async function claimExternalId(
     return reason === "namespace-taken" ? "namespace-taken" : "value-taken";
   }
   return "failed";
+}
+
+/**
+ * Whether the account holds an id in `namespace`: `GET {endpoint}account/external-ids`
+ * with the personal token. The answer lists namespaces and dates, never a
+ * value, so it cannot say WHICH id the account holds: "holds" means the server
+ * still decides. Any failure is "unknown".
+ */
+export async function namespaceHolding(
+  endpoint: string,
+  personalToken: string,
+  namespace: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<NamespaceHolding> {
+  try {
+    const res = await fetchImpl(withSlash(endpoint) + "account/external-ids", {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: personalToken },
+    });
+    if (res.status !== 200) return "unknown";
+    const body = (await res.json()) as { externalIds?: unknown };
+    if (!Array.isArray(body?.externalIds)) return "unknown";
+    return body.externalIds.some((e) => (e as { namespace?: unknown } | null)?.namespace === namespace)
+      ? "holds"
+      : "none";
+  } catch {
+    return "unknown";
+  }
 }
 
 /**

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **External ids on `/auth`, forced mode.** On a request whose `externalId.mode` is `"forced"`
+  only the account linked to the id may accept; the core checks it at `ACCEPTED`. The page reads
+  the account's own list of ids first (`GET {apiEndpoint}account/external-ids`, personal token,
+  no value sent), for the stored session and after a fresh sign-in: an account holding no id in
+  the namespace gets the sign-in form first ("This invitation is for the account linked to
+  {label}. Sign in with that account."), no "Continue as X instead", and nothing is checked,
+  accepted or minted; the stored session is left as it is. One holding an id there gets the
+  "Welcome back" card with "If X is not the account linked to {label}, sign in with the other
+  account." and goes on. On `400 external-id-mismatch` the access just created is deleted, the
+  in-page sign-in dropped (never the stored session) and the form comes back saying why; on
+  `503 external-id-check-unavailable` the accept is retried once, then reported as unverified.
+  No link dialog, no `externalIdDeclined`, and the credential is always posted inline (never the
+  page-made hand-off shape). The blinded value is still never rendered, stored, or put in a URL.
+  New catalog keys `externalId.switchNotice`, `otherAccountNotice`, `otherAccountNoticeUnnamed`,
+  `notHolder`, `refusalTooManyAttempts`. Needs a core that accepts forced mode; on an older one
+  forced requests are refused at creation and nothing reaches this page.
+
+### Changed
+
+- **Hint mode, the account switch.** When an account already holds the request's id and a
+  session is stored, the page reads that account's own list of ids: one holding none in the
+  namespace gets the sign-in form first (with "Continue as X instead" below it), one holding an
+  id there gets the "Welcome back" card with the switch hint above instead of "Sign in with that
+  account.".
+
 ## 0.23.0 - 2026-10-26
 
 ### Added

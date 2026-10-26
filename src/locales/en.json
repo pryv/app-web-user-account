@@ -773,6 +773,11 @@
     "registeredNotLinked": "{{label}}: your new account could not be linked to this record. Another account may already be linked to it.",
     "errorNamespaceTaken": "This account is already linked to another record of {{label}}.",
     "errorRateLimited": "Too many attempts for now. Try again in a moment, or continue without linking.",
-    "errorFailed": "The record could not be linked. Try again, or continue without linking."
+    "errorFailed": "The record could not be linked. Try again, or continue without linking.",
+    "switchNotice": "This invitation is for the account linked to {{label}}. Sign in with that account.",
+    "otherAccountNotice": "If {{username}} is not the account linked to {{label}}, sign in with the other account.",
+    "otherAccountNoticeUnnamed": "If this is not the account linked to {{label}}, sign in with the other account.",
+    "notHolder": "The account {{username}} is not the one linked to {{label}}. Nothing was granted.",
+    "refusalTooManyAttempts": "Too many attempts for now. Nothing was granted, please try again later."
   }
 }
