@@ -69,6 +69,9 @@ function setHash(hash: string, landingSearch: string = LANDING_SEARCH) {
       get href() {
         return href;
       },
+      assign(v: string) {
+        href = v;
+      },
     },
   });
 }

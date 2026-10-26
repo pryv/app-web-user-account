@@ -26,6 +26,16 @@ describe("[SICT] signed-in target", () => {
     expect(url.searchParams.get("pryvApiEndpoint")).toBe(ENDPOINT);
   });
 
+  it("[SICT1b] the page to stay on when the return policy does not follow returnURL keeps the platform", () => {
+    const target = signedInTarget(
+      `?returnURL=https%3A%2F%2Fapp.example%2Fcb&pryvServiceInfoUrl=${encodeURIComponent(SI)}`,
+      ENDPOINT,
+    );
+    expect((target as { stayPath?: string }).stayPath).toBe(
+      "/account/profile?pryvServiceInfoUrl=" + encodeURIComponent(SI),
+    );
+  });
+
   it("[SICT2] returns to a hand-off page with the query it carried", () => {
     const target = signedInTarget(
       "?next=%2Fcmc-accept&capabilityUrl=https%3A%2F%2Fcore%2Fcap&mode=popup",

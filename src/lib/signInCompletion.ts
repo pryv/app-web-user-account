@@ -11,7 +11,8 @@
  *      the account hand-off (endpoint, no grant): taking it would return the
  *      user to an app that is still waiting for its access.
  *   1. `returnURL` — the calling app asked to be handed control back, so the
- *      browser leaves for it with `state` and the token-less API endpoint.
+ *      browser leaves for it with `state` and the token-less API endpoint,
+ *      as the operator's return policy says (see `continueSignedIn`).
  *   2. `returnTo` — a signed-out visitor was bounced from an account page and
  *      goes back to it (validated by `safeReturnTo`: account pages only).
  *   3. `next` — the user came from an in-app approval hand-off and should land
@@ -41,8 +42,13 @@ function withPlatform(path: string, serviceInfoUrl: string | null): string {
   return url.pathname + url.search + url.hash;
 }
 
+/**
+ * `external` leaves the app for `returnURL`, as the operator's return policy
+ * says (returnTarget.ts); when the policy does not follow it, the user stays
+ * on `stayPath` (the account profile).
+ */
 export type SignedInTarget =
-  | { kind: "external"; href: string }
+  | { kind: "external"; href: string; stayPath?: string }
   | { kind: "internal"; path: string };
 
 export function signedInTarget(search: string, endpointWithoutToken: string): SignedInTarget {
@@ -51,7 +57,11 @@ export function signedInTarget(search: string, endpointWithoutToken: string): Si
   }
   const { returnURL, serviceInfoUrl, state } = parseAuthParams(search);
   if (returnURL) {
-    return { kind: "external", href: buildCompletionUrl(returnURL, endpointWithoutToken, state) };
+    return {
+      kind: "external",
+      href: buildCompletionUrl(returnURL, endpointWithoutToken, state),
+      stayPath: accountPath("/account/profile", search, serviceInfoUrl),
+    };
   }
   const returnTo = safeReturnTo(new URLSearchParams(search).get("returnTo"));
   if (returnTo) return { kind: "internal", path: withPlatform(returnTo, serviceInfoUrl) };

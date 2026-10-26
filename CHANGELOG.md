@@ -32,6 +32,17 @@
   id there gets the "Welcome back" card with the switch hint above instead of "Sign in with that
   account.".
 
+### Security
+
+- **`returnURL` after a sign-in follows the return policy.** A completed sign-in (password,
+  second factor, third-party provider, fresh registration, and the resume after the sign-in
+  gate's page) used to send the browser to any http(s) `returnURL`, so an operator with
+  `returnPolicy.otherOrigins` set to `"confirm"` or `"stay"` still had an open redirect at
+  `/signin?returnURL=…`. It now takes the same decision as the other hand-offs: this app's origin
+  and `trustedOrigins` are followed; any other origin lands on the account profile with a
+  "Return to {host}" link the user clicks (`confirm`) or with a notice (`stay`). Without a
+  policy, nothing changes.
+
 ## 0.23.0 - 2026-10-26
 
 ### Added

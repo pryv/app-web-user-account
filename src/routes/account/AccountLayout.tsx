@@ -6,16 +6,20 @@ import { syncLocaleFromAccount } from "../../i18n";
 import { useSession } from "../../lib/useSession";
 import { signinPath } from "../../lib/sessionPaths";
 import { ACCOUNT_TABS } from "../../accountTabs";
+import { signInReturnOutcome } from "../../lib/accountActsGate";
+import { ReturnNotice } from "../../components/consent/ReturnNotice";
 
 /**
  * Account-management shell (signed-in subject only). Redirects to sign-in when
  * there is no active session. Hosts the sign-out affordance so any page under
- * /account can rely on it being present without re-implementing it.
+ * /account can rely on it being present without re-implementing it. After a
+ * sign-in whose `returnURL` the operator's return policy did not follow, it
+ * shows the link back (with its host) or the notice, as the hand-off pages do.
  */
 export default function AccountLayout() {
   const { t } = useTranslation();
   const { connection, setConnection } = useSession();
-  const { pathname, search } = useLocation();
+  const { pathname, search, state } = useLocation();
   const navigate = useNavigate();
 
   // Adopt the account's language once per session, whichever account page
@@ -90,6 +94,7 @@ export default function AccountLayout() {
           </NavLink>
         ))}
       </nav>
+      <ReturnNotice outcome={signInReturnOutcome(state)} />
       <Outlet />
     </div>
   );
