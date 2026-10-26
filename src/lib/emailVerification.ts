@@ -207,6 +207,8 @@ export function emailVerificationErrorMessage(err: unknown): string {
     return i18n.t("emailVerification.errorCodeInvalidMany", { count: data.attemptsRemaining });
   }
   if (err.id === "item-already-exists") return i18n.t("emailVerification.errorEmailTaken");
+  // A forced external id held by an account: the user already has one.
+  if (err.id === "external-id-already-claimed") return i18n.t("externalId.registerRefusedClaimed");
   if (err.id === "forbidden" && data.emailVerificationRequired === true) {
     return i18n.t("emailVerification.errorVerifyFirst");
   }

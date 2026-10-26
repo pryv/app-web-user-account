@@ -56,7 +56,14 @@ import { isSessionRejected } from "../lib/sessionErrors";
 import { loggableError, platformError } from "../lib/apiError";
 import { hasUsableEmail, missingEmailErrorKey, readAccountEmail, readsAccountEmail, setAccountEmail } from "../lib/accountEmail";
 import { maskUrlCredentials } from "../lib/maskCredentials";
-import { claimExternalId, externalIdOf, lookupExternalId, type ExternalIdStatus } from "../lib/externalId";
+import {
+  claimExternalId,
+  externalIdOf,
+  lookupExternalId,
+  namespaceHolding,
+  type ExternalIdStatus,
+  type NamespaceHolding,
+} from "../lib/externalId";
 import {
   useExternalIdLinkDialog,
   type ExternalIdLinkAnswer,
@@ -103,6 +110,10 @@ import {
 
 const APP_ID = "pryv-app-web-user-account";
 
+/** The register's answers to ACCEPTED on a forced external-id request. */
+const EXTERNAL_ID_MISMATCH = "external-id-mismatch";
+const EXTERNAL_ID_CHECK_UNAVAILABLE = "external-id-check-unavailable";
+
 /**
  * Whether a diverged access is updated in place (keeping its token, so
  * whoever holds it keeps a working credential) rather than replaced by
@@ -138,8 +149,13 @@ interface AuthQuery {
   username: string | null;
 }
 
-/** What a check-app run ended with, for the caller: "refused" when the register refused the access the app holds. */
-type CheckOutcome = "refused" | null;
+/**
+ * What a check-app run ended with, for the caller: "refused" when the register
+ * refused the access the app holds; "not-holder" when, on a forced external-id
+ * request, the account is not the one linked to the id (known before anything
+ * is granted, or answered by the register): the caller drops its sign-in.
+ */
+type CheckOutcome = "refused" | "not-holder" | null;
 
 /** Longest wait for the stored session's name before a hinted page shows the form. */
 const KNOWN_USERNAME_WAIT_MS = 4000;
@@ -224,7 +240,12 @@ function parseAuthQuery(search: string): AuthQuery {
  * It is looked up once loaded; when an account already holds it, the sign-in
  * step says so (never which account). When none does, the page asks, before
  * the ACCEPTED post, whether to link it to the account signed in ("Link" or
- * "Not now"); "Not now" posts `externalIdDeclined: true`. The blinded value
+ * "Not now"); "Not now" posts `externalIdDeclined: true`. In forced mode only
+ * the account linked to the id may accept: nothing is asked, the page reads
+ * the account's own list of ids first (an account holding none in the
+ * namespace is sent to the sign-in form before anything is granted), and the
+ * register checks the rest at ACCEPTED (`external-id-mismatch`: the access
+ * just minted is removed and the form comes back). The blinded value
  * stays in memory: never rendered, never in a URL, never in browser storage.
  *
  * Mirrors app-web-auth3's `Authorization.vue` + `bits/Permissions.vue` +
@@ -304,6 +325,25 @@ function AuthFlow({
   // The answer given in the dialog and the account it was given for, kept so a
   // retried accept as that account does not ask again.
   const externalIdAnswer = useRef<{ username: string; answer: ExternalIdLinkAnswer } | null>(null);
+  // Forced mode: only the account linked to the id may accept. Nothing is
+  // asked; the register checks at ACCEPTED.
+  const forced = externalId?.mode === "forced";
+  // Whether an account holds an id in the request's namespace, read once per
+  // personal token from its own list (namespaces and dates, no value).
+  const holdings = useRef(new Map<string, Promise<NamespaceHolding>>());
+  function holdingOf(endpoint: string, token: string): Promise<NamespaceHolding> {
+    if (externalId == null) return Promise.resolve("unknown");
+    const key = token + " " + endpoint;
+    let holding = holdings.current.get(key);
+    if (holding == null) {
+      holding = namespaceHolding(endpoint, token, externalId.namespace);
+      holdings.current.set(key, holding);
+    }
+    return holding;
+  }
+  // Forced mode: the account the page or the register found not to be the
+  // one linked to the id. The sign-in form then comes first, with why.
+  const [refusedHolder, setRefusedHolder] = useState<string | null>(null);
 
   // A deployment restricted to some platforms handles a request only when BOTH
   // the poll URL and the link's service-info param belong to an allowed one.
@@ -605,6 +645,39 @@ function AuthFlow({
       clearTimeout(giveUp);
     };
   }, [storedUsable, storedConnection]);
+  // Whether the stored session's account holds an id in the request's
+  // namespace (null while read): in forced mode, and in hint mode once the
+  // lookup says an account holds the id. One holding none is a known
+  // non-holder: the sign-in form comes first. Read from the account's own
+  // list; the value is never sent.
+  const readsStoredHolding = externalId != null && (forced || externalIdStatus === "claimed");
+  const [storedHolding, setStoredHolding] = useState<NamespaceHolding | null>(null);
+  useEffect(() => {
+    const conn = storedConnection as unknown as { token?: string; endpoint?: string } | null;
+    if (!readsStoredHolding || !storedUsable || conn == null) {
+      setStoredHolding(null);
+      return;
+    }
+    if (!conn.token || !conn.endpoint) {
+      setStoredHolding("unknown");
+      return;
+    }
+    let cancelled = false;
+    setStoredHolding(null);
+    // A network call: the card does not wait for it longer than this.
+    const giveUp = setTimeout(() => {
+      if (!cancelled) setStoredHolding((h) => h ?? "unknown");
+    }, KNOWN_USERNAME_WAIT_MS);
+    void holdingOf(conn.endpoint, conn.token).then((h) => {
+      clearTimeout(giveUp);
+      if (!cancelled) setStoredHolding(h);
+    });
+    return () => {
+      cancelled = true;
+      clearTimeout(giveUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readsStoredHolding, storedUsable, storedConnection]);
   // After a registration in this window: continue as the card's button would,
   // once the request is loaded (and, on a restricted deployment, its platform
   // resolved, which happens first). Without a usable session (or for a request
@@ -684,6 +757,9 @@ function AuthFlow({
         // runCheckApp), rather than on a sign-in form they never asked for.
         setPersonalToken(null);
         setApiEndpoint(null);
+      } else if (outcome === "not-holder") {
+        // Not the account linked to the forced id: the sign-in form, with why.
+        dropSignIn();
       }
     } catch (err: unknown) {
       setPersonalToken(null);
@@ -730,7 +806,9 @@ function AuthFlow({
         if (cancelled) return;
         setAccessState(state);
         const requestExternalId = state.status === "NEED_SIGNIN" ? externalIdOf(state) : null;
-        if (requestExternalId != null) {
+        // Hint mode only: in forced mode no link is offered, so whether some
+        // account holds the id changes nothing on this page.
+        if (requestExternalId != null && requestExternalId.mode !== "forced") {
           externalIdLookup.current = new Promise<string | null>((resolve) => {
             registerForLookup = resolve;
           })
@@ -901,7 +979,9 @@ function AuthFlow({
     try {
       if (target.self) {
         setTargets(null);
-        if ((await runCheckApp(owner.endpoint, owner.token, owner.username)) === "refused") backToChoice();
+        const outcome = await runCheckApp(owner.endpoint, owner.token, owner.username);
+        if (outcome === "refused") backToChoice();
+        else if (outcome === "not-holder") dropSignIn();
         return;
       }
       const workspace = await openDelegatedWorkspace(owner.client, target.username);
@@ -911,7 +991,9 @@ function AuthFlow({
       setApiEndpoint(workspace.apiEndpoint);
       setGrantFor(hint);
       setTargets(null);
-      if ((await runCheckApp(workspace.apiEndpoint, workspace.token, workspace.username, hint)) === "refused") backToChoice();
+      const outcome = await runCheckApp(workspace.apiEndpoint, workspace.token, workspace.username, hint);
+      if (outcome === "refused") backToChoice();
+      else if (outcome === "not-holder") dropSignIn();
     } catch (err: unknown) {
       setError(delegationErrorMessage(err));
       backToChoice();
@@ -928,6 +1010,16 @@ function AuthFlow({
    */
   async function runCheckApp(endpoint: string, token: string, asUser?: string, hint?: DelegationHint): Promise<CheckOutcome> {
     if (!accessState) return null;
+    // Forced mode, on the account signed in (its own personal token): one
+    // holding no id in the namespace is not the one linked to this id. Said
+    // before any invite is accepted or any access minted. One holding an id
+    // there goes on, and the register decides (the list cannot say which id).
+    // A controlled account is not read here (no personal token for it): the
+    // register decides.
+    if (forced && externalId != null && hint == null && (await holdingOf(endpoint, token)) === "none") {
+      notHolder(asUser ?? username);
+      return "not-holder";
+    }
     // != null (not !== undefined): the poll state carries explicit `null`s
     // for absent fields, and the check-app schema rejects e.g. clientData:null.
     const checkData = {
@@ -966,6 +1058,11 @@ function AuthFlow({
       const refusal = await finalizeAccepted(result.matchingAccess.token, endpoint, asUser, reuseHint, token);
       // Working on a controlled account: drop its delegate token once handed over.
       if (refusal == null && hint != null) setPersonalToken(null);
+      if (refusal != null && refusal.errorId === EXTERNAL_ID_MISMATCH) {
+        // Not deleted either: the access predates this request.
+        noteMismatch(refusal, asUser ?? username);
+        return "not-holder";
+      }
       if (refusal != null) {
         // The register refused this existing access, or could not verify it.
         // Say so rather than leaving the user on a page that looks stuck.
@@ -1012,8 +1109,10 @@ function AuthFlow({
     // silently disable the hand-off on the already-authorized reuse path).
     let handoffKey: string | null = null;
     const wantsHandoff = accessState.credentialHandoff === "shared-secret";
+    // Never on a forced external-id request either: the register checks the
+    // token against the id's holder before converting it to a hand-off.
     const canShapeH =
-      wantsHandoff && accessState.consent == null && hint == null && creatorToken != null;
+      wantsHandoff && accessState.consent == null && !forced && hint == null && creatorToken != null;
     if (canShapeH) {
       try {
         handoffKey = await createHandoffSecret(endpoint, creatorToken as string, {
@@ -1041,9 +1140,11 @@ function AuthFlow({
     // Only on a request with an external id, and only when the user said "Not now".
     if (externalIdDeclined) accepted.externalIdDeclined = true;
     let result = await updateAccessState(query.pollUrl, accepted);
-    if (result.errorId === "consent-check-unavailable") {
-      // The server could not verify the grant, which says nothing about the
-      // access. Give it one more chance before treating this as a failure.
+    const unavailable = result.errorId;
+    if (unavailable === "consent-check-unavailable" || unavailable === EXTERNAL_ID_CHECK_UNAVAILABLE) {
+      // The server could not verify the grant (or, in forced mode, who holds
+      // the external id), which says nothing about the access. Give it one
+      // more chance before treating this as a failure.
       await new Promise((resolve) => setTimeout(resolve, 1200));
       try {
         result = await updateAccessState(query.pollUrl, accepted);
@@ -1051,7 +1152,7 @@ function AuthFlow({
         // A retry that cannot even reach the register is still a refusal to
         // hand over: report it like one, so the caller cleans up the access
         // it minted rather than letting the throw skip that.
-        result = { status: 503, errorId: "consent-check-unavailable", reason: "retry-failed" };
+        result = { status: 503, errorId: unavailable, reason: "retry-failed" };
       }
     }
     if (result.status >= 400) return result;
@@ -1079,7 +1180,8 @@ function AuthFlow({
     hint: DelegationHint | undefined,
     personal: string | null,
   ): Promise<boolean> {
-    if (externalId == null || externalIdLookup.current == null) return false;
+    // Forced mode has no confirmation step: the id is never claimed here.
+    if (externalId == null || externalId.mode === "forced" || externalIdLookup.current == null) return false;
     const remembered = externalIdAnswer.current;
     if (remembered != null && remembered.username.toLowerCase() === asUser.toLowerCase()) {
       return remembered.answer === "declined";
@@ -1100,10 +1202,55 @@ function AuthFlow({
     return answer === "declined";
   }
 
+  /**
+   * Forced mode: `who` is not the account linked to the request's id. The
+   * sign-in form comes first from now on, saying so; the stored session is
+   * kept as it is (other requests may use it).
+   */
+  function notHolder(who: string) {
+    setRefusedHolder(who);
+    setError(externalId != null ? t("externalId.notHolder", { username: who, label: externalId.label }) : null);
+  }
+
+  /**
+   * The register answered `external-id-mismatch`: `not-holder` is said as the
+   * page's own finding; `token-invalid` (the credential does not belong to the
+   * account named) gets the generic refusal.
+   */
+  function noteMismatch(refusal: AccessStateUpdateResult, who: string) {
+    if (refusal.reason === "token-invalid") {
+      setRefusedHolder(who);
+      setError(t("consent.refusalMismatch"));
+      return;
+    }
+    notHolder(who);
+  }
+
+  /**
+   * Forget the in-page sign-in (tokens, check, choices; never the stored
+   * session), so the page shows the sign-in form again.
+   */
+  function dropSignIn() {
+    setPersonalToken(null);
+    setApiEndpoint(null);
+    setCheck(null);
+    setReuse(null);
+    setTargets(null);
+    setOwner(null);
+    setGrantFor(null);
+    setSelectedTarget(null);
+    setCreateOpen(false);
+    setInviteViews([]);
+    setInviteDecisions([]);
+  }
+
   /** What to tell the user when the register refused the grant. */
   function consentRefusalMessage(result: AccessStateUpdateResult): string {
-    if (result.errorId === "consent-check-unavailable") {
+    if (result.errorId === "consent-check-unavailable" || result.errorId === EXTERNAL_ID_CHECK_UNAVAILABLE) {
       return t("consent.refusalUnverified");
+    }
+    if (result.errorId === "too-many-attempts") {
+      return t("externalId.refusalTooManyAttempts");
     }
     switch (result.reason) {
       case "mandatory-refused":
@@ -1279,7 +1426,12 @@ function AuthFlow({
         handedOver = refusal == null;
         if (refusal == null && reuse.delegated) setPersonalToken(null);
         // Not deleted on a refusal: it predates this request.
-        if (refusal != null) setError(consentRefusalMessage(refusal));
+        if (refusal != null && refusal.errorId === EXTERNAL_ID_MISMATCH) {
+          noteMismatch(refusal, reuse.asUser ?? username);
+          dropSignIn();
+        } else if (refusal != null) {
+          setError(consentRefusalMessage(refusal));
+        }
         return;
       }
       const mismatching = check.mismatchingAccess;
@@ -1326,7 +1478,16 @@ function AuthFlow({
             /* the account can still revoke it from Connected apps */
           }
         }
-        setError(consentRefusalMessage(refusal));
+        if (refusal.errorId === EXTERNAL_ID_MISMATCH) {
+          // Forced mode: not the account linked to the id. Back to the
+          // sign-in form, the stored session kept as it is.
+          // On a managed grant `username` is already the controlled account
+          // (set when the target was chosen), so the notice names it.
+          noteMismatch(refusal, username);
+          dropSignIn();
+        } else {
+          setError(consentRefusalMessage(refusal));
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("consent.errorCouldNotAccept"));
@@ -1757,6 +1918,37 @@ function AuthFlow({
     </Alert>
   ) : null;
 
+  // The stored session's account, as the page knows it, and the external id:
+  // - a known non-holder (its own list has no id in the namespace; in hint
+  //   mode only when an account holds the id) gets the sign-in form first;
+  // - in forced mode, so does an account the page or the register refused.
+  const storedIsRefused =
+    refusedHolder != null && knownUsername != null && refusedHolder.toLowerCase() === knownUsername.toLowerCase();
+  const knownNonHolder = storedUsable && readsStoredHolding && storedHolding === "none";
+  const formFirst = knownNonHolder || (forced && refusedHolder != null);
+  // "Continue as X instead" under the form: never, in forced mode, for an
+  // account known not to be the one linked (the register would refuse it).
+  const continueInsteadBlocked = forced && (storedHolding === "none" || storedIsRefused);
+  // Forced mode, on the sign-in form: who this request is for.
+  const forcedNotice = forced && externalId != null ? (
+    <Alert tone="info">
+      <span data-testid="external-id-switch">{t("externalId.switchNotice", { label: externalId.label })}</span>
+    </Alert>
+  ) : null;
+  // On the "Welcome back" card, when the account may be the one linked (it
+  // holds an id in the namespace, or could not be read in forced mode): the
+  // page cannot tell which id it holds, so it says how to switch.
+  const otherAccountNotice =
+    externalId != null && (forced || (externalIdStatus === "claimed" && storedHolding === "holds")) ? (
+      <Alert tone="info">
+        <span data-testid="external-id-other-account">
+          {knownUsername
+            ? t("externalId.otherAccountNotice", { username: knownUsername, label: externalId.label })
+            : t("externalId.otherAccountNoticeUnnamed", { label: externalId.label })}
+        </span>
+      </Alert>
+    ) : claimedNotice;
+
   // Continuing with the account just created in this window: no card. And
   // while a signed-in continue runs ("Continue as", "Continue for"), the
   // request is being checked: not the sign-in form, which the page would
@@ -1773,7 +1965,12 @@ function AuthFlow({
 
   // With a hint, wait until the stored session's username is known before
   // choosing between its card and the sign-in form (no flash of the wrong one).
-  if (storedUsable && !personalToken && usernameHint != null && !knownResolved) {
+  // In forced mode, likewise until the session's own list of ids is read.
+  if (
+    storedUsable &&
+    !personalToken &&
+    ((usernameHint != null && !knownResolved) || (forced && storedHolding == null && refusedHolder == null))
+  ) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("consent.title")}</h1>
@@ -1785,7 +1982,7 @@ function AuthFlow({
   // Already signed in on this platform (persisted session): offer to
   // continue to the consent step directly, with an explicit way out so a
   // shared browser doesn't grant access under the wrong account.
-  if (storedUsable && !personalToken && !hintDiffers) {
+  if (storedUsable && !personalToken && !hintDiffers && !formFirst) {
     return (
       <Card>
         <h1 className="mb-1 text-2xl">{t("consent.welcomeBack")}</h1>
@@ -1795,7 +1992,7 @@ function AuthFlow({
             app: <strong>{requestingApp?.name ?? (accessState.requestingAppId || t("consent.theRequestingApp"))}</strong>,
           })}
         </p>
-        {claimedNotice}
+        {otherAccountNotice}
         {error && <Alert>{error}</Alert>}
         <Button type="button" onClick={() => void continueAsStored()} disabled={busy}>
           {busy
@@ -1844,7 +2041,7 @@ function AuthFlow({
       // after check-app has answered but before any consent panel exists.
       // Without this the message would be set and never rendered.
       externalError={error}
-      notice={claimedNotice}
+      notice={forcedNotice ?? claimedNotice}
       prompt={
         <>
           {tNodes("consent.signinPromptApp", {
@@ -1877,6 +2074,10 @@ function AuthFlow({
           // session (no endpoint), this form shows it instead.
           setPersonalToken(null);
           setApiEndpoint(null);
+        } else if (outcome === "not-holder") {
+          // Not the account linked to the forced id: this form again, with
+          // why. The session just stored stays (other requests may use it).
+          dropSignIn();
         }
       }}
       onCancel={() => void refuse()}
@@ -1884,7 +2085,7 @@ function AuthFlow({
       disabled={busy}
       footer={(formBusy) => (
         <>
-          {hintDiffers && storedUsable && knownUsername && (
+          {(hintDiffers || formFirst) && !continueInsteadBlocked && storedUsable && knownUsername && (
             <Button variant="ghost" type="button" onClick={() => void continueAsStored()} disabled={busy || formBusy} className="mt-3">
               {busy ? t("consent.checking") : t("consent.continueAsInstead", { username: knownUsername })}
             </Button>

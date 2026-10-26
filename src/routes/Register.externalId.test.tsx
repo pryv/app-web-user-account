@@ -128,6 +128,22 @@ describe("[RGXI] register with an external id on the access request", () => {
     expect(landed.textContent).not.toContain(BLINDED);
   });
 
+  it("[RGXI5] forced, held by an account (409): the page says so in plain words, nothing is signed in", async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      ({ status: 409, ok: false, json: async () => ({ error: { id: "external-id-already-claimed", message: "raw server text", data: { reason: "value-taken" } } }) }) as Response,
+    );
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      externalId: { namespace: "clinic-a", label: "Clinic A", blindedValue: BLINDED, mode: "forced" },
+    });
+    renderAt(ENTRY);
+    await fillAndSubmit();
+    expect(await screen.findByText("An account is already linked to this record. Sign in with that account instead of creating a new one.")).toBeTruthy();
+    expect(screen.queryByText("raw server text")).toBeNull();
+    expect(service.login).not.toHaveBeenCalled();
+    expect(document.body.innerHTML).not.toContain(BLINDED);
+  });
+
   it("[RGXI2] (guard) a request without an external id registers as before", async () => {
     flow.loadAccessState.mockResolvedValue({ status: "NEED_SIGNIN" });
     renderAt(ENTRY);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { claimExternalId, externalIdOf, lookupExternalId, registrationExternalId } from "./externalId";
+import { claimExternalId, externalIdOf, lookupExternalId, namespaceHolding, registrationExternalId } from "./externalId";
 
 /** [EXID] Reading an access request's external id, the lookup and the claim. */
 
@@ -68,5 +68,22 @@ describe("[EXID] external ids", () => {
       blindedValue: "v",
       mode: "hint",
     });
+  });
+
+  it("[EXID5] namespace holding: GET the account's list with the personal token, no value sent", async () => {
+    const list = answering(200, { externalIds: [{ namespace: "other", claimedAt: 1 }, { namespace: "clinic-a", claimedAt: 2 }] });
+    expect(await namespaceHolding("https://a.test", "pat", "clinic-a", list)).toBe("holds");
+    const [url, init] = list.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://a.test/account/external-ids");
+    expect(init.method).toBe("GET");
+    expect((init.headers as Record<string, string>).Authorization).toBe("pat");
+    expect(init.body).toBeUndefined();
+    expect(await namespaceHolding("https://a.test/", "pat", "clinic-a", answering(200, { externalIds: [] }))).toBe("none");
+    expect(await namespaceHolding("https://a.test/", "pat", "clinic-a", answering(200, {}))).toBe("unknown");
+    expect(await namespaceHolding("https://a.test/", "pat", "clinic-a", answering(403))).toBe("unknown");
+    const down = vi.fn(async () => {
+      throw new TypeError("down");
+    });
+    expect(await namespaceHolding("https://a.test/", "pat", "clinic-a", down)).toBe("unknown");
   });
 });

@@ -79,8 +79,9 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
 function lookupCalls() {
   return fetchMock.mock.calls.filter(([u]) => String(u).endsWith("ext-id/cores"));
 }
+/** Claims only: the page may also read the account's own list (a GET, no value). */
 function claimCalls() {
-  return fetchMock.mock.calls.filter(([u]) => String(u).endsWith("account/external-ids"));
+  return fetchMock.mock.calls.filter(([u, init]) => String(u).endsWith("account/external-ids") && init?.method === "POST");
 }
 
 function storeAlice() {

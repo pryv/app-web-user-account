@@ -340,9 +340,10 @@ Every route accepts these query parameters:
 
   **A record to link to the account (`externalId`).** The access request may
   carry `externalId: { namespace, blindedValue, mode? }` (needs a core that
-  supports external ids; `mode` is `"hint"`, the only mode a core accepts for
-  now). The waiting poll gives it back with the namespace's display name,
-  `externalId: { namespace, label, blindedValue, mode }`, and this page:
+  supports external ids; `mode` is `"hint"` or, on a core that accepts it,
+  `"forced"`, see below). The waiting poll gives it back with the namespace's
+  display name, `externalId: { namespace, label, blindedValue, mode }`, and in
+  hint mode this page:
   - looks it up once the request is loaded (`POST {register}ext-id/cores`,
     no auth): held by an account, held by none, or unknown (the lookup failed);
   - when an account holds it, says so on the sign-in step ("{label}: a Pryv
@@ -359,10 +360,53 @@ Every route accepts these query parameters:
     linking; a claim refused for too many attempts, or not answered, can be
     retried or skipped. "Not now" (or Escape) accepts with
     `externalIdDeclined: true`, so your app learns the user chose not to link;
-  - asks nothing when an account holds it, when the lookup failed, or when the
-    access is granted on an account the user manages (the claim needs that
-    account's own personal token). The answer is kept for the request: a
-    retried accept does not ask again.
+  - asks nothing when an account holds it, or when the access is granted on
+    an account the user manages (the claim needs that account's own personal
+    token); a lookup that could not tell (no answer, rate-limited) still asks,
+    and the claim decides. The answer is kept for the request: a
+    retried accept does not ask again;
+  - when an account holds it and a session is stored, reads that account's
+    own list of ids (`GET {apiEndpoint}account/external-ids`, personal token,
+    namespaces and dates only, no value sent): an account holding none in the
+    namespace gets the sign-in form first, with "Continue as X instead" kept
+    below it; one holding an id there gets the "Welcome back" card with "If X
+    is not the account linked to {label}, sign in with the other account."
+    (the list cannot say which id it holds).
+
+  **Forced mode (`mode: "forced"`): only the account linked to the id may
+  accept.** The core checks it when the page posts `ACCEPTED`, whatever the
+  way the credential is delivered; the page makes that check cheap and says
+  what is happening:
+  - nothing is looked up on the register and nothing is ever claimed: no
+    link dialog, no `externalIdDeclined`;
+  - the account's own list of ids is read first (as above, no value sent),
+    for the stored session and again after a fresh sign-in. An account
+    holding no id in the namespace is a known non-holder: the sign-in form
+    comes first with "This invitation is for the account linked to {label}.
+    Sign in with that account.", no "Continue as X instead" for this request,
+    and nothing is checked, accepted or minted (no consent invite either). The
+    stored session is left as it is, for other requests. An account holding
+    an id in the namespace (or one whose list cannot be read) gets the
+    "Welcome back" card with the switch hint above, and goes on: the core
+    decides;
+  - the core answers `400 external-id-mismatch` for an account that is not
+    the holder (`data.reason` `not-holder`, or `token-invalid` when the
+    credential does not belong to the account named): the access the page has
+    just created is deleted (an access the app already held, or one updated in
+    place, is left as it is), the in-page sign-in is dropped (never the stored
+    session) and the sign-in form comes back saying the account is not the one
+    linked (`token-invalid`: the generic refusal);
+  - the core answers `503 external-id-check-unavailable` when it cannot run
+    the check: the page retries once after 1.2 s, then says the access could
+    not be verified (the access just created is deleted), and the user may
+    accept again; `429 too-many-attempts` is said as such;
+  - the credential is always delivered inline (never the page-made `handoff`
+    shape): the core needs the token for its check and converts it to the
+    shared-secret hand-off afterwards when the app asked for one;
+  - on an account the user manages (`actAs`), the list is not read (the page
+    holds no personal token for it): the core decides.
+  A registration from `/auth` sends the id as in hint mode; the core refuses
+  it (`409 external-id-already-claimed`) when another account already holds it.
 
   "Create account" from this page carries the same id into the new account:
   the register page reads it again from the poll (its query carries only the
@@ -375,10 +419,13 @@ Every route accepts these query parameters:
   `externalId.*` in the catalog (`claimedNotice`, `linkTitle`, `linkBody`,
   `linkConsequence`, `link`, `linking`, `notNow`, `retry`, `continue`,
   `continueWithoutLinking`, `errorValueTaken`, `errorNamespaceTaken`,
-  `errorRateLimited`, `errorFailed`). The dialog uses the same theme tokens as
+  `errorRateLimited`, `errorFailed`, and for the account switch and forced
+  mode `switchNotice`, `otherAccountNotice`, `otherAccountNoticeUnnamed`,
+  `notHolder`, `refusalTooManyAttempts`). The dialog uses the same theme tokens as
   the other built-in dialogs (`bg-card`, `border-divider`, `text-muted`, the
   `primary` button, the `danger` alert for a refused claim); the sign-in
-  notice is an `info` alert.
+  notice and the switch notices are `info` alerts, the "not the one linked"
+  message is the form's error alert.
 
   **Accounts the user manages (`actAs`).** On a platform running account
   delegation (`features.delegation` in its service info), a signed-in user who
