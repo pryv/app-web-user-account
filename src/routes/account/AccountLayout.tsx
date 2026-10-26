@@ -94,7 +94,7 @@ export default function AccountLayout() {
           </NavLink>
         ))}
       </nav>
-      <ReturnNotice outcome={signInReturnOutcome(state)} />
+      <ReturnNotice outcome={signInReturnOutcome(state)} stayKey="signin.returnNotAllowed" />
       <Outlet />
     </div>
   );

@@ -119,7 +119,9 @@ describe.each(ways)("[AARP] returnURL after sign-in under the return policy (%s)
     vi.spyOn(console, "warn").mockImplementation(() => {});
     renderFlow(way(external("https://anywhere.example/cb?state=s")));
     expect((await screen.findByTestId("where")).textContent).toBe("/account/profile?pryvServiceInfoUrl=si");
-    expect(screen.getByTestId("return-refused")).toBeTruthy();
+    expect(screen.getByTestId("return-refused").textContent).toBe(
+      "You are signed in. This page does not send you on to the address in the sign-in link: go back to your app yourself.",
+    );
     expect(screen.queryByTestId("return-link")).toBeNull();
     expect(nav.navigateTo).not.toHaveBeenCalled();
   });
@@ -130,6 +132,7 @@ describe.each(ways)("[AARP] returnURL after sign-in under the return policy (%s)
     const link = await screen.findByTestId("return-link");
     expect(link.textContent).toBe("Return to anywhere.example");
     expect(link.getAttribute("href")).toBe("https://anywhere.example/cb?state=s");
+    expect(link.getAttribute("rel")).toBe("noreferrer");
     expect(screen.getByTestId("where").textContent).toBe("/account/profile?pryvServiceInfoUrl=si");
     expect(nav.navigateTo).not.toHaveBeenCalled();
   });

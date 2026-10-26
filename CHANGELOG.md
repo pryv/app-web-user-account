@@ -41,7 +41,11 @@
   `/signin?returnURL=…`. It now takes the same decision as the other hand-offs: this app's origin
   and `trustedOrigins` are followed; any other origin lands on the account profile with a
   "Return to {host}" link the user clicks (`confirm`) or with a notice (`stay`). Without a
-  policy, nothing changes.
+  policy, nothing changes. The policy does not cover an access request's own `returnURL` on
+  `/auth`: that is the requesting app's redirect, answered on the consent screen. The
+  "Return to {host}" link (here and on the hand-off pages) now carries `rel="noreferrer"`, so the
+  other origin is not told which account page the user came from. New catalog key
+  `signin.returnNotAllowed`.
 
 ## 0.23.0 - 2026-10-26
 

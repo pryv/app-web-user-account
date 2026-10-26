@@ -98,7 +98,7 @@ function leaveSignedIn(
   if (decision?.action === "confirm") {
     outcome = { kind: "confirm", href: decision.target.toString(), host: decision.target.host };
   } else {
-    console.warn("sign-in: the return policy keeps this returnURL origin on the account:", decision?.target.origin);
+    console.warn("sign-in: the return policy keeps this returnURL on the account:", target.href);
     outcome = { kind: "stay" };
   }
   navigate(inAppPath(target.stayPath) ?? "/account/profile", {
