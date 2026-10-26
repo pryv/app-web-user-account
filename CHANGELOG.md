@@ -23,6 +23,13 @@
   request when an account already holds the id (`409 external-id-already-claimed`) says "An
   account is already linked to this record. Sign in with that account instead of creating a new
   one." (`externalId.registerRefusedClaimed`) instead of the server's text.
+- **Registration email slot.** New extension file `src/extensions/registerEmail.ts`:
+  `registerEmailPolicy(search)` returns `{ prefill, required }`, so a deployment that invites
+  people to register can create the account with the email it already knows. `prefill` is the
+  email field's initial value; `required: true` makes the field required, refuses a blank email
+  and never generates the random `@pryv.io` placeholder. The shipped stub returns
+  `{ prefill: null, required: false }`: nothing changes by default. New catalog keys
+  `register.emailHintMandatory`, `register.emailRequired`.
 
 ### Changed
 
