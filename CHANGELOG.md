@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.23.0 - 2026-10-26
 
 ### Added
 
@@ -19,8 +19,14 @@
   "Create account" from `/auth` links the new account at creation: the register page reads the id
   again from the poll and sends it in the create-account body; when the server could not link it
   (`externalIdLinked: false`), the consent step says so. The blinded value is never rendered,
-  never in a URL, never in browser storage. New catalog keys under `externalId.*`. Needs a core
-  that supports external ids.
+  never in a URL, never in browser storage. New catalog keys under `externalId.*`. Needs
+  open-pryv.io 2.0.0-rc.58 or later; with an older core nothing changes (its requests carry no
+  external id).
+
+### Dependencies
+
+- vite 8.3.5, source-map-js 1.2.2, vitest and @vitest/coverage-v8 4.1.12 (development tooling
+  advisories; nothing shipped changes).
 
 ## 0.22.0 - 2026-10-20
 
