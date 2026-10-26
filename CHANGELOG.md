@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.24.0 - 2026-10-26
 
 ### Added
 
@@ -18,7 +18,7 @@
   No link dialog, no `externalIdDeclined`, and the credential is always posted inline (never the
   page-made hand-off shape). The blinded value is still never rendered, stored, or put in a URL.
   New catalog keys `externalId.switchNotice`, `otherAccountNotice`, `otherAccountNoticeUnnamed`,
-  `notHolder`, `refusalTooManyAttempts`. Needs a core that accepts forced mode; on an older one
+  `notHolder`, `refusalTooManyAttempts`. Needs open-pryv.io 2.0.0-rc.59 or later; on an older one
   forced requests are refused at creation and nothing reaches this page. Registering from such a
   request when an account already holds the id (`409 external-id-already-claimed`) says "An
   account is already linked to this record. Sign in with that account instead of creating a new
