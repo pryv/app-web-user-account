@@ -115,6 +115,8 @@
     "usernameLabel": "Username",
     "emailLabel": "Email",
     "emailHint": "Optional, but required to reset your password.",
+    "emailHintMandatory": "Required. Also used to reset your password.",
+    "emailRequired": "Please enter your email to create your account.",
     "hostingLabel": "Hosting",
     "hostingPlaceholder": "Choose where your data is hosted",
     "hostingRequired": "Please choose a hosting to create your account.",
