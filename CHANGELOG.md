@@ -19,7 +19,10 @@
   page-made hand-off shape). The blinded value is still never rendered, stored, or put in a URL.
   New catalog keys `externalId.switchNotice`, `otherAccountNotice`, `otherAccountNoticeUnnamed`,
   `notHolder`, `refusalTooManyAttempts`. Needs a core that accepts forced mode; on an older one
-  forced requests are refused at creation and nothing reaches this page.
+  forced requests are refused at creation and nothing reaches this page. Registering from such a
+  request when an account already holds the id (`409 external-id-already-claimed`) says "An
+  account is already linked to this record. Sign in with that account instead of creating a new
+  one." (`externalId.registerRefusedClaimed`) instead of the server's text.
 
 ### Changed
 
