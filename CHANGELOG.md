@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Registration email slot.** New extension file `src/extensions/registerEmail.ts`:
+  `registerEmailPolicy(search)` returns `{ prefill, required }`, so a deployment that invites
+  people to register can create the account with the email it already knows. `prefill` is the
+  email field's initial value; `required: true` makes the field required, refuses a blank email
+  and never generates the random `@pryv.io` placeholder. The shipped stub returns
+  `{ prefill: null, required: false }`: nothing changes by default. New catalog keys
+  `register.emailHintMandatory`, `register.emailRequired`.
+
+### Security
+
+- **`returnURL` after a sign-in follows the return policy.** A completed sign-in (password,
+  second factor, third-party provider, fresh registration, and the resume after the sign-in
+  gate's page) used to send the browser to any http(s) `returnURL`, so an operator with
+  `returnPolicy.otherOrigins` set to `"confirm"` or `"stay"` still had an open redirect at
+  `/signin?returnURL=…`. It now takes the same decision as the other hand-offs: this app's origin
+  and `trustedOrigins` are followed; any other origin lands on the account profile with a
+  "Return to {host}" link the user clicks (`confirm`) or with a notice (`stay`). Without a
+  policy, nothing changes. The policy does not cover an access request's own `returnURL` on
+  `/auth`: that is the requesting app's redirect, answered on the consent screen. The
+  "Return to {host}" link (here and on the hand-off pages) now carries `rel="noreferrer"`, so the
+  other origin is not told which account page the user came from. New catalog key
+  `signin.returnNotAllowed`.
+
 ## 0.24.0 - 2026-10-26
 
 ### Added
@@ -23,13 +50,6 @@
   request when an account already holds the id (`409 external-id-already-claimed`) says "An
   account is already linked to this record. Sign in with that account instead of creating a new
   one." (`externalId.registerRefusedClaimed`) instead of the server's text.
-- **Registration email slot.** New extension file `src/extensions/registerEmail.ts`:
-  `registerEmailPolicy(search)` returns `{ prefill, required }`, so a deployment that invites
-  people to register can create the account with the email it already knows. `prefill` is the
-  email field's initial value; `required: true` makes the field required, refuses a blank email
-  and never generates the random `@pryv.io` placeholder. The shipped stub returns
-  `{ prefill: null, required: false }`: nothing changes by default. New catalog keys
-  `register.emailHintMandatory`, `register.emailRequired`.
 
 ### Changed
 
@@ -38,21 +58,6 @@
   namespace gets the sign-in form first (with "Continue as X instead" below it), one holding an
   id there gets the "Welcome back" card with the switch hint above instead of "Sign in with that
   account.".
-
-### Security
-
-- **`returnURL` after a sign-in follows the return policy.** A completed sign-in (password,
-  second factor, third-party provider, fresh registration, and the resume after the sign-in
-  gate's page) used to send the browser to any http(s) `returnURL`, so an operator with
-  `returnPolicy.otherOrigins` set to `"confirm"` or `"stay"` still had an open redirect at
-  `/signin?returnURL=…`. It now takes the same decision as the other hand-offs: this app's origin
-  and `trustedOrigins` are followed; any other origin lands on the account profile with a
-  "Return to {host}" link the user clicks (`confirm`) or with a notice (`stay`). Without a
-  policy, nothing changes. The policy does not cover an access request's own `returnURL` on
-  `/auth`: that is the requesting app's redirect, answered on the consent screen. The
-  "Return to {host}" link (here and on the hand-off pages) now carries `rel="noreferrer"`, so the
-  other origin is not told which account page the user came from. New catalog key
-  `signin.returnNotAllowed`.
 
 ## 0.23.0 - 2026-10-26
 
