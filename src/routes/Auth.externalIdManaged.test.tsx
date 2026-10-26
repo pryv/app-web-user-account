@@ -37,7 +37,10 @@ const PAT = "delegate-pat-secret";
 const BLINDED = "blinded-managed-secret-value";
 
 vi.mock("../components/consent/ConsentSignIn", () => ({
-  ConsentSignIn: ({ onSignedIn }: { onSignedIn: (s: unknown) => void }) => (
+  ConsentSignIn: ({ onSignedIn, externalError, notice }: { onSignedIn: (s: unknown) => void; externalError?: string | null; notice?: unknown }) => (
+    <>
+    {externalError != null && <p>{externalError}</p>}
+    {notice as never}
     <button
       type="button"
       onClick={() =>
@@ -56,6 +59,7 @@ vi.mock("../components/consent/ConsentSignIn", () => ({
     >
       sign-in-stub
     </button>
+    </>
   ),
 }));
 
@@ -126,6 +130,32 @@ describe("[AXI9] /auth with an external id, granted on a managed account", () =>
     expect(screen.queryByTestId("external-id-dialog")).toBeNull();
     // No claim, with either token.
     expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("account/external-ids"))).toBe(false);
+    expect(document.body.innerHTML).not.toContain(BLINDED);
+  });
+
+  it("[AXI9b] forced, refused for the managed account (not-holder): the notice names that account, not the signed-in one", async () => {
+    flow.updateAccessState.mockResolvedValue({ status: 400, errorId: "external-id-mismatch", reason: "not-holder" });
+    flow.loadAccessState.mockResolvedValue({
+      status: "NEED_SIGNIN",
+      requestingAppId: "kid-app",
+      requestedPermissions: PERMS,
+      actAs: "kid-a",
+      serviceInfo: { api: "https://{username}.core.test/", register: REGISTER },
+      externalId: { namespace: "clinic-a", label: "Clinic A", blindedValue: BLINDED, mode: "forced" },
+    });
+    render(
+      <MemoryRouter initialEntries={["/auth?poll=" + encodeURIComponent(POLL)]}>
+        <SessionProvider>
+          <Auth />
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+    (await screen.findByText("sign-in-stub")).click();
+    (await screen.findByRole("button", { name: /continue for kid-a/i })).click();
+    (await screen.findByRole("button", { name: /accept/i })).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(await screen.findByText("The account kid-a is not the one linked to Clinic A. Nothing was granted.")).toBeTruthy();
+    expect(screen.queryByText(/The account parent is not/)).toBeNull();
     expect(document.body.innerHTML).not.toContain(BLINDED);
   });
 });

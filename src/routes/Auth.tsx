@@ -1481,6 +1481,8 @@ function AuthFlow({
         if (refusal.errorId === EXTERNAL_ID_MISMATCH) {
           // Forced mode: not the account linked to the id. Back to the
           // sign-in form, the stored session kept as it is.
+          // On a managed grant `username` is already the controlled account
+          // (set when the target was chosen), so the notice names it.
           noteMismatch(refusal, username);
           dropSignIn();
         } else {
