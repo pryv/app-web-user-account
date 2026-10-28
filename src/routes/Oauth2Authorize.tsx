@@ -16,6 +16,7 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  identityNoticeKey,
   type OAuthClientDisplay,
   type OAuthOffer,
   type OAuthState,
@@ -250,6 +251,9 @@ export default function Oauth2Authorize() {
             <>
               {title && <p className="mb-1 text-lg font-medium">{title}</p>}
               {description && <p className="mb-2 text-sm text-muted">{description}</p>}
+              {identityNoticeKey(offer) && (
+                <p id="oauthIdentityNotice" className="mb-2 text-sm">{t(identityNoticeKey(offer) as string)}</p>
+              )}
             </>
           }
           entries={entries}

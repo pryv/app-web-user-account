@@ -46,6 +46,18 @@ export interface OAuthOffer {
   title: LocalizableText | null;
   description: LocalizableText | null;
   consent: LocalizableText | null;
+  /**
+   * Offers by reference only (clients registered without an app account):
+   * true when the app asked for a pseudonym, false when it will see the
+   * username; null for state-carried offers, which never say.
+   */
+  randomAlias: boolean | null;
+}
+
+/** The locale key telling the user which id the app will see, or null. */
+export function identityNoticeKey(offer: OAuthOffer | null): string | null {
+  if (offer == null || offer.randomAlias == null) return null;
+  return offer.randomAlias ? "oauth.identityPseudonym" : "oauth.identityUsername";
 }
 
 /** Display fields decoded from the signed state payload. */
@@ -182,6 +194,7 @@ function parseOffer(v: unknown): OAuthOffer | null {
     title: asTextMap(o.title),
     description: asTextMap(o.description),
     consent: asTextMap(o.consent),
+    randomAlias: typeof o.randomAlias === "boolean" ? o.randomAlias : null,
   };
 }
 

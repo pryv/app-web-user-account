@@ -473,6 +473,8 @@
     "scopeWrite": "Create and modify data on your behalf",
     "scopeManage": "Manage access tokens and account settings",
     "errorNoOffer": "This authorization request carries no consent offer — restart the flow from the app.",
+    "identityPseudonym": "This app will know you by a pseudonym, not by your username.",
+    "identityUsername": "This app will see your username.",
     "errorKeepOne": "Keep at least one permission ticked, or use Reject.",
     "untickHintRequired": "Untick to deny specific permissions; the app will receive only the permissions you keep ticked. Entries marked as required cannot be unticked — if you do not agree with them, use Reject.",
     "allOrNothingHint": "This request is all-or-nothing: Accept grants every permission listed above, Reject grants none.",

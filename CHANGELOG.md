@@ -7,7 +7,8 @@
 - **OAuth consent for clients registered without an app account.** When the signed state carries
   the offer by reference (`offerRef`) instead of the offer itself, the consent page reads it from
   the core's `POST /oauth2/authorize/offer` and names the app from the client's own registration
-  when the app catalog does not know it. A state with neither is still refused.
+  when the app catalog does not know it. A state with neither is still refused. Such a consent
+  screen also says which id the app will see: a pseudonym, or the user's username.
 
 ## 0.25.0 - 2026-10-27
 

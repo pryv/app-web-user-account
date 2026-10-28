@@ -6,6 +6,7 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  identityNoticeKey,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -345,5 +346,17 @@ describe("[OAFR] offer by reference", () => {
   it("[OAFR4] refuses an answer without a usable offer", async () => {
     mockFetchOnce(200, { offer: { permissions: [] } });
     await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);
+  });
+});
+
+describe("[OAID] which id the app will see", () => {
+  it("[OAID1] fetched offers say pseudonym or username; state-carried offers say nothing", async () => {
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], randomAlias: true } });
+    const pseudo = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(identityNoticeKey(pseudo.offer)).toBe("oauth.identityPseudonym");
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], randomAlias: false } });
+    const plain = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(identityNoticeKey(plain.offer)).toBe("oauth.identityUsername");
+    expect(identityNoticeKey(parseOAuthState(makeSignedState()).offer)).toBeNull();
   });
 });
