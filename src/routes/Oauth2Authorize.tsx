@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useLocation } from "react-router-dom";
@@ -15,6 +15,9 @@ import {
   assertTrustedPryvApi,
   oauth2Accept,
   oauth2Refuse,
+  oauth2FetchOffer,
+  type OAuthClientDisplay,
+  type OAuthOffer,
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
@@ -58,7 +61,9 @@ function initFromQuery(search: string): InitResult {
       requireAllowlist: import.meta.env.PROD,
     });
     const oauthState = parseOAuthState(signedState);
-    if (oauthState.offer == null) {
+    // A client registered without an app account sends the offer by
+    // reference: it is fetched once the page is up.
+    if (oauthState.offer == null && oauthState.offerRef == null) {
       return {
         oauthState: null,
         signedState,
@@ -100,6 +105,22 @@ export default function Oauth2Authorize() {
   const [busy, setBusy] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Offer by reference: fetched from the core with the signed state.
+  const [fetched, setFetched] = useState<{ offer: OAuthOffer; client: OAuthClientDisplay } | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const needsFetch = oauthState != null && oauthState.offer == null && oauthState.offerRef != null;
+  useEffect(() => {
+    if (!needsFetch) return;
+    let cancelled = false;
+    oauth2FetchOffer({ pryvApi, signedState })
+      .then((r) => { if (!cancelled) setFetched(r); })
+      .catch((err: unknown) => {
+        if (!cancelled) setFetchError(err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"));
+      });
+    return () => { cancelled = true; };
+  }, [needsFetch, pryvApi, signedState]);
+  const offer: OAuthOffer | null = oauthState?.offer ?? fetched?.offer ?? null;
+
   // Session captured by the shared sign-in (+ MFA) — gates consent.
   const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
@@ -108,29 +129,42 @@ export default function Oauth2Authorize() {
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
   // The operator's catalog is the only source of a display name for the app;
   // the client id is shown when the catalog does not know it.
-  const requestingApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  const catalogApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  // A client with no catalog entry is named by its own registration.
+  const requestingApp = catalogApp ?? (fetched?.client.name
+    ? {
+        name: fetched.client.name,
+        icon: fetched.client.logoUri ? { type: "url" as const, value: fetched.client.logoUri } : undefined,
+        description: undefined,
+      }
+    : null);
   const labelFor = useStreamLabels(platformUrl);
 
   const entries = useMemo(
     () =>
-      oauthState?.offer
-        ? consentEntries(oauthState.offer.permissions, {
-            allowUserChoice: oauthState.offer.allowUserChoice,
+      offer
+        ? consentEntries(offer.permissions, {
+            allowUserChoice: offer.allowUserChoice,
             labelFor,
           })
         : [],
-    [oauthState, labelFor],
+    [offer, labelFor],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
-  // the user has to choose deliberately.
+  // the user has to choose deliberately. Reset when a fetched offer arrives.
   const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() => initialFlags(entries));
+  const [flagsOffer, setFlagsOffer] = useState<OAuthOffer | null>(offer);
+  if (flagsOffer !== offer) {
+    setFlagsOffer(offer);
+    setGrantedFlags(initialFlags(entries));
+  }
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
   }
 
   async function accept() {
-    if (!oauthState?.offer || !personalToken) return;
+    if (!offer || !personalToken) return;
     setBusy("accept");
     setError(null);
     try {
@@ -173,13 +207,21 @@ export default function Oauth2Authorize() {
     }
   }
 
-  if (initError || !oauthState) {
+  if (initError || fetchError || !oauthState) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("oauth.invalidTitle")}</h1>
         <div id="oauthInitError">
-          <Alert>{initError ?? t("oauth.invalidRequest")}</Alert>
+          <Alert>{initError ?? fetchError ?? t("oauth.invalidRequest")}</Alert>
         </div>
+      </Card>
+    );
+  }
+
+  if (personalToken && !offer) {
+    return (
+      <Card>
+        <p id="oauthLoadingOffer">{t("cmc.loadingOffer")}</p>
       </Card>
     );
   }
@@ -188,8 +230,7 @@ export default function Oauth2Authorize() {
   // granular permission set (full lexicon, incl. feature permissions);
   // when the offer allows user choice, unticking downgrades: the app
   // receives only the ticked subset.
-  if (personalToken && oauthState.offer) {
-    const offer = oauthState.offer;
+  if (personalToken && offer) {
     // The offer's texts in the UI language when the app supplied it
     // (`pickText` falls back from a regional variant to its base language).
     const lang = i18nInstance.language || "en";

@@ -15,6 +15,9 @@
  *   2. POST {pryvApi}/oauth2/authorize/refuse — with the signed state only;
  *      returns the redirect URL carrying `error=access_denied`. No user
  *      session needed — refuse works pre-login (Cancel on the sign-in form).
+ *   3. POST {pryvApi}/oauth2/authorize/offer — only when the state carries the
+ *      offer by reference (`offerRef`, clients registered without an app
+ *      account): returns the offer and the client's display fields.
  *
  * Sign-in itself goes through lib-js `Service.login` (see the route
  * component) — the service-info URL is derived from `pryvApi` below.
@@ -51,6 +54,8 @@ export interface OAuthState {
   redirectUri: string;
   scope: string[];
   offer: OAuthOffer | null;
+  /** Set when the offer is not in the state and must be fetched (see oauth2FetchOffer). */
+  offerRef: { kind: string; digest: string } | null;
   userIdHint: string | null;
   iat: number | null;
   exp: number | null;
@@ -106,9 +111,55 @@ export function parseOAuthState(signedState: string): OAuthState {
     redirectUri: typeof p.redirectUri === "string" ? p.redirectUri : "",
     scope: Array.isArray(p.scope) ? p.scope.filter((s): s is string => typeof s === "string") : [],
     offer: parseOffer(p.offer),
+    offerRef: parseOfferRef(p.offerRef),
     userIdHint: typeof p.userIdHint === "string" ? p.userIdHint : null,
     iat: typeof p.iat === "number" ? p.iat : null,
     exp: typeof p.exp === "number" ? p.exp : null,
+  };
+}
+
+function parseOfferRef(v: unknown): OAuthState["offerRef"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.kind !== "string" || typeof o.digest !== "string") return null;
+  return { kind: o.kind, digest: o.digest };
+}
+
+/** Display fields of a client registered without an app account. */
+export interface OAuthClientDisplay {
+  clientId: string;
+  name: string | null;
+  logoUri: string | null;
+  clientUri: string | null;
+  policyUri: string | null;
+  tosUri: string | null;
+}
+
+/**
+ * POST `{pryvApi}/oauth2/authorize/offer` with the signed state: the server
+ * re-derives the offer the state points at and returns it with the client's
+ * display fields. Display-only, like a state-carried offer: /accept
+ * re-derives it again and checks the granted subset.
+ */
+export async function oauth2FetchOffer(opts: {
+  pryvApi: string;
+  signedState: string;
+}): Promise<{ offer: OAuthOffer; client: OAuthClientDisplay }> {
+  const json = await postOAuthJson(opts.pryvApi, "/oauth2/authorize/offer", { state: opts.signedState });
+  const offer = parseOffer(json.offer);
+  if (offer == null) throw new Error("oauth2: the server returned no consent offer");
+  const c = (typeof json.client === "object" && json.client != null ? json.client : {}) as Record<string, unknown>;
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  return {
+    offer,
+    client: {
+      clientId: str(c.clientId) ?? "",
+      name: str(c.clientName),
+      logoUri: str(c.logoUri),
+      clientUri: str(c.clientUri),
+      policyUri: str(c.policyUri),
+      tosUri: str(c.tosUri),
+    },
   };
 }
 
@@ -286,6 +337,18 @@ async function postOAuth(
   path: string,
   body: Record<string, unknown>,
 ): Promise<string> {
+  const json = await postOAuthJson(pryvApi, path, body);
+  if (typeof json.redirectTo !== "string" || json.redirectTo.length === 0) {
+    throw new Error("oauth2: server response missing redirectTo");
+  }
+  return json.redirectTo;
+}
+
+async function postOAuthJson(
+  pryvApi: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   if (typeof pryvApi !== "string" || pryvApi.length === 0) {
     throw new Error("oauth2: pryvApi is required");
   }
@@ -298,10 +361,9 @@ async function postOAuth(
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => ({}))) as {
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
     error?: string;
     error_description?: string;
-    redirectTo?: string;
   };
   if (!res.ok) {
     const err: OAuthFlowError = new Error(
@@ -311,8 +373,5 @@ async function postOAuth(
     err.status = res.status;
     throw err;
   }
-  if (typeof json.redirectTo !== "string" || json.redirectTo.length === 0) {
-    throw new Error("oauth2: server response missing redirectTo");
-  }
-  return json.redirectTo;
+  return json;
 }

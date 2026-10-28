@@ -5,6 +5,7 @@ import {
   assertTrustedPryvApi,
   oauth2Accept,
   oauth2Refuse,
+  oauth2FetchOffer,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -309,5 +310,40 @@ describe("oauth2Refuse", () => {
       /signedState/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("[OAFR] offer by reference", () => {
+  it("[OAFR1] parses offerRef and leaves offer null when the state carries none", () => {
+    const st = parseOAuthState(makeSignedState({ offer: undefined, offerRef: { kind: "synthesised", digest: "d1" } }));
+    expect(st.offer).toBeNull();
+    expect(st.offerRef).toEqual({ kind: "synthesised", digest: "d1" });
+    expect(parseOAuthState(makeSignedState()).offerRef).toBeNull();
+  });
+
+  it("[OAFR2] fetches the offer and the client display from /oauth2/authorize/offer", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      client: { clientId: "reg-app", clientName: "Registry app", logoUri: "https://x.example/l.png" },
+      offer: { permissions: [{ streamId: "a", level: "read" }], allowUserChoice: false },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com/", signedState: "s.t" });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://core.example.com/oauth2/authorize/offer");
+    expect(JSON.parse(init.body)).toEqual({ state: "s.t" });
+    expect(r.offer.permissions).toEqual([{ streamId: "a", level: "read" }]);
+    expect(r.client.name).toBe("Registry app");
+    expect(r.client.policyUri).toBeNull();
+  });
+
+  it("[OAFR3] surfaces the server's refusal (e.g. the request changed)", async () => {
+    mockFetchOnce(400, { error: "invalid_request", error_description: "the consent request changed" });
+    const err = (await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" }).catch((e) => e)) as OAuthFlowError;
+    expect(err.message).toMatch(/changed/);
+    expect(err.oauthError).toBe("invalid_request");
+  });
+
+  it("[OAFR4] refuses an answer without a usable offer", async () => {
+    mockFetchOnce(200, { offer: { permissions: [] } });
+    await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);
   });
 });
