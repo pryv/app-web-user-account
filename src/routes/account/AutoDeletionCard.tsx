@@ -186,7 +186,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
 
   function renderForm(s: AutoDeletionState): ReactNode {
     const presetKnown = s.effective.source === "operator";
-    const options: Array<{ value: AutoDeletionChoiceMode; label: string; hint?: string }> = [];
+    const options: Array<{ value: AutoDeletionChoiceMode; label: string; hint?: string; stale?: boolean }> = [];
     options.push({
       value: "default",
       label: t("data.autoDeletion.optionDefault"),
@@ -209,6 +209,18 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     if (custom && feat.triggers.includes("inactivity")) {
       options.push({ value: "inactivity", label: t("data.autoDeletion.optionInactivity") });
     }
+    // The holder's own date or period that this platform no longer offers stays
+    // shown (and selected), read-only: they can still move to another option.
+    const stored = s.setting?.mode;
+    if ((stored === "date" || stored === "inactivity") && !options.some((o) => o.value === stored)) {
+      options.push({
+        value: stored,
+        label: t(stored === "date" ? "data.autoDeletion.optionDate" : "data.autoDeletion.optionInactivity"),
+        hint: t("data.autoDeletion.optionNoLongerOffered"),
+        stale: true,
+      });
+    }
+    const readOnly = options.some((o) => o.value === mode && o.stale === true);
 
     const note = !deleteAllowed
       ? t("data.autoDeletion.deleteNotAllowed")
@@ -271,7 +283,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
             min={minDay}
             value={day}
             onChange={(e) => setDay(e.target.value)}
-            disabled={busy}
+            disabled={busy || readOnly}
             required
           />
         )}
@@ -283,7 +295,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
               label={t("data.autoDeletion.periodLabel")}
               value={period}
               onChange={setPeriod}
-              disabled={busy}
+              disabled={busy || readOnly}
               options={[
                 ...presets.map((p) => ({
                   value: String(p.days),
@@ -304,7 +316,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
                 step={1}
                 value={customDays}
                 onChange={(e) => setCustomDays(e.target.value)}
-                disabled={busy}
+                disabled={busy || readOnly}
                 required
               />
             )}
@@ -443,6 +455,14 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
   }
 }
 
+/** Why a schedule is on hold, for the reasons (and deletion guards) the platform names. */
+function blockedKey(blocked: { reason: string; guard?: string }): string {
+  if (blocked.reason === "inactivity-unavailable") return "data.autoDeletion.blockedInactivityUnavailable";
+  if (blocked.reason === "self-deletion-disabled") return "data.autoDeletion.blockedSelfDeletion";
+  if (blocked.reason === "deletion-guard" && blocked.guard === "delegation") return "data.autoDeletion.blockedDelegation";
+  return "data.autoDeletion.blocked";
+}
+
 /** The schedule in plain words. */
 function Status({ state }: { state: AutoDeletionState }) {
   const { t } = useTranslation();
@@ -481,7 +501,7 @@ function Status({ state }: { state: AutoDeletionState }) {
   const pausedNoEmail = state.blocked?.reason === "no-email";
   const warnings: string[] = [];
   if (pausedNoEmail) warnings.push(t("data.autoDeletion.pausedNoEmail"));
-  else if (state.blocked != null) warnings.push(t("data.autoDeletion.blocked", { reason: state.blocked.reason }));
+  else if (state.blocked != null) warnings.push(t(blockedKey(state.blocked), { reason: state.blocked.reason }));
   if (!pausedNoEmail && state.mail === "no-email") warnings.push(t("data.autoDeletion.mailNoEmail"));
   if (state.mail === "not-configured") warnings.push(t("data.autoDeletion.mailNotConfigured"));
 

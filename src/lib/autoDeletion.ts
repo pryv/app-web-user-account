@@ -60,7 +60,7 @@ export interface AutoDeletionState {
   deadlineReason?: "date" | "inactivity" | "minimum-notice" | null;
   nextReminderAt?: number | null;
   remindersSent?: unknown;
-  blocked?: { reason: string; at?: number } | null;
+  blocked?: { reason: string; at?: number; guard?: string } | null;
   mail?: "available" | "no-email" | "not-configured";
   bounds?: AutoDeletionBounds | null;
   userOverride?: boolean;

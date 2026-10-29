@@ -358,4 +358,37 @@ describe("[ADCD] automatic deletion card", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(sets()).toEqual([]);
   });
+
+  it("[ADC18] a stored period the platform no longer offers stays selected, read-only, with the reason; another option can be saved", async () => {
+    state.serviceInfo = { features: { autoDeletion: { ...FEATURE, triggers: ["date"] } } };
+    state.autoDeletion = {
+      ...NONE,
+      effective: { source: "user", mode: "inactivity", inactivityDays: 365, action: "delete" },
+      setting: { mode: "inactivity", inactivityDays: 365, action: "delete", updatedAt: NOW },
+      blocked: { reason: "inactivity-unavailable", at: NOW },
+    };
+    renderCard();
+    const stored = await screen.findByRole("radio", { name: /After a period without use/ });
+    expect((stored as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText(/no longer offered by this platform/)).toBeTruthy();
+    expect((screen.getByLabelText("Period without use") as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByText(/does not record account use at the moment/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: /Never delete/ }));
+    save();
+    await confirmDialog();
+    await waitFor(() => expect(sets()).toEqual([{ mode: "never" }]));
+  });
+
+  it("[ADC19] a deletion on hold says why, by reason and guard", async () => {
+    state.autoDeletion = {
+      ...NONE,
+      effective: { source: "user", mode: "date", date: NOW + 30 * DAY, action: "delete" },
+      setting: { mode: "date", date: NOW + 30 * DAY, action: "delete", updatedAt: NOW },
+      deadline: NOW - DAY,
+      blocked: { reason: "deletion-guard", guard: "delegation", at: NOW },
+    };
+    renderCard();
+    expect(await screen.findByText(/manages another account that would be left without any way to sign in/)).toBeTruthy();
+  });
 });
