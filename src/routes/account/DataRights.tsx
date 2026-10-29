@@ -9,6 +9,10 @@ import { signinPath } from "../../lib/sessionPaths";
 import { storedServiceInfoUrl } from "../../lib/sessionStore";
 import { parseAuthParams } from "../../lib/authParams";
 import { accountDeletionUrl } from "../../lib/accountDeletion";
+import AutoDeletionCard from "./AutoDeletionCard";
+
+/** Anchor of the export card, the target of "download your data first". */
+const EXPORT_ANCHOR_ID = "data-export";
 
 /**
  * Data rights (GDPR / Art.17).
@@ -25,6 +29,9 @@ import { accountDeletionUrl } from "../../lib/accountDeletion";
  * every operator fork to carry an extra repo. No token crosses the URL;
  * the subject authenticates in the backup app. Operators point at their own
  * deploy via `VITE_BACKUP_WEBAPP_URL`.
+ *
+ * Automatic deletion (a date, or a period without use): `AutoDeletionCard`,
+ * shown when the platform offers it.
  */
 const BACKUP_WEBAPP_URL =
   import.meta.env.VITE_BACKUP_WEBAPP_URL ||
@@ -89,23 +96,25 @@ export default function DataRights() {
 
   return (
     <section className="space-y-4">
-      <Card>
-        <div className="mb-1 text-xs uppercase tracking-wide text-muted">
-          {t("data.exportTitle")}
-        </div>
-        <p className="mb-3 text-sm text-muted">
-          {t("data.exportIntro")}
-        </p>
-        <a
-          href={exportUrl()}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Download size={14} aria-hidden />
-          {t("data.startExport")}
-        </a>
-      </Card>
+      <div id={EXPORT_ANCHOR_ID} className="scroll-mt-4">
+        <Card>
+          <div className="mb-1 text-xs uppercase tracking-wide text-muted">
+            {t("data.exportTitle")}
+          </div>
+          <p className="mb-3 text-sm text-muted">
+            {t("data.exportIntro")}
+          </p>
+          <a
+            href={exportUrl()}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Download size={14} aria-hidden />
+            {t("data.startExport")}
+          </a>
+        </Card>
+      </div>
       <Card>
         <div className="mb-1 text-xs uppercase tracking-wide text-danger">
           {t("data.deleteTitle")}
@@ -133,6 +142,7 @@ export default function DataRights() {
           {deleting ? t("common.deleting") : t("data.deleteButton")}
         </button>
       </Card>
+      <AutoDeletionCard exportAnchorId={EXPORT_ANCHOR_ID} />
     </section>
   );
 }
