@@ -39,7 +39,7 @@ vi.mock("../lib/returnTarget", async (importOriginal) => ({
 
 import Oauth2Authorize from "./Oauth2Authorize";
 import { _setDeployedSettingsForTest } from "../lib/deployedSettings";
-import { ACCOUNT_APP_ID } from "../lib/accountApp";
+import { ACCOUNT_APP_ID, ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
 
 const CORE = "https://core.other-tld.net";
 const ENDPOINT = CORE + "/alice/";
@@ -124,11 +124,12 @@ afterEach(() => {
 });
 
 describe("[OASS] Oauth2Authorize personal session", () => {
-  it("[OAS1] signs in with this app's appId, never the client id", async () => {
+  it("[OAS1] signs in with the consent's own appId: not the client id, not the account app's", async () => {
     mockFetch(coreRoutes);
     renderState(CARRIED_STATE);
     await signIn();
-    expect(loginMock.login).toHaveBeenCalledWith("alice", "pw", ACCOUNT_APP_ID);
+    expect(loginMock.login).toHaveBeenCalledWith("alice", "pw", ACCOUNT_APP_CONSENT_ID);
+    expect(ACCOUNT_APP_CONSENT_ID).not.toBe(ACCOUNT_APP_ID);
     expect(loginMock.login.mock.calls[0][2]).not.toBe("third-party-client");
   });
 
@@ -157,7 +158,8 @@ describe("[OASS] Oauth2Authorize personal session", () => {
   });
 
   it("[OAS4] leaves alone a session this app keeps open in this browser", async () => {
-    // The core handed back the live session of the same appId.
+    // Same-browser guard: whatever the appId, the core handed back a session
+    // this app has stored, so it is not the consent's to end.
     localStorage.setItem("pryv.session.apiEndpoint", `https://${TOKEN}@core.other-tld.net/alice/`);
     localStorage.setItem("pryv.session.serviceInfoUrl", CORE + "/reg/service/info");
     const fetchMock = mockFetch(coreRoutes);
@@ -178,6 +180,26 @@ describe("[OASS] Oauth2Authorize personal session", () => {
     await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledTimes(1));
     expect(logoutCalls(fetchMock)).toHaveLength(1);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("[OAS7] an Accept refused for a session that ended elsewhere asks for a new sign-in", async () => {
+    const fetchMock = mockFetch((url) =>
+      url.endsWith("/oauth2/authorize/accept")
+        ? { status: 401, body: { error: "invalid_request", error_description: "username + userToken did not resolve to a valid user session" } }
+        : coreRoutes(url),
+    );
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await screen.findByText(/sign-in for this authorization has ended/);
+    expect(document.getElementById("oauthAccept")).toBeNull();
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeTruthy();
+    expect(screen.queryByText(/did not resolve/)).toBeNull();
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+    expect(logoutCalls(fetchMock)).toHaveLength(0);
+    // Signing in again opens a fresh session and the consent goes through.
+    await signIn();
+    expect(loginMock.login).toHaveBeenCalledTimes(2);
   });
 
   it("[OAS6] Cancel before sign-in has no session to end", async () => {

@@ -21,11 +21,15 @@
 
 - **The OAuth consent signs in as this app.** The consent page signed in with the requesting
   client's id as appId, so the account kept a personal access named after a third-party client.
-  It now uses this app's appId, the same as the `/auth` consent.
+  It now uses an appId of its own, `pryv-app-web-user-account-consent`, so the personal access
+  it leaves is named after this app's consent.
 - **The OAuth consent's session ends with the consent.** Once Accept or Reject is answered, the
   page ends the personal session it opened (`auth/logout`), so it no longer outlives the consent.
-  A session this app keeps open in the same browser (handed back by the core for the same appId)
-  is left alone. Ending it is best effort and time-bounded: it never holds back the redirect.
+  The consent's own appId means the core can only hand it another consent's session, never one
+  the account app uses on another device; a session this app keeps open in the same browser is
+  left alone too. Ending it is best effort and time-bounded: it never holds back the redirect.
+  When two consents on two devices shared a session and the other one ended it first, Accept
+  now asks for a new sign-in with a clear message instead of showing the core's raw refusal.
 
 ## 0.25.0 - 2026-10-27
 

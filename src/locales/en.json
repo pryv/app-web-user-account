@@ -469,6 +469,7 @@
     "untickHint": "Untick to deny specific permissions; the app will receive only the permissions you keep ticked.",
     "appPrompt": "<strong>{{clientId}}</strong> wants to access your {{account}}.",
     "errorAcceptFailed": "Failed to accept authorization.",
+    "errorSessionEnded": "Your sign-in for this authorization has ended (an authorization finished on another device at the same time can cause this). Please sign in again to continue.",
     "errorRefuseFailed": "Failed to refuse authorization.",
     "scopeRead": "Read your data",
     "scopeWrite": "Create and modify data on your behalf",

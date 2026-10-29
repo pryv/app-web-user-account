@@ -8,7 +8,7 @@ import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
 import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
-import { ACCOUNT_APP_ID } from "../lib/accountApp";
+import { ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
 import { storedSessionTokens } from "../lib/sessionStore";
 import { streamNamesResolver, NO_STREAM_LABELS, type StreamLabelResolver } from "../lib/streamLabels";
 import { assertHttpUrl } from "../lib/safeRedirect";
@@ -23,6 +23,7 @@ import {
   endConsentSession,
   identityNoticeKey,
   type OAuthClientDisplay,
+  type OAuthFlowError,
   type OAuthOffer,
   type OAuthState,
 } from "../lib/oauth2Flow";
@@ -99,9 +100,10 @@ function initFromQuery(search: string): InitResult {
  *
  * Sign-in is always fresh — `userIdHint` only prefills the username; the
  * persisted session is deliberately not reused on this security surface.
- * The sign-in uses this app's own appId (never the client id), and the
- * personal session it opens is ended once Accept or Reject is answered,
- * unless the core handed back a session this app keeps open in this browser.
+ * The sign-in uses this app's consent appId (never the client id, see
+ * `ACCOUNT_APP_CONSENT_ID`), and the personal session it opens is ended once
+ * Accept or Reject is answered, unless the core handed back a session this
+ * app keeps open in this browser.
  */
 export default function Oauth2Authorize() {
   const { t, i18n: i18nInstance } = useTranslation();
@@ -217,7 +219,17 @@ export default function Oauth2Authorize() {
       assertHttpUrl(redirectTo);
       navigateTo(redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
+      if ((err as OAuthFlowError)?.status === 401) {
+        // The session no longer authenticates: most likely a consent on
+        // another device shared it and ended it when it finished. Back to
+        // the sign-in, which opens a fresh one.
+        setPersonalToken(null);
+        setSessionEndpoint(null);
+        setAccountName(() => NO_STREAM_LABELS);
+        setError(t("oauth.errorSessionEnded"));
+      } else {
+        setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
+      }
       setBusy(null);
     }
   }
@@ -320,7 +332,7 @@ export default function Oauth2Authorize() {
   return (
     <ConsentSignIn
       makeService={makeService}
-      appId={ACCOUNT_APP_ID}
+      appId={ACCOUNT_APP_CONSENT_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
