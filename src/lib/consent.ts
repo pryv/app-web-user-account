@@ -67,20 +67,21 @@ export interface ConsentEntry {
  * unticked would show a state the user cannot act on and the server would
  * refuse.
  *
- * `labelFor` (a deployment's stream-label resolver, see `streamLabels.ts`)
- * names a stream before the request's own `name` / `defaultName`; a `null`
- * answer keeps those.
+ * Names, see {@link permissionLabel}: `entryLabel` (labels the offer carries
+ * for its own entries), `labelFor` (a deployment's stream-label resolver, see
+ * `streamLabels.ts`) and `accountName` (the account's own stream names); a
+ * `null` answer from any of them falls through to the next source.
  */
 export function consentEntries(
   permissions: OfferPermission[],
-  opts: { allowUserChoice?: boolean; labelFor?: StreamLabelResolver } = {},
+  opts: { allowUserChoice?: boolean } & LabelSources = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
   return permissions.map((p) => {
     const locked = !allowUserChoice || p.mandatory === true;
     return {
       permission: p,
-      label: permissionLabel(p, opts.labelFor),
+      label: permissionLabel(p, opts),
       locked,
       showRequiredHint: allowUserChoice && p.mandatory === true,
       initiallyTicked: locked || p.optIn !== true,
@@ -157,38 +158,78 @@ const LEVEL_LABEL_KEYS: Record<string, string> = {
   none: "consent.permLevelNone",
 };
 
+/** Where a consent row's name can come from, most specific first. */
+export interface LabelSources {
+  /** A label the offer itself carries for this entry. */
+  entryLabel?: (p: OfferPermission) => string | null;
+  /** The deployment's stream labels. */
+  labelFor?: StreamLabelResolver;
+  /** The name of the stream in the account, when it exists there. */
+  accountName?: StreamLabelResolver;
+}
+
+/** Catalog key of the dedicated wording of each known feature restriction. */
+const FEATURE_LABEL_KEYS: Record<string, string> = {
+  "selfRevoke|forbidden": "consent.featureSelfRevokeForbidden",
+  "webhooks|forbidden": "consent.featureWebhooksForbidden",
+  "secretSharing|forbidden": "consent.featureSecretSharingForbidden",
+};
+
 /**
  * Human label for one granular permission entry. Stream permissions
- * render as "<level verb> “<stream name>”"; known feature permissions
- * get a dedicated wording, unknown ones fall back to `feature: setting`.
+ * render as "<level verb> “<stream name>”", the stream named by the first
+ * source that knows it: the offer's own label for the entry, the deployment's
+ * stream labels, the account's stream name, the request's `name` /
+ * `defaultName`, and last the stream id. The level verb always comes from this
+ * app, never from a label. Known feature permissions get a dedicated wording;
+ * unknown ones use the offer's label, else `feature: setting`.
  */
-export function permissionLabel(p: OfferPermission, labelFor?: StreamLabelResolver): string {
+export function permissionLabel(p: OfferPermission, sources: LabelSources = {}): string {
+  const entryLabel = safeLabel(() => sources.entryLabel?.(p));
   if ("streamId" in p && typeof p.streamId === "string") {
     const levelKey = Object.hasOwn(LEVEL_LABEL_KEYS, p.level) ? LEVEL_LABEL_KEYS[p.level] : null;
     const level = levelKey != null ? i18n.t(levelKey) : p.level;
     if (p.streamId === "*") return i18n.t("consent.permissionOnAllData", { level });
-    const name = resolvedLabel(labelFor, p.streamId) ?? p.name ?? p.defaultName ?? p.streamId;
+    const streamId = p.streamId;
+    const name =
+      entryLabel ??
+      safeLabel(() => sources.labelFor?.(streamId)) ??
+      safeLabel(() => sources.accountName?.(streamId)) ??
+      p.name ??
+      p.defaultName ??
+      streamId;
     return i18n.t("consent.permissionOnStream", { level, name });
   }
   const f = p as { feature: string; setting: string };
-  if (f.feature === "selfRevoke" && f.setting === "forbidden") {
-    return i18n.t("consent.featureSelfRevokeForbidden");
-  }
-  if (f.feature === "webhooks" && f.setting === "forbidden") {
-    return i18n.t("consent.featureWebhooksForbidden");
-  }
-  return `${f.feature}: ${f.setting}`;
+  const key = `${f.feature}|${f.setting}`;
+  if (Object.hasOwn(FEATURE_LABEL_KEYS, key)) return i18n.t(FEATURE_LABEL_KEYS[key]);
+  return entryLabel ?? `${f.feature}: ${f.setting}`;
 }
 
-/** A resolver's label, or null when it has none (or fails: display only, never fatal). */
-function resolvedLabel(labelFor: StreamLabelResolver | undefined, streamId: string): string | null {
-  if (labelFor == null) return null;
+/** A source's label, or null when it has none (or fails: display only, never fatal). */
+function safeLabel(get: () => string | null | undefined): string | null {
   try {
-    const label = labelFor(streamId);
+    const label = get();
     return typeof label === "string" && label !== "" ? label : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * The offer's own label for an entry, in the UI language: `labels` is keyed
+ * by {@link permissionKey}, each value a localized text map.
+ */
+export function offerEntryLabel(
+  labels: Record<string, LocalizableText> | null | undefined,
+  lang: string,
+): (p: OfferPermission) => string | null {
+  return (p) => {
+    if (labels == null) return null;
+    const key = permissionKey(p);
+    if (!Object.hasOwn(labels, key)) return null;
+    return pickText(labels[key], lang) || null;
+  };
 }
 
 /**

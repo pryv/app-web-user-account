@@ -52,6 +52,12 @@ export interface OAuthOffer {
    * username; null for state-carried offers, which never say.
    */
   randomAlias: boolean | null;
+  /**
+   * Display labels the server attached to the offer's entries, keyed by
+   * `permissionKey` (`s|<streamId>|<level>`, `f|<feature>|<setting>`), each a
+   * localized text map. Names streams that may not exist in the account yet.
+   */
+  entryLabels: Record<string, LocalizableText> | null;
 }
 
 /** The locale key telling the user which id the app will see, or null. */
@@ -195,7 +201,16 @@ function parseOffer(v: unknown): OAuthOffer | null {
     description: asTextMap(o.description),
     consent: asTextMap(o.consent),
     randomAlias: typeof o.randomAlias === "boolean" ? o.randomAlias : null,
+    entryLabels: asLabelMap(o.entryLabels),
   };
+}
+
+function asLabelMap(v: unknown): Record<string, LocalizableText> | null {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>)
+    .map(([k, t]) => [k, asTextMap(t)] as const)
+    .filter((e): e is readonly [string, LocalizableText] => e[1] != null);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 function asTextMap(v: unknown): LocalizableText | null {
@@ -338,6 +353,38 @@ export async function oauth2Refuse(opts: {
   signedState: string;
 }): Promise<string> {
   return postOAuth(opts.pryvApi, "/oauth2/authorize/refuse", { state: opts.signedState });
+}
+
+/**
+ * End the personal session the consent page opened for itself
+ * (POST `{endpoint}auth/logout` with its token): once the consent is answered,
+ * the page has no further use for it and it should not outlive the consent.
+ *
+ * Best effort and bounded: it never throws and gives up after `timeoutMs`, so
+ * a failure never holds back the redirect to the app (the session then simply
+ * expires on its own).
+ */
+export async function endConsentSession(opts: {
+  endpoint: string;
+  token: string;
+  timeoutMs?: number;
+}): Promise<boolean> {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = setTimeout(() => controller?.abort(), opts.timeoutMs ?? 3000);
+  try {
+    const url = opts.endpoint.replace(/\/?$/, "/") + "auth/logout";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: opts.token },
+      body: "{}",
+      signal: controller?.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

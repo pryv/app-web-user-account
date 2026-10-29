@@ -50,3 +50,22 @@ async function load(serviceInfoUrl: string): Promise<StreamLabelResolver> {
     return NO_STREAM_LABELS;
   }
 }
+
+/**
+ * A resolver over an account's stream tree (`streams.get` answer): each
+ * stream's own name, children included. Anything malformed is skipped.
+ */
+export function streamNamesResolver(streams: unknown): StreamLabelResolver {
+  const names = new Map<string, string>();
+  const walk = (list: unknown) => {
+    if (!Array.isArray(list)) return;
+    for (const s of list) {
+      if (s == null || typeof s !== "object") continue;
+      const { id, name, children } = s as { id?: unknown; name?: unknown; children?: unknown };
+      if (typeof id === "string" && typeof name === "string" && name !== "") names.set(id, name);
+      walk(children);
+    }
+  };
+  walk(streams);
+  return names.size === 0 ? NO_STREAM_LABELS : (streamId) => names.get(streamId) ?? null;
+}

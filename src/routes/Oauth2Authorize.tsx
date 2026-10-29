@@ -7,8 +7,12 @@ import { Card, Alert } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
-import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
+import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
+import { ACCOUNT_APP_ID } from "../lib/accountApp";
+import { storedSessionTokens } from "../lib/sessionStore";
+import { streamNamesResolver, NO_STREAM_LABELS, type StreamLabelResolver } from "../lib/streamLabels";
 import { assertHttpUrl } from "../lib/safeRedirect";
+import { navigateTo } from "../lib/returnTarget";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
@@ -16,6 +20,7 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  endConsentSession,
   identityNoticeKey,
   type OAuthClientDisplay,
   type OAuthOffer,
@@ -94,6 +99,9 @@ function initFromQuery(search: string): InitResult {
  *
  * Sign-in is always fresh — `userIdHint` only prefills the username; the
  * persisted session is deliberately not reused on this security surface.
+ * The sign-in uses this app's own appId (never the client id), and the
+ * personal session it opens is ended once Accept or Reject is answered,
+ * unless the core handed back a session this app keeps open in this browser.
  */
 export default function Oauth2Authorize() {
   const { t, i18n: i18nInstance } = useTranslation();
@@ -125,6 +133,9 @@ export default function Oauth2Authorize() {
   // Session captured by the shared sign-in (+ MFA) — gates consent.
   const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
+  const [sessionEndpoint, setSessionEndpoint] = useState<string | null>(null);
+  // The account's own stream names, read with the personal session.
+  const [accountName, setAccountName] = useState<StreamLabelResolver>(() => NO_STREAM_LABELS);
 
   // Only looked up once `pryvApi` passed the trust check (initError unset).
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
@@ -140,16 +151,19 @@ export default function Oauth2Authorize() {
       }
     : null);
   const labelFor = useStreamLabels(platformUrl);
+  const lang = i18nInstance.language || "en";
 
   const entries = useMemo(
     () =>
       offer
         ? consentEntries(offer.permissions, {
             allowUserChoice: offer.allowUserChoice,
+            entryLabel: offerEntryLabel(offer.entryLabels, lang),
             labelFor,
+            accountName,
           })
         : [],
-    [offer, labelFor],
+    [offer, labelFor, accountName, lang],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
   // the user has to choose deliberately. Reset when a fetched offer arrives.
@@ -162,6 +176,18 @@ export default function Oauth2Authorize() {
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
+  }
+
+  /**
+   * End the personal session this page opened, once the consent is answered.
+   * A session this app keeps open in this browser is left alone: the core
+   * hands back a live session of the same appId rather than opening another.
+   * Never throws and is time-bounded, so the redirect always follows.
+   */
+  async function endOwnSession() {
+    if (personalToken == null || sessionEndpoint == null) return;
+    if (storedSessionTokens().includes(personalToken)) return;
+    await endConsentSession({ endpoint: sessionEndpoint, token: personalToken });
   }
 
   async function accept() {
@@ -185,10 +211,11 @@ export default function Oauth2Authorize() {
         personalToken,
         grantedPermissions: granted,
       });
+      await endOwnSession();
       // Defence in depth: never navigate to a non-http(s) target even if the
       // core returned one (guards against a `javascript:`/`data:` redirect).
       assertHttpUrl(redirectTo);
-      window.location.assign(redirectTo);
+      navigateTo(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
       setBusy(null);
@@ -200,8 +227,9 @@ export default function Oauth2Authorize() {
     setError(null);
     try {
       const redirectTo = await oauth2Refuse({ pryvApi, signedState });
+      await endOwnSession();
       assertHttpUrl(redirectTo);
-      window.location.assign(redirectTo);
+      navigateTo(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("oauth.errorRefuseFailed"));
       setBusy(null);
@@ -234,7 +262,6 @@ export default function Oauth2Authorize() {
   if (personalToken && offer) {
     // The offer's texts in the UI language when the app supplied it
     // (`pickText` falls back from a regional variant to its base language).
-    const lang = i18nInstance.language || "en";
     const title = pickText(offer.title, lang);
     const description = pickText(offer.description, lang);
     const consentText = pickText(offer.consent, lang);
@@ -293,7 +320,7 @@ export default function Oauth2Authorize() {
   return (
     <ConsentSignIn
       makeService={makeService}
-      appId={oauthState.clientId}
+      appId={ACCOUNT_APP_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
@@ -302,9 +329,11 @@ export default function Oauth2Authorize() {
           })}
         </span>
       }
-      onSignedIn={({ username: u, personalToken: token }) => {
+      onSignedIn={({ username: u, personalToken: token, endpoint, connection }) => {
         setUsername(u);
         setPersonalToken(token);
+        setSessionEndpoint(endpoint);
+        void loadAccountStreamNames(connection).then((r) => setAccountName(() => r));
       }}
       onCancel={() => void refuse()}
       cancelId="oauthCancelLogin"
@@ -312,4 +341,22 @@ export default function Oauth2Authorize() {
       externalError={error}
     />
   );
+}
+
+/**
+ * The account's stream names, read with the consent's personal session, so a
+ * stream that already exists is shown by the name the user knows. Display
+ * only: a failure leaves the other sources in charge.
+ */
+async function loadAccountStreamNames(connection: unknown): Promise<StreamLabelResolver> {
+  const api = (connection as { api?: unknown } | null)?.api;
+  if (typeof api !== "function") return NO_STREAM_LABELS;
+  try {
+    const results = (await (api as (calls: unknown[]) => Promise<unknown[]>).call(connection, [
+      { method: "streams.get", params: {} },
+    ])) as Array<{ streams?: unknown }>;
+    return streamNamesResolver(results?.[0]?.streams);
+  } catch {
+    return NO_STREAM_LABELS;
+  }
 }

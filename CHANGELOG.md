@@ -9,6 +9,23 @@
   the core's `POST /oauth2/authorize/offer` and names the app from the client's own registration
   when the app catalog does not know it. A state with neither is still refused. Such a consent
   screen also says which id the app will see: a pseudonym, or the user's username.
+- **OAuth consent rows name streams that do not exist yet.** An offer may carry `entryLabels`
+  (keyed by entry: `s|<streamId>|<level>`, `f|<feature>|<setting>`; each a localized text map).
+  A stream row is named by, in order: the offer's label for that entry, the deployment's stream
+  labels, the stream's name in the account (read with the consent's session), the request's
+  `name` / `defaultName`, the stream id. The level verb is always this app's own. New catalog key
+  `consent.featureSecretSharingForbidden`: the `secretSharing: forbidden` restriction gets a
+  sentence like the other known restrictions.
+
+### Fixed
+
+- **The OAuth consent signs in as this app.** The consent page signed in with the requesting
+  client's id as appId, so the account kept a personal access named after a third-party client.
+  It now uses this app's appId, the same as the `/auth` consent.
+- **The OAuth consent's session ends with the consent.** Once Accept or Reject is answered, the
+  page ends the personal session it opened (`auth/logout`), so it no longer outlives the consent.
+  A session this app keeps open in the same browser (handed back by the core for the same appId)
+  is left alone. Ending it is best effort and time-bounded: it never holds back the redirect.
 
 ## 0.25.0 - 2026-10-27
 

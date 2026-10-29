@@ -5,6 +5,7 @@ import {
   initialFlags,
   permissionLabel,
   permissionKey,
+  offerEntryLabel,
   pickText,
   withRequestedNames,
   type OfferPermission,
@@ -138,6 +139,9 @@ describe("permissionLabel + pickText", () => {
     expect(permissionLabel({ feature: "webhooks", setting: "forbidden" })).toMatch(
       /cannot register webhooks/,
     );
+    expect(permissionLabel({ feature: "secretSharing", setting: "forbidden" })).toMatch(
+      /^The app cannot create shared secrets/,
+    );
     expect(permissionLabel({ feature: "webhooks", setting: "allowed" })).toBe("webhooks: allowed");
     expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
   });
@@ -235,5 +239,41 @@ describe("[CSRN] withRequestedNames: an access read back gets the request's stre
       labelFor: (id) => (id === "diary" ? "Daily diary" : null),
     });
     expect(e.label).toBe("Read “Daily diary”");
+  });
+});
+
+describe("[CLBP] stream name precedence", () => {
+  const p: OfferPermission = { streamId: "body-bp", level: "read", defaultName: "Requested name" };
+  const entryLabel = offerEntryLabel({ "s|body-bp|read": { en: "Blood pressure", fr: "Tension" } }, "fr-CH");
+  const labelFor = () => "Deployment label";
+  const accountName = () => "Account name";
+
+  it("[CLB1] the offer's own entry label comes first, in the UI language", () => {
+    expect(permissionLabel(p, { entryLabel, labelFor, accountName })).toBe("Read “Tension”");
+  });
+
+  it("[CLB2] then the deployment label, the account's stream name, the request's name, the id", () => {
+    expect(permissionLabel(p, { labelFor, accountName })).toBe("Read “Deployment label”");
+    expect(permissionLabel(p, { accountName })).toBe("Read “Account name”");
+    expect(permissionLabel(p)).toBe("Read “Requested name”");
+    expect(permissionLabel({ streamId: "body-bp", level: "read" })).toBe("Read “body-bp”");
+  });
+
+  it("[CLB3] a label is matched on the whole entry: another level gets none", () => {
+    expect(permissionLabel({ streamId: "body-bp", level: "manage" }, { entryLabel })).toBe("Fully manage “body-bp”");
+  });
+
+  it("[CLB4] the level verb is always this app's; a failing source falls through", () => {
+    const throwing = () => { throw new Error("x"); };
+    expect(permissionLabel(p, { entryLabel: throwing, labelFor: throwing, accountName })).toBe("Read “Account name”");
+  });
+
+  it("[CLB5] known feature restrictions keep their own wording; unknown ones use the offer's label", () => {
+    const labels = offerEntryLabel({
+      "f|webhooks|forbidden": { en: "Something else" },
+      "f|custom|on": { en: "Custom feature" },
+    }, "en");
+    expect(permissionLabel({ feature: "webhooks", setting: "forbidden" }, { entryLabel: labels })).toMatch(/cannot register webhooks/);
+    expect(permissionLabel({ feature: "custom", setting: "on" }, { entryLabel: labels })).toBe("Custom feature");
   });
 });

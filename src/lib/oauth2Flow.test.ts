@@ -7,6 +7,7 @@ import {
   oauth2Refuse,
   oauth2FetchOffer,
   identityNoticeKey,
+  endConsentSession,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -358,5 +359,54 @@ describe("[OAID] which id the app will see", () => {
     const plain = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
     expect(identityNoticeKey(plain.offer)).toBe("oauth.identityUsername");
     expect(identityNoticeKey(parseOAuthState(makeSignedState()).offer)).toBeNull();
+  });
+});
+
+describe("[OAEL] entry labels carried by a fetched offer", () => {
+  it("[OAEL1] keeps the localized labels, drops malformed ones", async () => {
+    mockFetchOnce(200, {
+      offer: {
+        permissions: [{ streamId: "a", level: "read" }],
+        entryLabels: { "s|a|read": { en: "Blood pressure", fr: "Tension" }, "s|b|read": "not a map", "s|c|read": { en: 3 } },
+      },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryLabels).toEqual({ "s|a|read": { en: "Blood pressure", fr: "Tension" } });
+  });
+
+  it("[OAEL2] an offer without labels has none", async () => {
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }] } });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryLabels).toBeNull();
+  });
+});
+
+describe("[OAES] endConsentSession", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("[OAES1] posts auth/logout on the session's endpoint with its token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice", token: "tok" })).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://core.example.com/alice/auth/logout");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBe("tok");
+  });
+
+  it("[OAES2] never throws: a refusal or a network failure answers false", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t" })).toBe(false);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network")));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t" })).toBe(false);
+  });
+
+  it("[OAES3] gives up after the timeout when the core does not answer", async () => {
+    vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise((_r, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    })));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t", timeoutMs: 20 })).toBe(false);
   });
 });
