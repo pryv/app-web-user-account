@@ -31,6 +31,30 @@
   When two consents on two devices shared a session and the other one ended it first, Accept
   now asks for a new sign-in with a clear message instead of showing the core's raw refusal.
 
+## 0.26.0 - 2026-10-30
+
+### Added
+
+- **Automatic deletion card.** A third card on "Your data", shown when the platform's service
+  info carries `features.autoDeletion` (hidden otherwise). It reads `account.getAutoDeletion` and
+  says in plain words whether the account will be deleted, on which date or after how many days
+  without use, whether that is the user's own choice or the platform's default policy, when the
+  account was last used (and whether by a delegate), when the next reminder goes out, why the
+  date moved (minimum notice), and when reminders cannot be sent (no email address, schedule
+  paused, mail not configured on the platform). The user can follow the platform's policy, opt
+  out (when the operator allows it), pick a date (from today plus the platform's minimum lead) or a
+  period without use (1, 2, 5 or 10 years within the platform's bounds, or a number of days),
+  through `account.setAutoDeletion`. Each change is confirmed in the app's own dialog with a
+  summary and the reminder schedule; arming or shortening a schedule asks the account password
+  (and a "password required" refusal from the platform asks it then). A picked date is sent as
+  the end of that day in the browser's time zone, as an ISO-8601 instant with its offset. Without
+  a usable email address the user must tick "I understand I will get no reminder"
+  (`acknowledgeNoReminders`). When the operator does not allow self-deletion, no schedule is
+  offered. A session acting for a controlled account sees the schedule but not the controls. The
+  platform's refusals (bounds, opt-out or override not allowed, deletion not allowed, no email,
+  delegate, wrong password) get their own message. A link points to the export card first. New
+  catalog keys under `data.autoDeletion`.
+
 ## 0.25.0 - 2026-10-27
 
 ### Added
