@@ -186,7 +186,6 @@ export default function Oauth2Authorize() {
       offer
         ? consentEntries(offer.permissions, {
             allowUserChoice: offer.allowUserChoice,
-            lockRestrictions: true,
             entryLabel: offerEntryLabel(offer.entryLabels, lang),
             labelFor,
             accountName,

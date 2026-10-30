@@ -28,9 +28,9 @@ describe("consentEntries (display-model mapper)", () => {
     }
   });
 
-  it("with user choice, locks only mandatory entries and hints them as required", () => {
+  it("with user choice, locks only mandatory entries and restrictions, and hints the mandatory ones as required", () => {
     const entries = consentEntries(PERMISSIONS, { allowUserChoice: true });
-    expect(entries.map((e) => e.locked)).toEqual([true, false, false]);
+    expect(entries.map((e) => e.locked)).toEqual([true, false, true]);
     expect(entries.map((e) => e.showRequiredHint)).toEqual([true, false, false]);
   });
 
@@ -45,8 +45,8 @@ describe("consentEntries (display-model mapper)", () => {
 describe("grantedPermissions", () => {
   const entries = consentEntries(PERMISSIONS, { allowUserChoice: true });
 
-  it("always grants locked (mandatory) entries; unlocked ones follow the flags", () => {
-    const granted = grantedPermissions(entries, [false, false, true]);
+  it("always grants locked (mandatory, restriction) entries; unlocked ones follow the flags", () => {
+    const granted = grantedPermissions(entries, [false, false, false]);
     expect(granted).toEqual([
       { streamId: "health", level: "read", defaultName: "Health" },
       { feature: "selfRevoke", setting: "forbidden" },
@@ -77,7 +77,8 @@ describe("the optIn display annotation", () => {
 
   it("[CSO1] opens optIn entries unticked, but only when the user has a choice", () => {
     const withChoice = consentEntries(MIXED, { allowUserChoice: true });
-    expect(withChoice.map((e) => e.initiallyTicked)).toEqual([true, true, false, false]);
+    // The restriction is locked and ticked even though it says optIn.
+    expect(withChoice.map((e) => e.initiallyTicked)).toEqual([true, true, false, true]);
     // All-or-nothing: every entry is locked and granted, so opening one
     // unticked would show a state the user cannot act on.
     const allOrNothing = consentEntries(MIXED);
@@ -97,12 +98,13 @@ describe("the optIn display annotation", () => {
     expect(granted).toEqual([
       { streamId: "health", level: "read" },
       { streamId: "diary", level: "contribute" },
+      { feature: "selfRevoke", setting: "forbidden" },
     ]);
   });
 
   it("[CSO3] initialFlags reflects the opening state of a mixed list", () => {
     const entries = consentEntries(MIXED, { allowUserChoice: true });
-    expect(initialFlags(entries)).toEqual([true, true, false, false]);
+    expect(initialFlags(entries)).toEqual([true, true, false, true]);
     // Ticking an opt-in entry brings it into the grant.
     const flags = initialFlags(entries);
     flags[2] = true;
@@ -112,11 +114,12 @@ describe("the optIn display annotation", () => {
     });
   });
 
-  it("[CSO4] an optIn entry is never locked out of being granted", () => {
-    // It starts unticked; it is still the user's to tick.
+  it("[CSO4] an optIn stream entry is never locked out of being granted", () => {
+    // It starts unticked; it is still the user's to tick. A restriction is
+    // locked whatever it says: unticking it would hand the app more.
     const entries = consentEntries(MIXED, { allowUserChoice: true });
     expect(entries[2].locked).toBe(false);
-    expect(entries[3].locked).toBe(false);
+    expect(entries[3].locked).toBe(true);
     expect(grantedPermissions(entries, [true, true, true, true])).toHaveLength(4);
   });
 });
@@ -133,7 +136,7 @@ describe("[CCMP] a consent shown again: entries the app already holds, restricti
   ];
 
   it("[CCM1] held entries open ticked (locked when mandatory), new optIn entries unticked", () => {
-    const entries = consentEntries(COMPOSED, { allowUserChoice: true, lockRestrictions: true });
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
     expect(entries.map((e) => e.initiallyTicked)).toEqual([true, true, true, false, true, true]);
     expect(entries.map((e) => e.locked)).toEqual([true, false, false, false, true, true]);
     // A held restriction is not flagged "already allowed".
@@ -143,7 +146,7 @@ describe("[CCMP] a consent shown again: entries the app already holds, restricti
   });
 
   it("[CCM2] unticking a held entry leaves it out of the grant; annotations never travel", () => {
-    const entries = consentEntries(COMPOSED, { allowUserChoice: true, lockRestrictions: true });
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
     const flags = initialFlags(entries);
     flags[1] = false;
     flags[4] = false;
@@ -156,9 +159,20 @@ describe("[CCMP] a consent shown again: entries the app already holds, restricti
     ]);
   });
 
-  it("[CCM3] restrictions stay untickable without lockRestrictions (other consent surfaces)", () => {
-    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
-    expect(entries[5].locked).toBe(false);
+  it("[CCM3] a restriction is locked and granted whatever mandatory and optIn say", () => {
+    for (const p of [
+      { feature: "webhooks", setting: "forbidden" },
+      { feature: "webhooks", setting: "forbidden", mandatory: false },
+      { feature: "webhooks", setting: "forbidden", optIn: true },
+    ] as OfferPermission[]) {
+      const entries = consentEntries([p], { allowUserChoice: true });
+      expect(entries[0].locked).toBe(true);
+      expect(entries[0].initiallyTicked).toBe(true);
+      expect(entries[0].showRequiredHint).toBe(false);
+      expect(grantedPermissions(entries, [false])).toEqual([{ feature: "webhooks", setting: "forbidden" }]);
+    }
+    // An allowed feature stays the user's choice.
+    expect(consentEntries([{ feature: "webhooks", setting: "allowed" }], { allowUserChoice: true })[0].locked).toBe(false);
   });
 
   it("[CCM4] an unknown restriction reads as something the app cannot use", () => {

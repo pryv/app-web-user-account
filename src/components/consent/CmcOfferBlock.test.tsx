@@ -102,6 +102,19 @@ describe("[COBD] CmcOfferBlock: delegable and membership offers", () => {
     expect(screen.queryByTestId("cmc-delegable-notice")).toBeNull();
   });
 
+  it("[COB7] a feature restriction reads as a locked \"The app cannot …\" line, never a choice", () => {
+    renderOffer({
+      requestedPermissions: [
+        { streamId: "diary", level: "read" },
+        { feature: "webhooks", setting: "forbidden", optIn: true },
+        { feature: "exports", setting: "forbidden" },
+      ],
+    });
+    expect(screen.getByText(/The app cannot register webhooks/)).toBeTruthy();
+    expect(screen.getByText("The app cannot use “exports”")).toBeTruthy();
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+  });
+
   it("[COB6] a membership offer reads as a request to join the group, not as a data grant", () => {
     renderOffer({ membership: true });
     expect(screen.getByText(/asks to join this account's group as a member/)).toBeTruthy();

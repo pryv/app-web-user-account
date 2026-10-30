@@ -270,4 +270,23 @@ describe("[SUAS] /cmc-scope-update names the account that answers", () => {
     expect(block.textContent).toContain("This request is for carol, but you are signed in as alice.");
     expect(screen.queryByTestId("cmc-approving-as")).toBeNull();
   });
+
+  it("[SUA13] a feature restriction in the proposal is a locked \"The app cannot …\" line", async () => {
+    request.row = {
+      event: {
+        content: {
+          newPermissions: [
+            { streamId: "diary", level: "read" },
+            { feature: "exports", setting: "forbidden", optIn: true },
+          ],
+          message: "More, please.",
+        },
+      },
+    };
+    signedIn();
+    renderPage();
+    await proposalShown();
+    expect(screen.getByText("The app cannot use “exports”")).toBeTruthy();
+    expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+  });
 });

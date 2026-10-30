@@ -27,10 +27,10 @@
   warning worded for the direction and an "I understand" checkbox are shown, Accept stays
   disabled until it is ticked, and Accept posts `acknowledgeSubjectChange: true`. A pseudonym
   offer also says that a pseudonym does not stop the data itself from identifying the user.
-  Feature restrictions (`setting: "forbidden"`) are locked lines on this page whatever the offer
-  says; an unknown one reads "The app cannot use …". Accept asks to keep at least one stream
-  ticked (restrictions alone grant nothing, and the core refuses them). A refusal saying the screen is out of date
-  disables Accept and asks the user to restart the authorization from the app; a session the
+  Feature restrictions are locked lines (see Fixed). Accept asks to keep at least one stream
+  ticked (restrictions alone grant nothing, and the core refuses them). A refusal saying the
+  screen is out of date disables Accept and asks the user to restart the authorization from the
+  app; a session the
   core does not accept (`authenticated: false`) returns to the sign-in. A core that answers no
   `shownDigest` keeps the previous behaviour, and no digest is posted. New catalog keys
   `oauth.pseudonymLinkability`, `oauth.reconsentNotice`, `oauth.reconsentNoticeChoice`,
@@ -41,6 +41,13 @@
 
 ### Fixed
 
+- **A feature restriction can no longer be unticked on any consent screen.** On `/auth` (and in
+  the shared consent rows `/cmc-accept`, `/cmc-scope-update` and the OAuth consent render), an
+  offer that let the
+  user choose could show a `setting: "forbidden"` feature entry as an optional checkbox when it
+  was not `mandatory`; unticking it handed the app more than it asked for. A restriction is now
+  always a locked, ticked "The app cannot …" line, whatever `mandatory` or `optIn` say, and is
+  always part of the grant. An unknown restriction reads "The app cannot use …".
 - **The OAuth consent signs in as this app.** The consent page signed in with the requesting
   client's id as appId, so the account kept a personal access named after a third-party client.
   It now uses an appId of its own, `pryv-app-web-user-account-consent`, so the personal access

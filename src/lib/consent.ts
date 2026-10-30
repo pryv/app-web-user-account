@@ -83,8 +83,8 @@ export function isFeatureRestriction(p: OfferPermission): boolean {
  * unticked would show a state the user cannot act on and the server would
  * refuse. An entry the app already holds (`currentlyGranted`) always opens
  * ticked: what the app has is shown as it is, and unticking takes it away.
- * With `lockRestrictions`, feature restrictions are locked whatever the offer
- * says, see {@link isFeatureRestriction}; they never get the required hint.
+ * Feature restrictions are always locked, whatever `mandatory` and `optIn`
+ * say (see {@link isFeatureRestriction}); they never get the required hint.
  *
  * Names, see {@link permissionLabel}: `entryLabel` (labels the offer carries
  * for its own entries), `labelFor` (a deployment's stream-label resolver, see
@@ -93,12 +93,12 @@ export function isFeatureRestriction(p: OfferPermission): boolean {
  */
 export function consentEntries(
   permissions: OfferPermission[],
-  opts: { allowUserChoice?: boolean; lockRestrictions?: boolean } & LabelSources = {},
+  opts: { allowUserChoice?: boolean } & LabelSources = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
   return permissions.map((p) => {
     const restriction = isFeatureRestriction(p);
-    const locked = !allowUserChoice || p.mandatory === true || (opts.lockRestrictions === true && restriction);
+    const locked = !allowUserChoice || p.mandatory === true || restriction;
     // A restriction the app is already under is not something "allowed": the
     // row's own wording ("The app cannot …") says it all.
     const currentlyGranted = p.currentlyGranted === true && !restriction;
