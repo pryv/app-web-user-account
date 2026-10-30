@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.27.0 - 2026-10-30
+
+The offer by reference and the composed re-consent need open-pryv.io 2.0.0-rc.68 or later; with
+an earlier core the consent pages behave as in 0.26.0.
 
 ### Added
 
