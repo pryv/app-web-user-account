@@ -25,6 +25,7 @@ import i18n from "../i18n";
 import { ApiCallError, postJson } from "./emailVerification";
 import { delegationErrorId, delegationErrorMessage } from "./delegation";
 import { isValidUsername } from "./username";
+import { PlatformNotAllowedError } from "./deployedSettings";
 
 /** The owner's account and the mailed token. */
 export interface TransferLink {
@@ -40,7 +41,17 @@ export const TRANSFER_ERRORS = {
   expired: "auto-deletion-transfer-expired",
   claimed: "auto-deletion-transfer-claimed",
   tooManyAttempts: "too-many-attempts",
+  /** Refused for a `reason` (`error.data.reason`). */
+  invalid: "auto-deletion-transfer-invalid",
+  /** Account delegation, which a transfer needs, is off on the platform. */
+  unavailableMethod: "unavailable-method",
 } as const;
+
+/** Reasons of an `invalid` refusal the pages explain, by catalog key under `transfer.errors`. */
+const REASON_KEYS: Record<string, string> = {
+  // A former delegation between the two accounts, which the owner must remove first.
+  "stale-relationship": "staleRelationship",
+};
 
 /** Refusals after which the link will never work: the stored link is dropped. */
 const DEFINITIVE: ReadonlySet<string> = new Set([
@@ -129,8 +140,11 @@ export async function transferDecline(ownerApiEndpoint: string, appId: string, t
 
 /**
  * Run the claim sequence for `claimant`: claim, accept the delegation invite
- * on the claimant's own core (`acceptAttach`), claim again. Resolves once the
- * transfer is completed.
+ * on the claimant's own core (`acceptAttach`), claim again. Resolves with
+ * `completed`, or `accepted` when the second claim still answers `invited`:
+ * the acceptance is done, but the owner's core has not seen it yet (it travels
+ * between cores); the platform completes the transfer at its next check, so
+ * there is nothing to retry.
  */
 export async function runTransferClaim(opts: {
   ownerApiEndpoint: string;
@@ -139,18 +153,16 @@ export async function runTransferClaim(opts: {
   claimant: string;
   acceptAttach: (owner: string) => Promise<unknown>;
   onStep?: (step: "claim" | "accept" | "complete") => void;
-}): Promise<void> {
+}): Promise<"completed" | "accepted"> {
   const { ownerApiEndpoint, appId, link, claimant } = opts;
   opts.onStep?.("claim");
   const first = await transferClaim(ownerApiEndpoint, appId, link.token, claimant);
-  if (first === "completed") return;
+  if (first === "completed") return "completed";
   opts.onStep?.("accept");
   await opts.acceptAttach(link.owner);
   opts.onStep?.("complete");
   const second = await transferClaim(ownerApiEndpoint, appId, link.token, claimant);
-  if (second !== "completed") {
-    throw new ApiCallError(i18n.t("transfer.errors.notCompleted"), { id: null, status: 200, data: null });
-  }
+  return second === "completed" ? "completed" : "accepted";
 }
 
 /** The error id of a claim or decline failure (an API refusal or a delegation one). */
@@ -165,9 +177,22 @@ export function isDefinitiveRefusal(err: unknown): boolean {
   return id != null && DEFINITIVE.has(id);
 }
 
-/** The message a page shows for a claim or decline failure. */
+/** `error.data.reason` of a refusal, or null. */
+function reasonOf(err: unknown): string | null {
+  const data = err instanceof ApiCallError ? err.data : (err as { data?: unknown } | null)?.data;
+  const reason = data != null && typeof data === "object" ? (data as { reason?: unknown }).reason : undefined;
+  return typeof reason === "string" ? reason : null;
+}
+
+/**
+ * The message a page shows for a claim or decline failure. A failure that
+ * carries no platform error id never reached it (offline, blocked request,
+ * core down), so it says so rather than showing the browser's own sentence.
+ */
 export function transferErrorMessage(err: unknown): string {
   const id = transferErrorId(err);
+  const reasonKey = REASON_KEYS[reasonOf(err) ?? ""];
+  if (reasonKey) return i18n.t("transfer.errors." + reasonKey);
   switch (id) {
     case TRANSFER_ERRORS.invalidLink:
       return i18n.t("transfer.errors.invalidLink");
@@ -177,9 +202,13 @@ export function transferErrorMessage(err: unknown): string {
       return i18n.t("transfer.errors.claimed");
     case TRANSFER_ERRORS.tooManyAttempts:
       return i18n.t("transfer.errors.tooManyAttempts");
+    case TRANSFER_ERRORS.unavailableMethod:
+      return i18n.t("transfer.errors.unavailable");
   }
   if (id != null && id.startsWith("delegation-")) return delegationErrorMessage(err);
   if (err instanceof ApiCallError) return err.message || i18n.t("transfer.errors.generic");
-  if (err instanceof Error && err.message) return err.message;
-  return i18n.t("transfer.errors.generic");
+  // The deployment refusing the platform named in the link says so itself.
+  if (err instanceof PlatformNotAllowedError) return err.message;
+  if (id == null) return i18n.t("transfer.errors.unreachable");
+  return err instanceof Error && err.message ? err.message : i18n.t("transfer.errors.generic");
 }

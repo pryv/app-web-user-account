@@ -11,27 +11,40 @@
   offered). The owner gives the beneficiary's email (required), optionally a name and a date of
   birth (with a notice saying what they are for, who can read them and when they are deleted,
   naming the operator from `service.info().name`), when they are told (now, so they can decline,
-  or only when the transfer starts) and the fallback if nobody takes it over in time (delete,
-  when offered, or keep). A stored name and date of birth are never shown back: the card says
-  they are stored, keeps them while the fields stay empty, and offers to remove them. Setting or
+  or only when the transfer starts) and the fallback if nobody takes it over in time (keep, the
+  default, or delete when offered). A stored name and date of birth are never shown back: the
+  card says they are stored, keeps them while both fields stay empty, warns that filling in
+  either one replaces both, and offers to remove them; the notice is linked to both fields for
+  screen readers. Setting or
   changing a transfer, and turning it into a deletion, asks the account password. The
   confirmation names the beneficiary, the claim window (`claimWindowDays`) and the fallback; the
   status says to whom and when the account will be transferred, and the transfer's state (told
   on, claim window open until, claimed and waiting, completed, declined, cancelled with its
-  reason, lapsed, claims paused after too many failed attempts). A refused transfer field
-  (`auto-deletion-transfer-invalid`, by `param`) gets its own message.
+  reason, lapsed). Attempts to claim the account with a wrong link are reported (how many, and
+  when last): they are refused, claims are never paused, and the beneficiary's link keeps
+  working. A refused transfer field (`auto-deletion-transfer-invalid`, by `param`, or by
+  `reason` when "Tell them now" is not offered on the platform or a name and date of birth
+  cannot be stored there) gets its own message.
 - **`/transfer-claim`.** Landing page of the beneficiary's claim link
   (`?username=<owner>&token=<token>`). The owner and token move at once into the tab's
   sessionStorage (`pryv-transfer-claim`) and leave the address bar, so the sign-in or
   registration hop (`next=/transfer-claim`, now a hand-off route) never carries them. Signed in
   with their own account, the beneficiary accepts: the page claims on the owner's core
   (`POST account/auto-deletion/transfer-claim`), accepts the delegation invite on their own core
-  (`delegations.acceptAttach`) and claims again, then points to "Accounts I manage". A session
-  acting for another account cannot accept. Refusals (invalid or expired link, already claimed,
-  paused, too many attempts, delegation errors) are explained.
-- **`/transfer-decline`.** Landing page of the beneficiary's decline link: the token leaves the
-  address bar, the Decline button calls `POST account/auto-deletion/transfer-decline` on the
-  owner's core, no sign-in needed.
+  (`delegations.acceptAttach`) and claims again, then points to "Accounts I manage"; when the
+  owner's core has not seen the acceptance yet, the page says it is recorded and the transfer
+  completes shortly. The link's `username` (the owner) is never read as the account expected to
+  accept. A session acting for another account cannot accept. Refusals (invalid or expired link,
+  already claimed, too many attempts, a former delegation the owner must remove first,
+  delegation off on the platform, other delegation errors) are explained, and a failure that
+  never reached the platform says so.
+- **`/transfer-decline`.** Landing page of the beneficiary's decline link: the token and the
+  owner's username leave the address bar, the Decline button calls
+  `POST account/auto-deletion/transfer-decline` on the owner's core, no sign-in needed. Once
+  the account was taken over, the page says it can no longer be declined.
+- **Referrer policy.** `index.html` sets `<meta name="referrer" content="same-origin">`, so the
+  address of a page opened from a mailed link (with its token) is never sent to another origin,
+  whatever the browser's default.
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
 

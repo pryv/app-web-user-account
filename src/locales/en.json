@@ -311,7 +311,9 @@
           "notifyBeneficiary": "Choose when the person who takes over your account is told. Nothing was changed.",
           "fallback": "This fallback is not offered on this platform. Choose another one. Nothing was changed.",
           "dateOfBirth": "The date of birth is not valid. Nothing was changed.",
-          "other": "The transfer settings were refused. Nothing was changed."
+          "other": "The transfer settings were refused. Nothing was changed.",
+          "namedMailOff": "\"Tell them now\" is not offered on this platform: it does not send that email. Choose \"Only when the transfer starts\", then save again. Nothing was changed.",
+          "noIdentityKey": "This platform cannot store a name or date of birth. Leave both fields empty, then save again. Nothing was changed."
         }
       },
       "transfer": {
@@ -324,8 +326,8 @@
         "nameLabel": "Their name (optional)",
         "birthLabel": "Their date of birth (optional)",
         "identityNotice": "Optional. Name and date of birth are only used if your beneficiary cannot be reached by email. They are stored encrypted. The operator of this platform ({{operator}}) can read them only after the transfer has started, to check the identity of a person who asks for your account without access to this email address. Every such reading is logged and reported to your email address. They are deleted when the transfer is completed or cancelled. A transfer does not include the accounts you manage for others.",
-        "operatorUnnamed": "the operator of this platform",
-        "identityStored": "A name and/or date of birth is stored for this person. They are not shown here. Leave the fields below empty to keep them.",
+        "identityNoticeUnnamed": "Optional. Name and date of birth are only used if your beneficiary cannot be reached by email. They are stored encrypted. The operator of this platform can read them only after the transfer has started, to check the identity of a person who asks for your account without access to this email address. Every such reading is logged and reported to your email address. They are deleted when the transfer is completed or cancelled. A transfer does not include the accounts you manage for others.",
+        "identityStored": "A name and/or date of birth is stored for this person. They are not shown here. Leave both fields below empty to keep them; filling in either one replaces both, so give both to keep both.",
         "identityRemove": "Remove them",
         "identityDroppedOnChange": "Changing the person removes the name and date of birth stored for the previous one.",
         "notifyLegend": "When should they be told?",
@@ -344,6 +346,8 @@
         "confirmFallbackDelete": "If nobody takes it over in time, your account and all of its data will be permanently deleted.",
         "confirmFallbackKeep": "If nobody takes it over in time, your account is kept.",
         "confirmIdentityRemoved": "The name and date of birth you gave are removed.",
+        "confirmIdentityNameOnly": "Only a name is given: the date of birth stored for this person is removed.",
+        "confirmIdentityBirthOnly": "Only a date of birth is given: the name stored for this person is removed.",
         "confirmNotIncluded": "A transfer does not include the accounts you manage for others.",
         "statusDate": "The management of your account will be transferred to {{email}} on {{date}}.",
         "statusInactivity": "The management of your account will be transferred to {{email}} after {{days}} days without use: currently on {{date}}.",
@@ -935,7 +939,9 @@
       },
       "doneTitle": "Transfer completed",
       "doneBody": "You now manage the account {{owner}}. Open it from Accounts I manage.",
-      "openDelegation": "Go to Accounts I manage"
+      "openDelegation": "Go to Accounts I manage",
+      "acceptedTitle": "Accepted",
+      "acceptedBody": "Your acceptance is recorded. The transfer of the account {{owner}} completes shortly: it then appears in Accounts I manage. There is nothing more to do."
     },
     "decline": {
       "title": "Decline an account transfer",
@@ -944,15 +950,18 @@
       "button": "Decline",
       "declining": "Declining…",
       "doneTitle": "Declined",
-      "doneBody": "Declined; the account holder has been told."
+      "doneBody": "Declined; the account holder has been told.",
+      "alreadyTaken": "This account was already taken over: the transfer can no longer be declined."
     },
     "errors": {
       "invalidLink": "This link is not valid, or no longer valid.",
       "expired": "The time to take over this account has passed.",
       "claimed": "Another account has already taken over this account.",
       "tooManyAttempts": "Too many attempts. Wait a moment, then try again.",
-      "notCompleted": "The transfer could not be completed. Try again.",
-      "generic": "Something went wrong. Please try again."
+      "generic": "Something went wrong. Please try again.",
+      "staleRelationship": "Your account cannot take over this account yet: an earlier delegation between the two accounts must first be removed by the account holder. Ask them, then open the link again.",
+      "unavailable": "Taking over an account is not available on this platform at the moment.",
+      "unreachable": "Could not reach the platform. Check your connection, then try again."
     }
   }
 }

@@ -197,6 +197,12 @@ describe("[ADLB] automatic deletion rules", () => {
     expect(autoDeletionErrorKey(refusal("fallback"))).toBe("transferInvalid.fallback");
     expect(autoDeletionErrorKey(refusal("other-thing"))).toBe("transferInvalid.other");
     expect(autoDeletionErrorKey(refusal(null))).toBe("transferInvalid.other");
+    // A reason says more than the param it comes with.
+    const byReason = (param: string | null, reason: string) =>
+      new AutoDeletionError("x", [AUTO_DELETION_ERRORS.transferInvalid], param, reason);
+    expect(autoDeletionErrorKey(byReason("notifyBeneficiary", "named-mail-off"))).toBe("transferInvalid.namedMailOff");
+    expect(autoDeletionErrorKey(byReason(null, "no-identity-key"))).toBe("transferInvalid.noIdentityKey");
+    expect(autoDeletionErrorKey(byReason("email", "something-new"))).toBe("transferInvalid.email");
   });
 
   it("[ADL13] transferChanged: beneficiary, notice, fallback, identity; nothing stored is a change", () => {

@@ -85,7 +85,7 @@ describe("[ATRF] account transfer", () => {
     );
     const acceptAttach = vi.fn().mockResolvedValue({});
     const steps: string[] = [];
-    await runTransferClaim({
+    const outcome = await runTransferClaim({
       ownerApiEndpoint: "https://carol.core.test/",
       appId: "app",
       link: { owner: "carol", token: "T1" },
@@ -96,6 +96,41 @@ describe("[ATRF] account transfer", () => {
     expect(acceptAttach).toHaveBeenCalledWith("carol");
     expect(mock).toHaveBeenCalledTimes(2);
     expect(steps).toEqual(["claim", "accept", "complete"]);
+    expect(outcome).toBe("completed");
+  });
+
+  it("[ATR09] a second claim still invited: the acceptance is recorded, nothing to retry", async () => {
+    stubFetch(
+      ok({ transfer: { status: "invited", username: "carol" } }),
+      ok({ transfer: { status: "invited", username: "carol" } }),
+    );
+    const outcome = await runTransferClaim({
+      ownerApiEndpoint: "https://carol.core.test/",
+      appId: "app",
+      link: { owner: "carol", token: "T1" },
+      claimant: "alice",
+      acceptAttach: vi.fn().mockResolvedValue({}),
+    });
+    expect(outcome).toBe("accepted");
+  });
+
+  it("[ATR10] refusals by reason, delegation off, and a failure that never reached the platform", async () => {
+    stubFetch({
+      ok: false,
+      status: 400,
+      body: { error: { id: "auto-deletion-transfer-invalid", message: "raw server sentence", data: { reason: "stale-relationship" } } },
+    });
+    const stale = await transferClaim("https://carol.core.test/", "app", "T1", "alice").catch((e: unknown) => e);
+    expect(transferErrorMessage(stale)).toMatch(/earlier delegation between the two accounts must first be removed/);
+    expect(isDefinitiveRefusal(stale)).toBe(false);
+    stubFetch(refused(400, "unavailable-method"));
+    const off = await transferClaim("https://carol.core.test/", "app", "T1", "alice").catch((e: unknown) => e);
+    expect(transferErrorMessage(off)).toBe("Taking over an account is not available on this platform at the moment.");
+    // The same id raised by the claimant's own core, through the delegation client.
+    expect(transferErrorMessage(new DelegationError("raw", "unavailable-method"))).toMatch(/not available on this platform/);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const offline = await transferClaim("https://carol.core.test/", "app", "T1", "alice").catch((e: unknown) => e);
+    expect(transferErrorMessage(offline)).toBe("Could not reach the platform. Check your connection, then try again.");
   });
 
   it("[ATR05] a first claim already completed stops there", async () => {

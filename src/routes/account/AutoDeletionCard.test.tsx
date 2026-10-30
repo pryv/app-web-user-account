@@ -440,9 +440,9 @@ describe("[ADCD] automatic deletion card", () => {
       expect(screen.getByText(/This platform does not delete accounts automatically/)).toBeTruthy();
       expect(screen.queryByRole("radio", { name: "Delete the account" })).toBeNull();
       expect(screen.getByRole("radio", { name: "Keep the account" })).toHaveProperty("checked", true);
-      expect(screen.getByTestId("auto-deletion-identity-notice").textContent).toContain(
-        "The operator of this platform (the operator of this platform)",
-      );
+      const notice = screen.getByTestId("auto-deletion-identity-notice").textContent ?? "";
+      expect(notice).toContain("The operator of this platform can read them only after the transfer has started");
+      expect(notice).not.toContain("(");
       fireEvent.change(screen.getByLabelText("Deletion date"), { target: { value: "2031-06-01" } });
       fireEvent.change(screen.getByLabelText("Email address of the person who takes over"), {
         target: { value: "bob@example.test" },
@@ -562,6 +562,67 @@ describe("[ADCD] automatic deletion card", () => {
       save();
       await typePassword("s3cret");
       expect(await screen.findByText(/Enter a valid email address for the person who takes over your account, other than your own/)).toBeTruthy();
+    });
+
+    it("[ADC27] a new transfer starts on keeping the account; the notice describes both optional fields", async () => {
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "After a period without use" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Transfer my account to someone" }));
+      expect(screen.getByRole("radio", { name: "Keep the account" })).toHaveProperty("checked", true);
+      expect(screen.getByRole("radio", { name: "Delete the account" })).toHaveProperty("checked", false);
+      for (const label of ["Their name (optional)", "Their date of birth (optional)"]) {
+        expect(screen.getByLabelText(label).getAttribute("aria-describedby")).toBe("auto-deletion-identity-notice");
+      }
+      expect(document.getElementById("auto-deletion-identity-notice")?.textContent).toContain(
+        "Name and date of birth are only used if your beneficiary cannot be reached by email.",
+      );
+    });
+
+    it("[ADC28] with an identity stored: the fields are described by it, and sending one of the two says the other goes", async () => {
+      state.autoDeletion = withTransfer({
+        setting: {
+          mode: "inactivity",
+          inactivityDays: 365,
+          action: "transfer",
+          transfer: { ...STORED, identityGiven: true },
+          updatedAt: NOW,
+        },
+      });
+      renderCard();
+      const name = await screen.findByLabelText("Their name (optional)");
+      expect(name.getAttribute("aria-describedby")).toBe("auto-deletion-identity-stored-text auto-deletion-identity-notice");
+      expect(document.getElementById("auto-deletion-identity-stored-text")?.textContent).toContain(
+        "filling in either one replaces both",
+      );
+      fireEvent.change(name, { target: { value: "Robert" } });
+      save();
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain("Only a name is given: the date of birth stored for this person is removed.");
+      await typePassword("s3cret");
+      await screen.findByText("Your choice is saved.");
+      expect(sets()[0]).toMatchObject({ transfer: { name: "Robert" } });
+      expect((sets()[0].transfer as Record<string, unknown>).dateOfBirth).toBeUndefined();
+    });
+
+    it("[ADC29] \"Tell them now\" refused on this platform: the message says so", async () => {
+      state.setReplies = [
+        {
+          error: {
+            id: AUTO_DELETION_ERRORS.transferInvalid,
+            message: "raw",
+            data: { param: "notifyBeneficiary", reason: "named-mail-off" },
+          },
+        },
+      ];
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "After a period without use" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Transfer my account to someone" }));
+      fireEvent.change(screen.getByLabelText("Email address of the person who takes over"), {
+        target: { value: "bob@example.test" },
+      });
+      save();
+      await typePassword("s3cret");
+      expect(await screen.findByText(/"Tell them now" is not offered on this platform/)).toBeTruthy();
     });
 
     it("[ADC26] a delegate sees the transfer status, not the controls", async () => {

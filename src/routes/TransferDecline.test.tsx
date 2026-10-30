@@ -59,7 +59,7 @@ describe("[TRDC] /transfer-decline", () => {
     expect((await screen.findByTestId("transfer-decline-question")).textContent).toBe(
       "Decline taking over the account carol?",
     );
-    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/transfer-decline?username=carol"));
+    await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/transfer-decline"));
     fireEvent.click(screen.getByRole("button", { name: "Decline" }));
     expect(await screen.findByText("Declined; the account holder has been told.")).toBeTruthy();
     expect(state.posts).toHaveLength(1);
@@ -74,6 +74,17 @@ describe("[TRDC] /transfer-decline", () => {
     renderAt("/transfer-decline?username=carol&token=SPENT");
     fireEvent.click(await screen.findByRole("button", { name: "Decline" }));
     expect(await screen.findByText("This link is not valid, or no longer valid.")).toBeTruthy();
+  });
+
+  it("[TRD4] an account already taken over can no longer be declined", async () => {
+    state.replies = [
+      { ok: false, status: 409, body: { error: { id: "auto-deletion-transfer-claimed", message: "raw" } } },
+    ];
+    renderAt("/transfer-decline?username=carol&token=T1");
+    fireEvent.click(await screen.findByRole("button", { name: "Decline" }));
+    expect(
+      await screen.findByText("This account was already taken over: the transfer can no longer be declined."),
+    ).toBeTruthy();
   });
 
   it("[TRD3] an incomplete link says so and offers nothing", async () => {

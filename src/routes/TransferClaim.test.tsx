@@ -39,6 +39,7 @@ vi.mock("../lib/pryvClient", async (importOriginal) => {
 });
 
 import TransferClaim from "./TransferClaim";
+import { useApprovingAccount } from "../lib/useApprovingAccount";
 
 const ALICE = {
   apiEndpoint: "https://tok@alice.core.test/",
@@ -159,6 +160,59 @@ describe("[TRCL] /transfer-claim", () => {
     expect(await screen.findByText("You are acting for the account kid. Go back to your own account to accept.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Accept as/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Back to alice" })).toBeTruthy();
+  });
+
+  it("[TRC7] the link's owner is never read as the account expected to accept", async () => {
+    state.connection = ALICE;
+    // The hook alone, with the owner's `username=` still in the address: the
+    // claim page's option ignores it; the cmc default would ask to switch.
+    function Who({ expect: expectUsername }: { expect: boolean }) {
+      const who = useApprovingAccount("/transfer-claim", { expectUsername });
+      return (
+        <div data-testid={`who-${expectUsername}`}>
+          {who.account.status}:{String(who.wrongAccount)}:{String(who.blocked)}:{String(who.mayAnswer)}
+        </div>
+      );
+    }
+    render(
+      <MemoryRouter initialEntries={["/transfer-claim?username=carol&token=SECRET"]}>
+        <Who expect={false} />
+        <Who expect={true} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByTestId("who-false").textContent).toBe("known:false:false:true"));
+    expect(screen.getByTestId("who-true").textContent).toBe("known:true:true:false");
+    cleanup();
+
+    // The page: carol's link, alice signed in: Accept, never the Switch-account block.
+    renderAt("/transfer-claim?username=carol&token=SECRET");
+    expect(await screen.findByRole("button", { name: "Accept as alice" })).toBeTruthy();
+    expect(screen.queryByTestId("cmc-switch-account")).toBeNull();
+  });
+
+  it("[TRC8] the second claim still invited: the acceptance is recorded, the transfer completes shortly", async () => {
+    state.connection = ALICE;
+    state.replies = [
+      { ok: true, status: 200, body: { transfer: { status: "invited", username: "carol" } } },
+      { ok: true, status: 200, body: { transfer: { status: "invited", username: "carol" } } },
+    ];
+    renderAt("/transfer-claim?username=carol&token=SECRET");
+    fireEvent.click(await screen.findByRole("button", { name: "Accept as alice" }));
+    expect(await screen.findByText(/Your acceptance is recorded\. The transfer of the account carol completes shortly/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Accepted" })).toBeTruthy();
+    expect(screen.queryByText(/try again/i)).toBeNull();
+    expect(screen.getByRole("link", { name: "Go to Accounts I manage" })).toBeTruthy();
+    expect(sessionStorage.getItem(CLAIM_STORAGE_KEY)).toBeNull();
+  });
+
+  it("[TRC9] a failure that never reached the platform says so, and keeps the link", async () => {
+    state.connection = ALICE;
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    renderAt("/transfer-claim?username=carol&token=SECRET");
+    fireEvent.click(await screen.findByRole("button", { name: "Accept as alice" }));
+    expect(await screen.findByText("Could not reach the platform. Check your connection, then try again.")).toBeTruthy();
+    expect(screen.queryByText("Failed to fetch")).toBeNull();
+    expect(sessionStorage.getItem(CLAIM_STORAGE_KEY)).not.toBeNull();
   });
 
   it("[TRC6] no link in the address bar nor in the tab: says so", async () => {

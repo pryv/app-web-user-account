@@ -206,6 +206,9 @@ test("/transfer-decline: the token leaves the address bar, Decline tells the hol
   await page.goto(`/transfer-decline?username=carol&token=SECRET-TOKEN&${SI_PARAM}`);
   await expect(page.getByTestId("transfer-decline-question")).toHaveText("Decline taking over the account carol?");
   await expect.poll(() => page.url()).not.toContain("SECRET-TOKEN");
+  expect(page.url()).not.toContain("username=");
+  // The full address of a page opened from a mailed link never goes to another origin.
+  await expect(page.locator('meta[name="referrer"]')).toHaveAttribute("content", "same-origin");
   await page.getByRole("button", { name: "Decline" }).click();
   await expect(page.getByText("Declined; the account holder has been told.")).toBeVisible();
   expect(declines).toEqual([expect.objectContaining({ token: "SECRET-TOKEN" })]);

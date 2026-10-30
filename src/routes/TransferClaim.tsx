@@ -55,10 +55,12 @@ export default function TransferClaim() {
   const { search, pathname } = useLocation();
   const navigate = useNavigate();
   const [link] = useState<TransferLink | null>(() => transferLinkFrom(search) ?? readStoredClaim());
-  const who = useApprovingAccount("/transfer-claim");
+  // `username=` here is the OWNER, never the account expected to accept.
+  const who = useApprovingAccount("/transfer-claim", { expectUsername: false });
 
   const [step, setStep] = useState<Step | null>(null);
-  const [done, setDone] = useState(false);
+  // `accepted`: the second claim still answered `invited` (see runTransferClaim).
+  const [done, setDone] = useState<"completed" | "accepted" | null>(null);
   const [error, setError] = useState<{ message: string; definitive: boolean } | null>(null);
 
   // Once, on mount: keep the link in the tab, out of the address bar.
@@ -98,8 +100,12 @@ export default function TransferClaim() {
     const platform = parseAuthParams(search).serviceInfoUrl ?? storedServiceInfoUrl();
     return (
       <Card>
-        <h1 className="mb-2 text-2xl">{t("transfer.claim.doneTitle")}</h1>
-        <Alert tone="success">{t("transfer.claim.doneBody", { owner: link.owner })}</Alert>
+        <h1 className="mb-2 text-2xl">
+          {t(done === "completed" ? "transfer.claim.doneTitle" : "transfer.claim.acceptedTitle")}
+        </h1>
+        <Alert tone="success">
+          {t(done === "completed" ? "transfer.claim.doneBody" : "transfer.claim.acceptedBody", { owner: link.owner })}
+        </Alert>
         <Link to={accountPath("/account/delegation", rest, platform)} className="text-sm text-primary hover:underline">
           {t("transfer.claim.openDelegation")}
         </Link>
@@ -146,7 +152,7 @@ export default function TransferClaim() {
       const { appId } = parseAuthParams(search);
       const ownerApiEndpoint = await getService(search).apiEndpointFor(link.owner);
       const client = Delegation.fromConnection(connection, { pryv: Pryv });
-      await runTransferClaim({
+      const outcome = await runTransferClaim({
         ownerApiEndpoint,
         appId,
         link,
@@ -155,7 +161,7 @@ export default function TransferClaim() {
         onStep: setStep,
       });
       clearStoredClaim();
-      setDone(true);
+      setDone(outcome);
     } catch (err: unknown) {
       console.warn("transfer-claim: the claim did not go through:", loggableError(err));
       const definitive = isDefinitiveRefusal(err);

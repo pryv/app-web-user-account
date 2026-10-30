@@ -110,8 +110,8 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     setBeneficiaryBirth("");
     setRemoveIdentity(false);
     setNotify(transfer?.notifyBeneficiary ?? "atSetup");
-    // Without deletion offered, keeping the account is the only fallback.
-    setFallback(transfer?.fallback ?? ((s.actions ?? []).includes("delete") ? "delete" : "keep"));
+    // A new transfer starts on keeping the account: deleting it must be picked.
+    setFallback(transfer?.fallback ?? "keep");
     setAcknowledged(false);
     setAckForced(false);
   }, []);
@@ -444,7 +444,10 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
   /** "At that time": delete or transfer, and the transfer's beneficiary, notice and fallback. */
   function renderTransfer(readOnly: boolean): ReactNode {
     const off = busy || readOnly;
-    const operator = operatorName ?? t("data.autoDeletion.transfer.operatorUnnamed");
+    // What the two optional fields are for, read out with them (and what is stored, when it is).
+    const identityDescribedBy = identityStored
+      ? "auto-deletion-identity-stored-text auto-deletion-identity-notice"
+      : "auto-deletion-identity-notice";
     return (
       <div className="mb-4" data-testid="auto-deletion-transfer">
         {deleteAllowed ? (
@@ -476,7 +479,9 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
             )}
             {identityStored && (
               <div className="mb-4 text-sm" data-testid="auto-deletion-identity-stored">
-                <p className="mb-2">{t("data.autoDeletion.transfer.identityStored")}</p>
+                <p id="auto-deletion-identity-stored-text" className="mb-2">
+                  {t("data.autoDeletion.transfer.identityStored")}
+                </p>
                 <div className="flex items-start gap-2">
                   <input
                     id="auto-deletion-identity-remove"
@@ -499,6 +504,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
               value={beneficiaryName}
               onChange={(e) => setBeneficiaryName(e.target.value)}
               disabled={off || (identityStored && removeIdentity)}
+              aria-describedby={identityDescribedBy}
             />
             <Field
               id="auto-deletion-beneficiary-birth"
@@ -508,9 +514,12 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
               value={beneficiaryBirth}
               onChange={(e) => setBeneficiaryBirth(e.target.value)}
               disabled={off || (identityStored && removeIdentity)}
+              aria-describedby={identityDescribedBy}
             />
-            <p className="mb-4 text-xs text-muted" data-testid="auto-deletion-identity-notice">
-              {t("data.autoDeletion.transfer.identityNotice", { operator })}
+            <p id="auto-deletion-identity-notice" className="mb-4 text-xs text-muted" data-testid="auto-deletion-identity-notice">
+              {operatorName != null
+                ? t("data.autoDeletion.transfer.identityNotice", { operator: operatorName })
+                : t("data.autoDeletion.transfer.identityNoticeUnnamed")}
             </p>
             <fieldset className="mb-4">
               <legend className="mb-2 text-sm font-medium text-muted">{t("data.autoDeletion.transfer.notifyLegend")}</legend>
@@ -608,6 +617,16 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
         ),
       );
       if (tr.name === "" && tr.dateOfBirth === "") lines.push(t("data.autoDeletion.transfer.confirmIdentityRemoved"));
+      // One of the two sent while both may be stored: the platform replaces both.
+      if (identityStored && (tr.name == null) !== (tr.dateOfBirth == null)) {
+        lines.push(
+          t(
+            tr.name != null
+              ? "data.autoDeletion.transfer.confirmIdentityNameOnly"
+              : "data.autoDeletion.transfer.confirmIdentityBirthOnly",
+          ),
+        );
+      }
       lines.push(t("data.autoDeletion.transfer.confirmNotIncluded"));
     }
     if (c.mode === "date" || c.mode === "inactivity") {

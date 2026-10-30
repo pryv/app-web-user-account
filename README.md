@@ -222,7 +222,13 @@ Every route accepts these query parameters:
   core from the platform's `service.account` URL. Don't link them directly.
   The claim needs the beneficiary's own account on the platform: the page
   keeps the link in the tab's sessionStorage while they sign in or register,
-  and comes back. The decline needs no sign-in.
+  and comes back. The decline needs no sign-in. Both pages drop the token
+  from the address bar as soon as they load, and `index.html` sets
+  `<meta name="referrer" content="same-origin">`, so the full address never
+  reaches another origin. The first request still reaches the server that
+  hosts this app with the token in its query, as `/verify-email` does: keep
+  query strings out of that server's access log, or keep the log private
+  and short-lived.
 - `/auth` — the access-request consent flow. Don't link it directly: create an
   access request (lib-js `Pryv.Browser.setupAuth(...)` or
   `POST {register}/access`, optionally passing `authUrl` pointing at this

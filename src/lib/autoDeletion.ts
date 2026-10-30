@@ -178,6 +178,16 @@ export const AUTO_DELETION_ERRORS = {
 /** The transfer fields a `transferInvalid` refusal may name, each with its own message. */
 const TRANSFER_PARAMS = ["email", "notifyBeneficiary", "fallback", "dateOfBirth"];
 
+/**
+ * Reasons a `transferInvalid` refusal may give, which say more than its param:
+ * "tell them now" not offered here (the mail is off), and no name or date of
+ * birth stored on this platform (no key to encrypt them).
+ */
+const TRANSFER_REASONS: Record<string, string> = {
+  "named-mail-off": "namedMailOff",
+  "no-identity-key": "noIdentityKey",
+};
+
 /** Message keys (under `data.autoDeletion.errors`) for the refusals above. */
 const ERROR_KEYS: Record<string, string> = {
   [AUTO_DELETION_ERRORS.passwordRequired]: "passwordRequired",
@@ -195,11 +205,14 @@ export class AutoDeletionError extends Error {
   readonly ids: string[];
   /** The refused parameter (`error.data.param`), when the platform names one. */
   readonly param: string | null;
-  constructor(message: string, ids: string[], param: string | null = null) {
+  /** Why it was refused (`error.data.reason`), when the platform says. */
+  readonly reason: string | null;
+  constructor(message: string, ids: string[], param: string | null = null, reason: string | null = null) {
     super(message);
     this.name = "AutoDeletionError";
     this.ids = ids;
     this.param = param;
+    this.reason = reason;
   }
   has(id: string): boolean {
     return this.ids.includes(id);
@@ -215,6 +228,8 @@ export class AutoDeletionError extends Error {
 export function autoDeletionErrorKey(err: unknown): string | null {
   if (!(err instanceof AutoDeletionError)) return null;
   if (err.has(AUTO_DELETION_ERRORS.transferInvalid)) {
+    const byReason = err.reason != null ? TRANSFER_REASONS[err.reason] : undefined;
+    if (byReason) return "transferInvalid." + byReason;
     return "transferInvalid." + (err.param != null && TRANSFER_PARAMS.includes(err.param) ? err.param : "other");
   }
   for (const id of err.ids) {
@@ -259,13 +274,14 @@ function readBounds(raw: unknown): AutoDeletionBounds | null {
 /** One batch call; throws an `AutoDeletionError` on a refusal. */
 async function call<T>(conn: PryvConnection, method: string, params: unknown): Promise<T> {
   const [res] = (await conn.api([{ method, params }])) as Array<
-    (T & { error?: undefined }) | { error: { id?: string; message?: string; data?: { id?: string; param?: string } } }
+    (T & { error?: undefined }) | { error: { id?: string; message?: string; data?: { id?: string; param?: string; reason?: string } } }
   >;
   if (res == null) throw new AutoDeletionError("", []);
   if (res.error) {
     const ids = [res.error.data?.id, res.error.id].filter((s): s is string => typeof s === "string" && s !== "");
     const param = typeof res.error.data?.param === "string" ? res.error.data.param : null;
-    throw new AutoDeletionError(res.error.message ?? "", ids, param);
+    const reason = typeof res.error.data?.reason === "string" ? res.error.data.reason : null;
+    throw new AutoDeletionError(res.error.message ?? "", ids, param, reason);
   }
   return res as T;
 }

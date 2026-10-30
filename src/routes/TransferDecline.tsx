@@ -6,7 +6,15 @@ import { tNodes } from "../components/consent/tNodes";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { loggableError } from "../lib/apiError";
-import { transferDecline, transferErrorMessage, transferLinkFrom, type TransferLink } from "../lib/accountTransfer";
+import {
+  TRANSFER_ERRORS,
+  searchWithoutLink,
+  transferDecline,
+  transferErrorId,
+  transferErrorMessage,
+  transferLinkFrom,
+  type TransferLink,
+} from "../lib/accountTransfer";
 
 /**
  * Landing page of an account transfer's decline link
@@ -14,8 +22,10 @@ import { transferDecline, transferErrorMessage, transferLinkFrom, type TransferL
  *
  * The person named as beneficiary refuses to take the account over; the
  * platform tells its holder. No sign-in: the mailed token is the credential.
- * It is dropped from the address bar as soon as it is read (history,
- * Referer); the Decline button is the confirmation.
+ * The token and the owner's username are dropped from the address bar as soon
+ * as they are read (history, Referer), as on the claim page; the Decline
+ * button is the confirmation. Once the account was taken over (by this person
+ * or another), it can no longer be declined.
  */
 export default function TransferDecline() {
   const { t } = useTranslation();
@@ -26,13 +36,11 @@ export default function TransferDecline() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  // Once, on mount: the token is already in state.
+  // Once, on mount: the link is already in state.
   useEffect(() => {
     const params = new URLSearchParams(search);
-    if (!params.has("token")) return;
-    params.delete("token");
-    const q = params.toString();
-    navigate(pathname + (q ? `?${q}` : ""), { replace: true });
+    if (!params.has("username") && !params.has("token")) return;
+    navigate(pathname + searchWithoutLink(search), { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -47,7 +55,9 @@ export default function TransferDecline() {
       setDone(true);
     } catch (err: unknown) {
       console.warn("transfer-decline: the decline did not go through:", loggableError(err));
-      setError(transferErrorMessage(err));
+      setError(
+        transferErrorId(err) === TRANSFER_ERRORS.claimed ? t("transfer.decline.alreadyTaken") : transferErrorMessage(err),
+      );
     } finally {
       setBusy(false);
     }
