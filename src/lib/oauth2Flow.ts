@@ -17,7 +17,9 @@
  *      session needed — refuse works pre-login (Cancel on the sign-in form).
  *   3. POST {pryvApi}/oauth2/authorize/offer — only when the state carries the
  *      offer by reference (`offerRef`, clients registered without an app
- *      account): returns the offer and the client's display fields.
+ *      account): returns the offer and the client's display fields. Asked
+ *      again once the user signed in, with the personal session, it returns
+ *      the offer joined with what the app already holds (see ComposedConsent).
  *
  * Sign-in itself goes through lib-js `Service.login` (see the route
  * component) — the service-info URL is derived from `pryvApi` below.
@@ -153,21 +155,58 @@ export interface OAuthClientDisplay {
   tosUri: string | null;
 }
 
+/** How an app knows the user: by a pseudonym, or by the account itself. */
+export type SubjectMode = "pseudonym" | "account";
+
+/**
+ * What the core adds to the offer once the user is signed in: the offer then
+ * shows what the app already holds joined with what it asks for (entries the
+ * app holds carry `currentlyGranted`), and `shownDigest` names exactly that
+ * screen. Posting the digest back at Accept makes the ticked set the app's
+ * new access (unticking something it held takes it away).
+ */
+export interface ComposedConsent {
+  /** Proof of the screen shown, posted back at Accept. */
+  shownDigest: string;
+  /** The access the app holds today, if any. */
+  currentGrant: { subjectMode: SubjectMode } | null;
+  /** Set when accepting switches how the app knows the user; must be acknowledged. */
+  subjectChange: { from: SubjectMode; to: SubjectMode } | null;
+}
+
 /**
  * POST `{pryvApi}/oauth2/authorize/offer` with the signed state: the server
  * re-derives the offer the state points at and returns it with the client's
  * display fields. Display-only, like a state-carried offer: /accept
  * re-derives it again and checks the granted subset.
+ *
+ * With `username` + `userToken` (the consent's personal session), a core
+ * that supports it answers the composed offer and `composed` is set; an
+ * older core answers as without them and `composed` is null. `authenticated`
+ * is false when the core says the token did not authenticate.
  */
 export async function oauth2FetchOffer(opts: {
   pryvApi: string;
   signedState: string;
-}): Promise<{ offer: OAuthOffer; client: OAuthClientDisplay }> {
-  const json = await postOAuthJson(opts.pryvApi, "/oauth2/authorize/offer", { state: opts.signedState });
+  username?: string;
+  userToken?: string;
+}): Promise<{
+  offer: OAuthOffer;
+  client: OAuthClientDisplay;
+  composed: ComposedConsent | null;
+  authenticated: boolean | null;
+}> {
+  const body: Record<string, unknown> = { state: opts.signedState };
+  if (opts.username != null && opts.userToken != null) {
+    body.username = opts.username;
+    body.userToken = opts.userToken;
+  }
+  const json = await postOAuthJson(opts.pryvApi, "/oauth2/authorize/offer", body);
   const offer = parseOffer(json.offer);
   if (offer == null) throw new Error("oauth2: the server returned no consent offer");
   const c = (typeof json.client === "object" && json.client != null ? json.client : {}) as Record<string, unknown>;
   const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  const shownDigest = str(json.shownDigest);
   return {
     offer,
     client: {
@@ -178,7 +217,51 @@ export async function oauth2FetchOffer(opts: {
       policyUri: str(c.policyUri),
       tosUri: str(c.tosUri),
     },
+    composed:
+      shownDigest == null
+        ? null
+        : {
+            shownDigest,
+            currentGrant: parseCurrentGrant(json.currentGrant),
+            subjectChange: parseSubjectChange(json.subjectChange),
+          },
+    authenticated: typeof json.authenticated === "boolean" ? json.authenticated : null,
   };
+}
+
+function asSubjectMode(v: unknown): SubjectMode | null {
+  return v === "pseudonym" || v === "account" ? v : null;
+}
+
+function parseCurrentGrant(v: unknown): ComposedConsent["currentGrant"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const mode = asSubjectMode((v as Record<string, unknown>).subjectMode);
+  return mode == null ? null : { subjectMode: mode };
+}
+
+function parseSubjectChange(v: unknown): ComposedConsent["subjectChange"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const from = asSubjectMode(o.from);
+  const to = asSubjectMode(o.to);
+  return from == null || to == null || from === to ? null : { from, to };
+}
+
+/** The locale key of the warning shown for a change of identity mode. */
+export function subjectChangeKey(change: ComposedConsent["subjectChange"]): string | null {
+  if (change == null) return null;
+  return change.to === "account" ? "oauth.subjectChangeToAccount" : "oauth.subjectChangeToPseudonym";
+}
+
+/**
+ * True when the core refused Accept because the consent screen it was given
+ * no longer matches what it would show now (the app's access or the request
+ * changed meanwhile): the user has to restart the authorization from the app.
+ */
+export function isStaleConsentError(err: unknown): boolean {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 400 || e.oauthError !== "invalid_request") return false;
+  return /out of date|restart the authori[sz]ation/i.test(e.message ?? "");
 }
 
 function parseOffer(v: unknown): OAuthOffer | null {
@@ -327,6 +410,11 @@ function registrableDomain(host: string): string {
  * user kept ticked — validated ⊆ the signed offer by the server). The server
  * establishes the durable consent (data-grant) and mints the session access,
  * then returns the redirect URL the browser should navigate to.
+ *
+ * `shownDigest` (from a composed offer, see {@link ComposedConsent}) says the
+ * user saw what the app already holds, so the ticked set replaces it;
+ * `acknowledgeSubjectChange` is the user's explicit agreement to a change of
+ * identity mode. Neither is sent when unset.
  */
 export async function oauth2Accept(opts: {
   pryvApi: string;
@@ -334,13 +422,18 @@ export async function oauth2Accept(opts: {
   username: string;
   personalToken: string;
   grantedPermissions: OfferPermission[];
+  shownDigest?: string;
+  acknowledgeSubjectChange?: boolean;
 }): Promise<string> {
-  return postOAuth(opts.pryvApi, "/oauth2/authorize/accept", {
+  const body: Record<string, unknown> = {
     state: opts.signedState,
     username: opts.username,
     userToken: opts.personalToken,
     grantedPermissions: opts.grantedPermissions,
-  });
+  };
+  if (opts.shownDigest != null) body.shownDigest = opts.shownDigest;
+  if (opts.acknowledgeSubjectChange === true) body.acknowledgeSubjectChange = true;
+  return postOAuth(opts.pryvApi, "/oauth2/authorize/accept", body);
 }
 
 /**

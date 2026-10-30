@@ -41,9 +41,17 @@ export function PermissionList({
               {e.showRequiredHint && (
                 <span className="text-xs text-muted">{t("consent.requiredByApp")}</span>
               )}
+              {e.currentlyGranted && (
+                <span className="text-xs text-muted">{t("consent.currentlyGranted")}</span>
+              )}
             </label>
           ) : (
-            <span>{e.label}</span>
+            <>
+              <span>{e.label}</span>
+              {e.currentlyGranted && (
+                <span className="ml-2 text-xs text-muted">{t("consent.currentlyGranted")}</span>
+              )}
+            </>
           )}
         </li>
       ))}

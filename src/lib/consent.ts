@@ -22,18 +22,21 @@ export type LocalizableText = Record<string, string>;
  * optional display names) or a feature permission (e.g.
  * `{ feature: "selfRevoke", setting: "forbidden" }`).
  *
- * Two consent-layer annotations may ride along, and together they say how
- * the row should open:
+ * Consent-layer annotations may ride along, and together they say how the
+ * row should open:
  *   `mandatory: true`: required; the user cannot untick it.
  *   neither         : optional, ticked to begin with (the user opts out).
  *   `optIn: true`   : optional, UNticked to begin with (the user opts in).
- * Both are display-layer only: they never travel on a grant, and the
+ *   `currentlyGranted: true`: the app already holds this entry (a consent
+ *                     shown again to an app the user already allowed); it
+ *                     opens ticked, and unticking it takes it away.
+ * All are display-layer only: they never travel on a grant, and the
  * server strips them before minting an access.
  */
 export type OfferPermission = (
   | { streamId: string; level: string; defaultName?: string; name?: string }
   | { feature: string; setting: string }
-) & { mandatory?: boolean; optIn?: boolean };
+) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean };
 
 /**
  * Display model for one consent-screen row.
@@ -44,7 +47,10 @@ export type OfferPermission = (
  * meaningful when the rest of the list IS untickable, i.e. on `mandatory`
  * entries of a choice-enabled request.
  * `initiallyTicked`: the state the row opens in. Locked rows are always
- * ticked; an `optIn` row opens unticked so the user has to choose it.
+ * ticked; an `optIn` row opens unticked so the user has to choose it, unless
+ * the app already holds it.
+ * `currentlyGranted`: the app already holds this entry (never set on a
+ * feature restriction, which reads as one on its own).
  */
 export interface ConsentEntry {
   permission: OfferPermission;
@@ -52,6 +58,16 @@ export interface ConsentEntry {
   locked: boolean;
   showRequiredHint: boolean;
   initiallyTicked: boolean;
+  currentlyGranted: boolean;
+}
+
+/**
+ * A feature restriction (`setting: "forbidden"`): it only ever narrows what
+ * the app can do, so it is never the user's to untick (that would hand the
+ * app more than it asked for).
+ */
+export function isFeatureRestriction(p: OfferPermission): boolean {
+  return "feature" in p && p.setting === "forbidden";
 }
 
 /**
@@ -65,7 +81,10 @@ export interface ConsentEntry {
  * `optIn` only means anything once the user HAS a choice: with an
  * all-or-nothing consent every row is locked and ticked, so opening one
  * unticked would show a state the user cannot act on and the server would
- * refuse.
+ * refuse. An entry the app already holds (`currentlyGranted`) always opens
+ * ticked: what the app has is shown as it is, and unticking takes it away.
+ * With `lockRestrictions`, feature restrictions are locked whatever the offer
+ * says, see {@link isFeatureRestriction}; they never get the required hint.
  *
  * Names, see {@link permissionLabel}: `entryLabel` (labels the offer carries
  * for its own entries), `labelFor` (a deployment's stream-label resolver, see
@@ -74,17 +93,22 @@ export interface ConsentEntry {
  */
 export function consentEntries(
   permissions: OfferPermission[],
-  opts: { allowUserChoice?: boolean } & LabelSources = {},
+  opts: { allowUserChoice?: boolean; lockRestrictions?: boolean } & LabelSources = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
   return permissions.map((p) => {
-    const locked = !allowUserChoice || p.mandatory === true;
+    const restriction = isFeatureRestriction(p);
+    const locked = !allowUserChoice || p.mandatory === true || (opts.lockRestrictions === true && restriction);
+    // A restriction the app is already under is not something "allowed": the
+    // row's own wording ("The app cannot …") says it all.
+    const currentlyGranted = p.currentlyGranted === true && !restriction;
     return {
       permission: p,
       label: permissionLabel(p, opts),
       locked,
-      showRequiredHint: allowUserChoice && p.mandatory === true,
-      initiallyTicked: locked || p.optIn !== true,
+      showRequiredHint: allowUserChoice && p.mandatory === true && !restriction,
+      initiallyTicked: locked || currentlyGranted || p.optIn !== true,
+      currentlyGranted,
     };
   });
 }
@@ -146,7 +170,7 @@ export function grantedPermissions(
 ): OfferPermission[] {
   return entries
     .filter((e, i) => e.locked || flags[i])
-    .map(({ permission: { mandatory: _m, optIn: _o, ...p } }) => p as OfferPermission);
+    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, ...p } }) => p as OfferPermission);
 }
 
 /** Catalog key of each access level's verb (what the row lets the app do). */
@@ -182,7 +206,8 @@ const FEATURE_LABEL_KEYS: Record<string, string> = {
  * stream labels, the account's stream name, the request's `name` /
  * `defaultName`, and last the stream id. The level verb always comes from this
  * app, never from a label. Known feature permissions get a dedicated wording;
- * unknown ones use the offer's label, else `feature: setting`.
+ * unknown ones use the offer's label, else "The app cannot use …" for a
+ * restriction and `feature: setting` otherwise.
  */
 export function permissionLabel(p: OfferPermission, sources: LabelSources = {}): string {
   const entryLabel = safeLabel(() => sources.entryLabel?.(p));
@@ -203,7 +228,9 @@ export function permissionLabel(p: OfferPermission, sources: LabelSources = {}):
   const f = p as { feature: string; setting: string };
   const key = `${f.feature}|${f.setting}`;
   if (Object.hasOwn(FEATURE_LABEL_KEYS, key)) return i18n.t(FEATURE_LABEL_KEYS[key]);
-  return entryLabel ?? `${f.feature}: ${f.setting}`;
+  if (entryLabel != null) return entryLabel;
+  if (f.setting === "forbidden") return i18n.t("consent.featureForbidden", { feature: f.feature });
+  return `${f.feature}: ${f.setting}`;
 }
 
 /** A source's label, or null when it has none (or fails: display only, never fatal). */

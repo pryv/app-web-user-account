@@ -16,6 +16,27 @@
   `name` / `defaultName`, the stream id. The level verb is always this app's own. New catalog key
   `consent.featureSecretSharingForbidden`: the `secretSharing: forbidden` restriction gets a
   sentence like the other known restrictions.
+- **OAuth consent shown again to an app the user already allowed.** For an offer by reference,
+  the page reads `POST /oauth2/authorize/offer` again once signed in, with `username` +
+  `userToken`. A core that supports it answers the offer joined with what the app already
+  holds: entries flagged `currentlyGranted` open ticked (locked when `mandatory`) and are marked
+  "(already allowed)", new `optIn` entries open unticked, and entries the app only holds are
+  named from the account's streams. Accept posts the answer's `shownDigest`, so the ticked set
+  becomes the app's access: unticking an entry the app held takes it away. When the answer
+  carries `subjectChange` (the app switches between a pseudonym and the account identity), a
+  warning worded for the direction and an "I understand" checkbox are shown, Accept stays
+  disabled until it is ticked, and Accept posts `acknowledgeSubjectChange: true`. A pseudonym
+  offer also says that a pseudonym does not stop the data itself from identifying the user.
+  Feature restrictions (`setting: "forbidden"`) are locked lines on this page whatever the offer
+  says; an unknown one reads "The app cannot use …". A refusal saying the screen is out of date
+  disables Accept and asks the user to restart the authorization from the app; a session the
+  core does not accept (`authenticated: false`) returns to the sign-in. A core that answers no
+  `shownDigest` keeps the previous behaviour, and no digest is posted. New catalog keys
+  `oauth.pseudonymLinkability`, `oauth.reconsentNotice`, `oauth.reconsentNoticeChoice`,
+  `oauth.subjectChangeToAccount`, `oauth.subjectChangeToPseudonym`,
+  `oauth.subjectChangeReplaces`, `oauth.subjectChangeAcknowledge`,
+  `oauth.errorConsentOutOfDate`, `oauth.backToApp`, `consent.featureForbidden`,
+  `consent.currentlyGranted`.
 
 ### Fixed
 

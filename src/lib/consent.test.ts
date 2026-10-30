@@ -121,6 +121,56 @@ describe("the optIn display annotation", () => {
   });
 });
 
+describe("[CCMP] a consent shown again: entries the app already holds, restrictions", () => {
+  const COMPOSED: OfferPermission[] = [
+    { streamId: "health", level: "read", mandatory: true, currentlyGranted: true },
+    { streamId: "diary", level: "contribute", currentlyGranted: true },
+    // The core never sends optIn on a held entry; if it did, held wins.
+    { streamId: "steps", level: "read", currentlyGranted: true, optIn: true },
+    { streamId: "location", level: "read", optIn: true },
+    { feature: "webhooks", setting: "forbidden", mandatory: true, currentlyGranted: true },
+    { feature: "exports", setting: "forbidden" },
+  ];
+
+  it("[CCM1] held entries open ticked (locked when mandatory), new optIn entries unticked", () => {
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true, lockRestrictions: true });
+    expect(entries.map((e) => e.initiallyTicked)).toEqual([true, true, true, false, true, true]);
+    expect(entries.map((e) => e.locked)).toEqual([true, false, false, false, true, true]);
+    // A held restriction is not flagged "already allowed".
+    expect(entries.map((e) => e.currentlyGranted)).toEqual([true, true, true, false, false, false]);
+    // A restriction is not something the app "requires".
+    expect(entries.map((e) => e.showRequiredHint)).toEqual([true, false, false, false, false, false]);
+  });
+
+  it("[CCM2] unticking a held entry leaves it out of the grant; annotations never travel", () => {
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true, lockRestrictions: true });
+    const flags = initialFlags(entries);
+    flags[1] = false;
+    flags[4] = false;
+    flags[5] = false;
+    expect(grantedPermissions(entries, flags)).toEqual([
+      { streamId: "health", level: "read" },
+      { streamId: "steps", level: "read" },
+      { feature: "webhooks", setting: "forbidden" },
+      { feature: "exports", setting: "forbidden" },
+    ]);
+  });
+
+  it("[CCM3] restrictions stay untickable without lockRestrictions (other consent surfaces)", () => {
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
+    expect(entries[5].locked).toBe(false);
+  });
+
+  it("[CCM4] an unknown restriction reads as something the app cannot use", () => {
+    expect(permissionLabel({ feature: "exports", setting: "forbidden" })).toBe("The app cannot use “exports”");
+    expect(permissionLabel({ feature: "exports", setting: "allowed" })).toBe("exports: allowed");
+    const label = offerEntryLabel({ "f|exports|forbidden": { en: "The app cannot export your data" } }, "en");
+    expect(permissionLabel({ feature: "exports", setting: "forbidden" }, { entryLabel: label })).toBe(
+      "The app cannot export your data",
+    );
+  });
+});
+
 describe("permissionLabel + pickText", () => {
   it("labels stream permissions with level verb + display name", () => {
     expect(permissionLabel({ streamId: "health", level: "read", defaultName: "Health" })).toBe(
@@ -143,7 +193,9 @@ describe("permissionLabel + pickText", () => {
       /^The app cannot create shared secrets/,
     );
     expect(permissionLabel({ feature: "webhooks", setting: "allowed" })).toBe("webhooks: allowed");
-    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
+    // An unknown restriction still reads as one.
+    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("The app cannot use “other”");
+    expect(permissionLabel({ feature: "other", setting: "on" })).toBe("other: on");
   });
 
   it("pickText prefers the requested language, then its base, then en, then first", () => {

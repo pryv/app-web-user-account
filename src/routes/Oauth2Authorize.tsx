@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useLocation } from "react-router-dom";
 import { Pryv } from "../lib/pryvClient";
-import { Card, Alert } from "../components/ui";
+import { Card, Alert, Button } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
@@ -22,6 +22,9 @@ import {
   oauth2FetchOffer,
   endConsentSession,
   identityNoticeKey,
+  isStaleConsentError,
+  subjectChangeKey,
+  type ComposedConsent,
   type OAuthClientDisplay,
   type OAuthFlowError,
   type OAuthOffer,
@@ -104,6 +107,14 @@ function initFromQuery(search: string): InitResult {
  * `ACCOUNT_APP_CONSENT_ID`), and the personal session it opens is ended once
  * Accept or Reject is answered, unless the core handed back a session this
  * app keeps open in this browser.
+ *
+ * An offer by reference is read again once signed in, with the session: a
+ * core that supports it then shows what the app already holds joined with
+ * what it asks for, and answers a digest of that screen, posted back at
+ * Accept so the ticked set becomes the app's access (unticking something the
+ * app held takes it away). A change of identity mode (pseudonym / account)
+ * must be acknowledged before Accept is enabled. An older core answers no
+ * digest: the page then behaves as before and posts none.
  */
 export default function Oauth2Authorize() {
   const { t, i18n: i18nInstance } = useTranslation();
@@ -130,7 +141,6 @@ export default function Oauth2Authorize() {
       });
     return () => { cancelled = true; };
   }, [needsFetch, pryvApi, signedState]);
-  const offer: OAuthOffer | null = oauthState?.offer ?? fetched?.offer ?? null;
 
   // Session captured by the shared sign-in (+ MFA) — gates consent.
   const [username, setUsername] = useState("");
@@ -138,6 +148,22 @@ export default function Oauth2Authorize() {
   const [sessionEndpoint, setSessionEndpoint] = useState<string | null>(null);
   // The account's own stream names, read with the personal session.
   const [accountName, setAccountName] = useState<StreamLabelResolver>(() => NO_STREAM_LABELS);
+
+  // Offer by reference, once signed in: asked again with the session, so the
+  // core joins it with what the app already holds (see ComposedConsent). An
+  // older core answers without a digest: the offer read before sign-in stays.
+  const [composed, setComposed] = useState<{ offer: OAuthOffer; consent: ComposedConsent } | null>(null);
+  const [composeDone, setComposeDone] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  // Replies for a session that is no longer the page's are dropped.
+  const sessionRef = useRef<string | null>(null);
+  // The user's explicit agreement to a change of identity mode.
+  const [acknowledged, setAcknowledged] = useState(false);
+  // Accept was refused because the screen no longer matches the app's access.
+  const [stale, setStale] = useState(false);
+
+  const offer: OAuthOffer | null = composed?.offer ?? oauthState?.offer ?? fetched?.offer ?? null;
+  const subjectChange = composed?.consent.subjectChange ?? null;
 
   // Only looked up once `pryvApi` passed the trust check (initError unset).
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
@@ -160,6 +186,7 @@ export default function Oauth2Authorize() {
       offer
         ? consentEntries(offer.permissions, {
             allowUserChoice: offer.allowUserChoice,
+            lockRestrictions: true,
             entryLabel: offerEntryLabel(offer.entryLabels, lang),
             labelFor,
             accountName,
@@ -178,6 +205,40 @@ export default function Oauth2Authorize() {
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
+  }
+
+  /** Back to the sign-in: the session no longer authenticates. */
+  function dropSession(message: string) {
+    sessionRef.current = null;
+    setPersonalToken(null);
+    setSessionEndpoint(null);
+    setAccountName(() => NO_STREAM_LABELS);
+    setComposed(null);
+    setComposeDone(false);
+    setAcknowledged(false);
+    setError(message);
+  }
+
+  /** Read the offer again with the session (offers by reference only). */
+  function compose(u: string, token: string) {
+    if (!needsFetch) return;
+    setComposed(null);
+    setComposeDone(false);
+    setComposeError(null);
+    oauth2FetchOffer({ pryvApi, signedState, username: u, userToken: token })
+      .then((r) => {
+        if (sessionRef.current !== token) return;
+        if (r.authenticated === false) {
+          dropSession(t("oauth.errorSessionEnded"));
+          return;
+        }
+        if (r.composed != null) setComposed({ offer: r.offer, consent: r.composed });
+        setComposeDone(true);
+      })
+      .catch((err: unknown) => {
+        if (sessionRef.current !== token) return;
+        setComposeError(err instanceof Error ? err.message : t("cmc.errorReadOffer"));
+      });
   }
 
   /**
@@ -212,6 +273,9 @@ export default function Oauth2Authorize() {
         username,
         personalToken,
         grantedPermissions: granted,
+        // Only a composed screen has a digest; an older core sent none.
+        shownDigest: composed?.consent.shownDigest,
+        acknowledgeSubjectChange: subjectChange != null && acknowledged ? true : undefined,
       });
       await endOwnSession();
       // Defence in depth: never navigate to a non-http(s) target even if the
@@ -223,10 +287,12 @@ export default function Oauth2Authorize() {
         // The session no longer authenticates: most likely a consent on
         // another device shared it and ended it when it finished. Back to
         // the sign-in, which opens a fresh one.
-        setPersonalToken(null);
-        setSessionEndpoint(null);
-        setAccountName(() => NO_STREAM_LABELS);
-        setError(t("oauth.errorSessionEnded"));
+        dropSession(t("oauth.errorSessionEnded"));
+      } else if (isStaleConsentError(err)) {
+        // What the app holds (or what it asks for) changed since this screen
+        // was shown: accepting it again cannot succeed.
+        setStale(true);
+        setError(t("oauth.errorConsentOutOfDate"));
       } else {
         setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
       }
@@ -259,7 +325,29 @@ export default function Oauth2Authorize() {
     );
   }
 
-  if (personalToken && !offer) {
+  if (personalToken && composeError) {
+    // The offer could not be read with the session: nothing can be shown
+    // truthfully, so the only way on is back to the app.
+    return (
+      <Card>
+        <div id="oauthComposeError">
+          <Alert>{composeError}</Alert>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <Button
+          id="oauthRefuse"
+          type="button"
+          variant="ghost"
+          disabled={busy !== null}
+          onClick={() => void refuse()}
+        >
+          {t("oauth.backToApp")}
+        </Button>
+      </Card>
+    );
+  }
+
+  if (personalToken && (!offer || (needsFetch && !composeDone))) {
     return (
       <Card>
         <p id="oauthLoadingOffer">{t("cmc.loadingOffer")}</p>
@@ -277,6 +365,9 @@ export default function Oauth2Authorize() {
     const title = pickText(offer.title, lang);
     const description = pickText(offer.description, lang);
     const consentText = pickText(offer.consent, lang);
+    const currentGrant = composed?.consent.currentGrant ?? null;
+    const pseudonym = offer.randomAlias === true || subjectChange?.to === "pseudonym";
+    const changeKey = subjectChangeKey(subjectChange);
     return (
       <Card>
         <ConsentPanel
@@ -292,6 +383,14 @@ export default function Oauth2Authorize() {
               {description && <p className="mb-2 text-sm text-muted">{description}</p>}
               {identityNoticeKey(offer) && (
                 <p id="oauthIdentityNotice" className="mb-2 text-sm">{t(identityNoticeKey(offer) as string)}</p>
+              )}
+              {pseudonym && (
+                <p id="oauthLinkabilityNotice" className="mb-2 text-sm text-muted">{t("oauth.pseudonymLinkability")}</p>
+              )}
+              {currentGrant != null && (
+                <p id="oauthReconsentNotice" className="mb-2 text-sm">
+                  {t(offer.allowUserChoice ? "oauth.reconsentNoticeChoice" : "oauth.reconsentNotice")}
+                </p>
               )}
             </>
           }
@@ -316,11 +415,31 @@ export default function Oauth2Authorize() {
             </p>
           }
           busy={busy}
+          acceptDisabled={stale || (subjectChange != null && !acknowledged)}
           acceptId="oauthAccept"
           refuseId="oauthRefuse"
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
         >
+          {changeKey && (
+            <div
+              id="oauthSubjectChange"
+              className="mb-4 rounded border border-info/40 bg-info/10 px-3 py-2 text-sm"
+            >
+              <p className="mb-1 font-medium">{t(changeKey)}</p>
+              <p className="mb-2">{t("oauth.subjectChangeReplaces")}</p>
+              <label className="flex items-center gap-2">
+                <input
+                  id="oauthAcknowledgeSubjectChange"
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={busy !== null}
+                  onChange={(ev) => setAcknowledged(ev.target.checked)}
+                />
+                <span>{t("oauth.subjectChangeAcknowledge")}</span>
+              </label>
+            </div>
+          )}
           {error && <Alert>{error}</Alert>}
         </ConsentPanel>
       </Card>
@@ -342,9 +461,12 @@ export default function Oauth2Authorize() {
         </span>
       }
       onSignedIn={({ username: u, personalToken: token, endpoint, connection }) => {
+        sessionRef.current = token;
         setUsername(u);
         setPersonalToken(token);
         setSessionEndpoint(endpoint);
+        setStale(false);
+        compose(u, token);
         void loadAccountStreamNames(connection).then((r) => setAccountName(() => r));
       }}
       onCancel={() => void refuse()}
