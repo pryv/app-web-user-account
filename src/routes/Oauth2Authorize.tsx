@@ -262,7 +262,12 @@ export default function Oauth2Authorize() {
       // always granted; ticked optional entries follow the checkboxes.
       // The consent-layer `mandatory` flag never travels in the grant.
       const granted = grantedPermissions(entries, grantedFlags);
-      if (granted.length === 0) {
+      // An offer by reference must keep a stream: restrictions alone grant
+      // nothing, and the core refuses such a grant.
+      const keepsNothing = needsFetch
+        ? !granted.some((p) => "streamId" in p)
+        : granted.length === 0;
+      if (keepsNothing) {
         setError(t("oauth.errorKeepOne"));
         setBusy(null);
         return;

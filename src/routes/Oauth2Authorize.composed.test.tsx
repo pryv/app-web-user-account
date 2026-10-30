@@ -220,6 +220,24 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     ]);
   });
 
+  it("[OACS9] unticking every stream (restrictions alone) is stopped before the core", async () => {
+    const fetchMock = mockFetch(composingCore({
+      offer: {
+        ...COMPOSED,
+        permissions: [
+          { streamId: "diary", level: "contribute", currentlyGranted: true },
+          { feature: "webhooks", setting: "forbidden", mandatory: true },
+        ],
+      },
+    }));
+    renderPage();
+    await signInToConsent();
+    fireEvent.click(box(0));
+    fireEvent.click(acceptButton());
+    await screen.findByText(/Keep at least one permission ticked/);
+    expect(bodiesOf(fetchMock, "/oauth2/authorize/accept")).toHaveLength(0);
+  });
+
   it("[OACS3] a change of identity mode must be acknowledged before Accept", async () => {
     const fetchMock = mockFetch(composingCore({
       offer: { ...COMPOSED, randomAlias: false },
