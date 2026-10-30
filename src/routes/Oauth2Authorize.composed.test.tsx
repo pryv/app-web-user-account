@@ -276,7 +276,25 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     expect(document.getElementById("oauthLinkabilityNotice")?.textContent).toMatch(/can still be enough to tell who you are/);
   });
 
-  it("[OACS5] a screen the core no longer recognises asks to restart from the app", async () => {
+  it("[OACS5] a screen the core no longer recognises (reason marker) asks to restart from the app", async () => {
+    mockFetch(composingCore({}, () => ({
+      status: 400,
+      body: { error: "invalid_request", error_description: "screen mismatch", reason: "consent-out-of-date" },
+    })));
+    renderPage();
+    await signInToConsent();
+    fireEvent.click(acceptButton());
+    await screen.findByText(/This consent screen is out of date/);
+    expect(screen.getByText(/start the authorization again/)).toBeTruthy();
+    expect(screen.queryByText("screen mismatch")).toBeNull();
+    expect(acceptButton().disabled).toBe(true);
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+    // Reject still hands the user back to the app.
+    fireEvent.click(document.getElementById("oauthRefuse")!);
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?error=access_denied"));
+  });
+
+  it("[OACS10] a core without the reason marker is recognised by its wording", async () => {
     mockFetch(composingCore({}, () => ({
       status: 400,
       body: { error: "invalid_request", error_description: "the consent screen is out of date, restart the authorization flow" },
@@ -285,12 +303,20 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     await signInToConsent();
     fireEvent.click(acceptButton());
     await screen.findByText(/This consent screen is out of date/);
-    expect(screen.getByText(/start the authorization again/)).toBeTruthy();
     expect(acceptButton().disabled).toBe(true);
-    expect(nav.navigateTo).not.toHaveBeenCalled();
-    // Reject still hands the user back to the app.
-    fireEvent.click(document.getElementById("oauthRefuse")!);
-    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?error=access_denied"));
+  });
+
+  it("[OACS11] an unacknowledged-change refusal is shown as such, Accept stays available", async () => {
+    mockFetch(composingCore({}, () => ({
+      status: 400,
+      body: { error: "invalid_request", error_description: "the change of identity mode must be acknowledged", reason: "subject-change-unacknowledged" },
+    })));
+    renderPage();
+    await signInToConsent();
+    fireEvent.click(acceptButton());
+    await screen.findByText("the change of identity mode must be acknowledged");
+    expect(screen.queryByText(/This consent screen is out of date/)).toBeNull();
+    expect(acceptButton().disabled).toBe(false);
   });
 
   it("[OACS6] an older core (no digest) keeps the offer read before sign-in and posts no digest", async () => {

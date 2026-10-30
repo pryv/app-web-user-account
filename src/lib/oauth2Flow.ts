@@ -85,6 +85,8 @@ export interface OAuthState {
 export interface OAuthFlowError extends Error {
   oauthError?: string;
   status?: number;
+  /** Stable marker some refusals carry next to `error` (e.g. `consent-out-of-date`). */
+  reason?: string;
 }
 
 /**
@@ -257,10 +259,13 @@ export function subjectChangeKey(change: ComposedConsent["subjectChange"]): stri
  * True when the core refused Accept because the consent screen it was given
  * no longer matches what it would show now (the app's access or the request
  * changed meanwhile): the user has to restart the authorization from the app.
+ * The core says so with `reason: "consent-out-of-date"`; a core that sends no
+ * `reason` is recognised by its wording.
  */
 export function isStaleConsentError(err: unknown): boolean {
   const e = err as OAuthFlowError | null;
   if (e == null || e.status !== 400 || e.oauthError !== "invalid_request") return false;
+  if (e.reason != null) return e.reason === "consent-out-of-date";
   return /out of date|restart the authori[sz]ation/i.test(e.message ?? "");
 }
 
@@ -524,6 +529,7 @@ async function postOAuthJson(
     );
     err.oauthError = json.error;
     err.status = res.status;
+    if (typeof json.reason === "string" && json.reason.length > 0) err.reason = json.reason;
     throw err;
   }
   return json;

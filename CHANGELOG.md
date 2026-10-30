@@ -29,8 +29,9 @@
   offer also says that a pseudonym does not stop the data itself from identifying the user.
   Feature restrictions are locked lines (see Fixed). Accept asks to keep at least one stream
   ticked (restrictions alone grant nothing, and the core refuses them). A refusal saying the
-  screen is out of date disables Accept and asks the user to restart the authorization from the
-  app; a session the
+  screen is out of date (`reason: "consent-out-of-date"`, or its wording from a core that sends
+  no `reason`) disables Accept and asks the user to restart the authorization from the app; a
+  session the
   core does not accept (`authenticated: false`) returns to the sign-in. A core that answers no
   `shownDigest` keeps the previous behaviour, and no digest is posted. New catalog keys
   `oauth.pseudonymLinkability`, `oauth.reconsentNotice`, `oauth.reconsentNoticeChoice`,

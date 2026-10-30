@@ -483,6 +483,28 @@ describe("[OACP] composed offer once signed in", () => {
     expect(isStaleConsentError(null)).toBe(false);
   });
 
+  it("[OACP8] reads the core's reason marker first, the wording only when there is none", async () => {
+    mockFetchOnce(400, { error: "invalid_request", error_description: "anything", reason: "consent-out-of-date" });
+    const base = { pryvApi: "https://reg.test", signedState: makeSignedState(), username: "alice", personalToken: "t", grantedPermissions: [] };
+    const stale = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(stale.reason).toBe("consent-out-of-date");
+    expect(isStaleConsentError(stale)).toBe(true);
+    // A marker other than out-of-date wins over a wording that would match.
+    mockFetchOnce(400, {
+      error: "invalid_request",
+      error_description: "the consent screen is out of date, restart the authorization flow",
+      reason: "subject-change-unacknowledged",
+    });
+    const unack = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(unack.reason).toBe("subject-change-unacknowledged");
+    expect(isStaleConsentError(unack)).toBe(false);
+    // No marker (an older core): the wording decides.
+    mockFetchOnce(400, { error: "invalid_request", error_description: "the consent screen is out of date, restart the authorization flow" });
+    const legacy = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(legacy.reason).toBeUndefined();
+    expect(isStaleConsentError(legacy)).toBe(true);
+  });
+
   it("[OACP7] picks the subject-change copy by direction", () => {
     expect(subjectChangeKey({ from: "pseudonym", to: "account" })).toBe("oauth.subjectChangeToAccount");
     expect(subjectChangeKey({ from: "account", to: "pseudonym" })).toBe("oauth.subjectChangeToPseudonym");
