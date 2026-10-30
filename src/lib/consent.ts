@@ -30,13 +30,16 @@ export type LocalizableText = Record<string, string>;
  *   `currentlyGranted: true`: the app already holds this entry (a consent
  *                     shown again to an app the user already allowed); it
  *                     opens ticked, and unticking it takes it away.
+ *   `currentLevel`  : on a held stream entry, the level the app holds today
+ *                     (`level` is then what it will hold: today's level joined
+ *                     with what it asks for).
  * All are display-layer only: they never travel on a grant, and the
  * server strips them before minting an access.
  */
 export type OfferPermission = (
   | { streamId: string; level: string; defaultName?: string; name?: string }
   | { feature: string; setting: string }
-) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean };
+) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean; currentLevel?: string };
 
 /**
  * Display model for one consent-screen row.
@@ -51,6 +54,8 @@ export type OfferPermission = (
  * the app already holds it.
  * `currentlyGranted`: the app already holds this entry (never set on a
  * feature restriction, which reads as one on its own).
+ * `heldLevel`: on a held stream entry whose level changes, the level the app
+ * holds today (null when it already holds the level shown, or holds nothing).
  */
 export interface ConsentEntry {
   permission: OfferPermission;
@@ -59,6 +64,7 @@ export interface ConsentEntry {
   showRequiredHint: boolean;
   initiallyTicked: boolean;
   currentlyGranted: boolean;
+  heldLevel: string | null;
 }
 
 /**
@@ -102,6 +108,14 @@ export function consentEntries(
     // A restriction the app is already under is not something "allowed": the
     // row's own wording ("The app cannot …") says it all.
     const currentlyGranted = p.currentlyGranted === true && !restriction;
+    const heldLevel =
+      currentlyGranted &&
+      "streamId" in p &&
+      typeof p.currentLevel === "string" &&
+      p.currentLevel !== "" &&
+      p.currentLevel !== p.level
+        ? p.currentLevel
+        : null;
     return {
       permission: p,
       label: permissionLabel(p, opts),
@@ -109,6 +123,7 @@ export function consentEntries(
       showRequiredHint: allowUserChoice && p.mandatory === true && !restriction,
       initiallyTicked: locked || currentlyGranted || p.optIn !== true,
       currentlyGranted,
+      heldLevel,
     };
   });
 }
@@ -170,7 +185,7 @@ export function grantedPermissions(
 ): OfferPermission[] {
   return entries
     .filter((e, i) => e.locked || flags[i])
-    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, ...p } }) => p as OfferPermission);
+    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, currentLevel: _l, ...p } }) => p as OfferPermission);
 }
 
 /** Catalog key of each access level's verb (what the row lets the app do). */
@@ -181,6 +196,11 @@ const LEVEL_LABEL_KEYS: Record<string, string> = {
   "create-only": "consent.permLevelCreateOnly",
   none: "consent.permLevelNone",
 };
+
+/** This app's verb for an access level (the level itself when unknown). */
+export function levelLabel(level: string): string {
+  return Object.hasOwn(LEVEL_LABEL_KEYS, level) ? i18n.t(LEVEL_LABEL_KEYS[level]) : level;
+}
 
 /** Where a consent row's name can come from, most specific first. */
 export interface LabelSources {
@@ -212,8 +232,7 @@ const FEATURE_LABEL_KEYS: Record<string, string> = {
 export function permissionLabel(p: OfferPermission, sources: LabelSources = {}): string {
   const entryLabel = safeLabel(() => sources.entryLabel?.(p));
   if ("streamId" in p && typeof p.streamId === "string") {
-    const levelKey = Object.hasOwn(LEVEL_LABEL_KEYS, p.level) ? LEVEL_LABEL_KEYS[p.level] : null;
-    const level = levelKey != null ? i18n.t(levelKey) : p.level;
+    const level = levelLabel(p.level);
     if (p.streamId === "*") return i18n.t("consent.permissionOnAllData", { level });
     const streamId = p.streamId;
     const name =

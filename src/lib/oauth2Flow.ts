@@ -269,6 +269,22 @@ export function isStaleConsentError(err: unknown): boolean {
   return /out of date|restart the authori[sz]ation/i.test(e.message ?? "");
 }
 
+/**
+ * The page's own wording for a refusal the user can fix on the screen, or
+ * null to show the core's message (which already names what went wrong, e.g.
+ * `permission-level-conflict`, `keep-one-stream`). `consent-widens-offer`: an
+ * unticked entry sits under one kept, so it would be reached anyway; a core
+ * that sends no `reason` is recognised by its wording.
+ */
+export function consentRefusalKey(err: unknown): string | null {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 400) return null;
+  const widens = e.reason != null
+    ? e.reason === "consent-widens-offer"
+    : /widen the offer under the stream hierarchy/i.test(e.message ?? "");
+  return widens ? "oauth.errorWidensOffer" : null;
+}
+
 function parseOffer(v: unknown): OAuthOffer | null {
   if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
   const o = v as Record<string, unknown>;

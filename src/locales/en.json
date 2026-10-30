@@ -478,6 +478,7 @@
     "featureForbidden": "The app cannot use “{{feature}}”",
     "requiredByApp": "(required by this app)",
     "currentlyGranted": "(already allowed)",
+    "currentlyGrantedOtherLevel": "(the app can already: {{current}}; it now asks for: {{requested}})",
     "expiresAfterLabel": "Expires after:",
     "expiresAfterSeconds": "{{seconds}}s",
     "errorNoSessionToken": "Sign-in did not return a session token.",
@@ -559,7 +560,8 @@
     "subjectChangeReplaces": "Accepting ends the app's current access on every device and replaces it with the new one.",
     "subjectChangeAcknowledge": "I understand",
     "errorConsentOutOfDate": "This consent screen is out of date: the app's access changed since it was shown. Go back to the app and start the authorization again.",
-    "backToApp": "Back to the app"
+    "backToApp": "Back to the app",
+    "errorWidensOffer": "One of the entries you unticked sits inside an entry you kept, so the app would still reach it through that one. Untick the containing entry too, or keep this one ticked."
   },
   "cmc": {
     "approveTitle": "Approve request",

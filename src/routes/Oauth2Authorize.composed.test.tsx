@@ -294,6 +294,55 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?error=access_denied"));
   });
 
+  it("[OACS12] a held stream asked at a wider level says what the app holds and what it asks for", async () => {
+    const fetchMock = mockFetch(composingCore({
+      offer: {
+        ...COMPOSED,
+        permissions: [
+          { streamId: "pressure", level: "read", mandatory: true, currentlyGranted: true, currentLevel: "read" },
+          { streamId: "diary", level: "contribute", currentlyGranted: true, currentLevel: "read" },
+        ],
+      },
+    }));
+    renderPage();
+    await signInToConsent();
+    expect(screen.getAllByText("(already allowed)")).toHaveLength(1);
+    expect(screen.getByText("(the app can already: Read; it now asks for: Add and modify)")).toBeTruthy();
+    fireEvent.click(acceptButton());
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledTimes(1));
+    const [accept] = bodiesOf(fetchMock, "/oauth2/authorize/accept");
+    // The annotation never travels.
+    expect(accept.grantedPermissions).toEqual([
+      { streamId: "pressure", level: "read" },
+      { streamId: "diary", level: "contribute" },
+    ]);
+  });
+
+  it("[OACS13] the hierarchy refusal reads as what to change on the screen", async () => {
+    mockFetch(composingCore({}, () => ({
+      status: 400,
+      body: { error: "invalid_scope", error_description: "grantedPermissions widen the offer under the stream hierarchy", reason: "consent-widens-offer" },
+    })));
+    renderPage();
+    await signInToConsent();
+    fireEvent.click(acceptButton());
+    await screen.findByText(/Untick the containing entry too, or keep this one ticked/);
+    expect(screen.queryByText(/widen the offer/)).toBeNull();
+    expect(acceptButton().disabled).toBe(false);
+  });
+
+  it("[OACS14] level-conflict and keep-one-stream refusals show the core's message", async () => {
+    let answer = { error: "invalid_scope", error_description: "conflicting permission level on a requested resource: diary", reason: "permission-level-conflict" };
+    mockFetch(composingCore({}, () => ({ status: 400, body: answer })));
+    renderPage();
+    await signInToConsent();
+    fireEvent.click(acceptButton());
+    await screen.findByText(answer.error_description);
+    answer = { error: "invalid_scope", error_description: "grantedPermissions must keep at least one stream permission (refuse instead)", reason: "keep-one-stream" };
+    fireEvent.click(acceptButton());
+    await screen.findByText(answer.error_description);
+  });
+
   it("[OACS10] a core without the reason marker is recognised by its wording", async () => {
     mockFetch(composingCore({}, () => ({
       status: 400,

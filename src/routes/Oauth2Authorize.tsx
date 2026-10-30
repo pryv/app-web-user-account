@@ -23,6 +23,7 @@ import {
   endConsentSession,
   identityNoticeKey,
   isStaleConsentError,
+  consentRefusalKey,
   subjectChangeKey,
   type ComposedConsent,
   type OAuthClientDisplay,
@@ -297,6 +298,8 @@ export default function Oauth2Authorize() {
         // was shown: accepting it again cannot succeed.
         setStale(true);
         setError(t("oauth.errorConsentOutOfDate"));
+      } else if (consentRefusalKey(err) != null) {
+        setError(t(consentRefusalKey(err) as string));
       } else {
         setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
       }

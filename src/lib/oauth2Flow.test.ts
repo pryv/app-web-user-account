@@ -9,6 +9,7 @@ import {
   identityNoticeKey,
   endConsentSession,
   isStaleConsentError,
+  consentRefusalKey,
   subjectChangeKey,
   type OAuthFlowError,
 } from "./oauth2Flow";
@@ -481,6 +482,18 @@ describe("[OACP] composed offer once signed in", () => {
     expect(isStaleConsentError(mk(400, "invalid_scope", "the consent screen is out of date"))).toBe(false);
     expect(isStaleConsentError(mk(401, "invalid_request", "out of date"))).toBe(false);
     expect(isStaleConsentError(null)).toBe(false);
+  });
+
+  it("[OACP9] the hierarchy refusal gets the page's own copy; other refusals keep the core's message", () => {
+    const mk = (status: number, message: string, reason?: string) =>
+      Object.assign(new Error(message), { status, oauthError: "invalid_request", reason }) as OAuthFlowError;
+    expect(consentRefusalKey(mk(400, "x", "consent-widens-offer"))).toBe("oauth.errorWidensOffer");
+    expect(consentRefusalKey(mk(400, "grantedPermissions widen the offer under the stream hierarchy, the kept subset must not grant more"))).toBe("oauth.errorWidensOffer");
+    expect(consentRefusalKey(mk(400, "widen the offer under the stream hierarchy", "keep-one-stream"))).toBeNull();
+    expect(consentRefusalKey(mk(400, "conflicting permission level", "permission-level-conflict"))).toBeNull();
+    expect(consentRefusalKey(mk(400, "keep at least one stream", "keep-one-stream"))).toBeNull();
+    expect(consentRefusalKey(mk(500, "x", "consent-widens-offer"))).toBeNull();
+    expect(consentRefusalKey(null)).toBeNull();
   });
 
   it("[OACP8] reads the core's reason marker first, the wording only when there is none", async () => {

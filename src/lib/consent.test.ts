@@ -3,6 +3,7 @@ import {
   consentEntries,
   grantedPermissions,
   initialFlags,
+  levelLabel,
   permissionLabel,
   permissionKey,
   offerEntryLabel,
@@ -157,6 +158,19 @@ describe("[CCMP] a consent shown again: entries the app already holds, restricti
       { feature: "webhooks", setting: "forbidden" },
       { feature: "exports", setting: "forbidden" },
     ]);
+  });
+
+  it("[CCM5] a held stream shown at another level keeps the level the app holds today", () => {
+    const entries = consentEntries([
+      { streamId: "diary", level: "contribute", currentlyGranted: true, currentLevel: "read" },
+      { streamId: "health", level: "read", currentlyGranted: true, currentLevel: "read" },
+      { streamId: "steps", level: "read", currentlyGranted: true },
+      { streamId: "location", level: "read", currentLevel: "manage" },
+    ], { allowUserChoice: true });
+    expect(entries.map((e) => e.heldLevel)).toEqual(["read", null, null, null]);
+    expect(grantedPermissions(entries, initialFlags(entries))[0]).toEqual({ streamId: "diary", level: "contribute" });
+    expect(levelLabel("contribute")).toBe("Add and modify");
+    expect(levelLabel("odd")).toBe("odd");
   });
 
   it("[CCM3] a restriction is locked and granted whatever mandatory and optIn say", () => {

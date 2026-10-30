@@ -1,5 +1,19 @@
 import { useTranslation } from "react-i18next";
-import type { ConsentEntry } from "../../lib/consent";
+import i18n from "../../i18n";
+import { levelLabel, type ConsentEntry } from "../../lib/consent";
+
+/**
+ * What the app holds today on a held row: "(already allowed)" when it holds
+ * the level shown, else the level it holds and the one it now asks for.
+ */
+function heldHint(e: ConsentEntry): string {
+  const p = e.permission;
+  if (e.heldLevel == null || !("streamId" in p)) return i18n.t("consent.currentlyGranted");
+  return i18n.t("consent.currentlyGrantedOtherLevel", {
+    current: levelLabel(e.heldLevel),
+    requested: levelLabel(p.level),
+  });
+}
 
 /**
  * The ONE permission render for every consent surface (full lexicon:
@@ -42,14 +56,14 @@ export function PermissionList({
                 <span className="text-xs text-muted">{t("consent.requiredByApp")}</span>
               )}
               {e.currentlyGranted && (
-                <span className="text-xs text-muted">{t("consent.currentlyGranted")}</span>
+                <span className="text-xs text-muted">{heldHint(e)}</span>
               )}
             </label>
           ) : (
             <>
               <span>{e.label}</span>
               {e.currentlyGranted && (
-                <span className="ml-2 text-xs text-muted">{t("consent.currentlyGranted")}</span>
+                <span className="ml-2 text-xs text-muted">{heldHint(e)}</span>
               )}
             </>
           )}

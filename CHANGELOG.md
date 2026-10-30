@@ -20,7 +20,9 @@
   the page reads `POST /oauth2/authorize/offer` again once signed in, with `username` +
   `userToken`. A core that supports it answers the offer joined with what the app already
   holds: entries flagged `currentlyGranted` open ticked (locked when `mandatory`) and are marked
-  "(already allowed)", new `optIn` entries open unticked, and entries the app only holds are
+  "(already allowed)"; a held stream shown at a wider level than the app holds today
+  (`currentLevel` differs from `level`) says both instead ("the app can already: Read; it now
+  asks for: Add and modify"). New `optIn` entries open unticked, and entries the app only holds are
   named from the account's streams. Accept posts the answer's `shownDigest`, so the ticked set
   becomes the app's access: unticking an entry the app held takes it away. When the answer
   carries `subjectChange` (the app switches between a pseudonym and the account identity), a
@@ -30,15 +32,17 @@
   Feature restrictions are locked lines (see Fixed). Accept asks to keep at least one stream
   ticked (restrictions alone grant nothing, and the core refuses them). A refusal saying the
   screen is out of date (`reason: "consent-out-of-date"`, or its wording from a core that sends
-  no `reason`) disables Accept and asks the user to restart the authorization from the app; a
-  session the
+  no `reason`) disables Accept and asks the user to restart the authorization from the app. A
+  refusal because an unticked entry sits under a kept one (`reason: "consent-widens-offer"`, or
+  its wording) explains what to change on the screen; other refusals (`permission-level-conflict`,
+  `keep-one-stream`, …) show the core's message. A session the
   core does not accept (`authenticated: false`) returns to the sign-in. A core that answers no
   `shownDigest` keeps the previous behaviour, and no digest is posted. New catalog keys
   `oauth.pseudonymLinkability`, `oauth.reconsentNotice`, `oauth.reconsentNoticeChoice`,
   `oauth.subjectChangeToAccount`, `oauth.subjectChangeToPseudonym`,
   `oauth.subjectChangeReplaces`, `oauth.subjectChangeAcknowledge`,
   `oauth.errorConsentOutOfDate`, `oauth.backToApp`, `consent.featureForbidden`,
-  `consent.currentlyGranted`.
+  `consent.currentlyGranted`, `consent.currentlyGrantedOtherLevel`, `oauth.errorWidensOffer`.
 
 ### Fixed
 
