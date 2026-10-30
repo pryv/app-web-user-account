@@ -12,6 +12,7 @@ import {
   remindersFor,
   requiresPassword,
   setAutoDeletion,
+  transferChanged,
   type AutoDeletionState,
 } from "./autoDeletion";
 import type { PryvConnection } from "./sessionStore";
@@ -137,6 +138,73 @@ describe("[ADLB] automatic deletion rules", () => {
     expect(autoDeletionErrorKey(new AutoDeletionError("The given password does not match.", ["invalid-operation"]))).toBe("wrongPassword");
     expect(autoDeletionErrorKey(new AutoDeletionError("something else", ["invalid-operation"]))).toBeNull();
     expect(autoDeletionErrorKey(new Error("x"))).toBeNull();
+  });
+
+  it("[ADL10] params for a transfer: action, beneficiary, identity keys only when given", () => {
+    process.env.TZ = "UTC";
+    const transfer = { email: " bob@example.test ", notifyBeneficiary: "atSetup" as const, fallback: "keep" as const };
+    expect(paramsFor({ mode: "inactivity", inactivityDays: 365, action: "transfer", transfer })).toEqual({
+      mode: "inactivity",
+      inactivityDays: 365,
+      action: "transfer",
+      transfer: { email: "bob@example.test", notifyBeneficiary: "atSetup", fallback: "keep" },
+    });
+    expect(
+      paramsFor({ mode: "date", day: "2031-01-01", action: "transfer", transfer: { ...transfer, name: " Bob ", dateOfBirth: "1990-02-03" } }),
+    ).toEqual({
+      mode: "date",
+      date: "2031-01-01T23:59:59+00:00",
+      action: "transfer",
+      transfer: { email: "bob@example.test", notifyBeneficiary: "atSetup", fallback: "keep", name: "Bob", dateOfBirth: "1990-02-03" },
+    });
+    expect(
+      paramsFor({ mode: "inactivity", inactivityDays: 365, action: "transfer", transfer: { ...transfer, name: "", dateOfBirth: "" } })
+        .transfer,
+    ).toMatchObject({ name: "", dateOfBirth: "" });
+    expect(() => paramsFor({ mode: "inactivity", inactivityDays: 365, action: "transfer" })).toThrow();
+  });
+
+  it("[ADL11] the password is asked to set or change a transfer, not to lengthen an unchanged one", () => {
+    const stored = { email: "bob@example.test", notifyBeneficiary: "atSetup" as const, fallback: "delete" as const };
+    const setting = { mode: "inactivity" as const, inactivityDays: 365, action: "transfer", transfer: { ...stored, identityGiven: true as const } };
+    const choice = (over: Record<string, unknown> = {}, days = 365) => ({
+      mode: "inactivity" as const,
+      inactivityDays: days,
+      action: "transfer" as const,
+      transfer: { ...stored, ...over },
+    });
+    // From a deletion to a transfer.
+    expect(requiresPassword(inactivity(365), choice())).toBe(true);
+    // Unchanged (the email compared without case), or a longer period.
+    expect(requiresPassword(setting, choice({ email: "Bob@Example.test" }))).toBe(false);
+    expect(requiresPassword(setting, choice({}, 730))).toBe(false);
+    // Another beneficiary, notice, fallback, or any identity field sent.
+    expect(requiresPassword(setting, choice({ email: "eve@example.test" }))).toBe(true);
+    expect(requiresPassword(setting, choice({ notifyBeneficiary: "atTrigger" }))).toBe(true);
+    expect(requiresPassword(setting, choice({ fallback: "keep" }))).toBe(true);
+    expect(requiresPassword(setting, choice({ name: "", dateOfBirth: "" }))).toBe(true);
+    expect(requiresPassword(setting, choice({ name: "Bob" }))).toBe(true);
+    // A shorter period.
+    expect(requiresPassword(setting, choice({}, 200))).toBe(true);
+  });
+
+  it("[ADL12] a refused transfer field maps to its own message key", () => {
+    const refusal = (param: string | null) =>
+      new AutoDeletionError("x", [AUTO_DELETION_ERRORS.transferInvalid, "invalid-parameters-format"], param);
+    expect(autoDeletionErrorKey(refusal("email"))).toBe("transferInvalid.email");
+    expect(autoDeletionErrorKey(refusal("dateOfBirth"))).toBe("transferInvalid.dateOfBirth");
+    expect(autoDeletionErrorKey(refusal("notifyBeneficiary"))).toBe("transferInvalid.notifyBeneficiary");
+    expect(autoDeletionErrorKey(refusal("fallback"))).toBe("transferInvalid.fallback");
+    expect(autoDeletionErrorKey(refusal("other-thing"))).toBe("transferInvalid.other");
+    expect(autoDeletionErrorKey(refusal(null))).toBe("transferInvalid.other");
+  });
+
+  it("[ADL13] transferChanged: beneficiary, notice, fallback, identity; nothing stored is a change", () => {
+    const stored = { email: "bob@example.test", notifyBeneficiary: "atSetup" as const, fallback: "delete" as const };
+    expect(transferChanged(null, stored)).toBe(true);
+    expect(transferChanged(stored, { ...stored, email: " BOB@example.test " })).toBe(false);
+    expect(transferChanged(stored, { ...stored, fallback: "keep" })).toBe(true);
+    expect(transferChanged(stored, { ...stored, dateOfBirth: "1990-01-01" })).toBe(true);
   });
 
   it("[ADL9] calls: the state is unwrapped, a refusal carries its ids", async () => {

@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Account transfer in the automatic deletion card.** When the platform lists `transfer` in
+  `features.autoDeletion.actions`, a date or a period without use can hand the account's
+  management over to someone instead of deleting it ("At that time": delete or transfer; with
+  `delete` not offered, transfer is the only action and the date and period options stay
+  offered). The owner gives the beneficiary's email (required), optionally a name and a date of
+  birth (with a notice saying what they are for, who can read them and when they are deleted,
+  naming the operator from `service.info().name`), when they are told (now, so they can decline,
+  or only when the transfer starts) and the fallback if nobody takes it over in time (delete,
+  when offered, or keep). A stored name and date of birth are never shown back: the card says
+  they are stored, keeps them while the fields stay empty, and offers to remove them. Setting or
+  changing a transfer, and turning it into a deletion, asks the account password. The
+  confirmation names the beneficiary, the claim window (`claimWindowDays`) and the fallback; the
+  status says to whom and when the account will be transferred, and the transfer's state (told
+  on, claim window open until, claimed and waiting, completed, declined, cancelled with its
+  reason, lapsed, claims paused after too many failed attempts). A refused transfer field
+  (`auto-deletion-transfer-invalid`, by `param`) gets its own message.
+- **`/transfer-claim`.** Landing page of the beneficiary's claim link
+  (`?username=<owner>&token=<token>`). The owner and token move at once into the tab's
+  sessionStorage (`pryv-transfer-claim`) and leave the address bar, so the sign-in or
+  registration hop (`next=/transfer-claim`, now a hand-off route) never carries them. Signed in
+  with their own account, the beneficiary accepts: the page claims on the owner's core
+  (`POST account/auto-deletion/transfer-claim`), accepts the delegation invite on their own core
+  (`delegations.acceptAttach`) and claims again, then points to "Accounts I manage". A session
+  acting for another account cannot accept. Refusals (invalid or expired link, already claimed,
+  paused, too many attempts, delegation errors) are explained.
+- **`/transfer-decline`.** Landing page of the beneficiary's decline link: the token leaves the
+  address bar, the Decline button calls `POST account/auto-deletion/transfer-decline` on the
+  owner's core, no sign-in needed.
+- New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
+  and `transfer`.
+
 ## 0.26.0 - 2026-10-30
 
 ### Added

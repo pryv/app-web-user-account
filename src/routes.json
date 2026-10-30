@@ -11,7 +11,9 @@
     "cmc/approve",
     "cmc-scope-update",
     "auth",
-    "oauth2-authorize"
+    "oauth2-authorize",
+    "transfer-claim",
+    "transfer-decline"
   ],
   "account": ["profile", "security", "apps", "delegation", "memberships", "data"]
 }

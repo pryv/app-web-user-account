@@ -380,6 +380,200 @@ describe("[ADCD] automatic deletion card", () => {
     await waitFor(() => expect(sets()).toEqual([{ mode: "never" }]));
   });
 
+  describe("transfer", () => {
+    const TRANSFER_FEATURE = { ...FEATURE, actions: ["delete", "transfer"] };
+    const OFFERED: Json = { ...NONE, actions: ["delete", "transfer"], claimWindowDays: 30, transfer: null };
+    const STORED = { email: "bob@example.test", notifyBeneficiary: "atSetup", fallback: "delete" };
+    const withTransfer = (over: Json = {}): Json => ({
+      ...OFFERED,
+      effective: { source: "user", mode: "inactivity", inactivityDays: 365, action: "transfer" },
+      setting: { mode: "inactivity", inactivityDays: 365, action: "transfer", transfer: STORED, updatedAt: NOW },
+      deadline: NOW + 300 * DAY,
+      ...over,
+    });
+
+    beforeEach(() => {
+      state.serviceInfo = { name: "Example Health", features: { autoDeletion: TRANSFER_FEATURE } };
+      state.autoDeletion = OFFERED;
+    });
+
+    it("[ADC20] setting a transfer: beneficiary, identity, notice and fallback, confirmed with the password", async () => {
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "After a period without use" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Transfer my account to someone" }));
+      expect(screen.getByTestId("auto-deletion-identity-notice").textContent).toContain(
+        "The operator of this platform (Example Health) can read them only after the transfer has started",
+      );
+      expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText("Email address of the person who takes over"), {
+        target: { value: "bob@example.test" },
+      });
+      fireEvent.change(screen.getByLabelText("Their name (optional)"), { target: { value: "Bob Example" } });
+      fireEvent.click(screen.getByRole("radio", { name: "Only when the transfer starts" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Keep the account" }));
+      save();
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain("After 365 days without use, bob@example.test will be invited to take over");
+      expect(dialog.textContent).toContain("They will have 30 days to accept");
+      expect(dialog.textContent).toContain("They are told by email only when the transfer starts.");
+      expect(dialog.textContent).toContain("If nobody takes it over in time, your account is kept.");
+      expect(dialog.textContent).toContain("A transfer does not include the accounts you manage for others.");
+      await typePassword("s3cret");
+      await screen.findByText("Your choice is saved.");
+      expect(sets()).toEqual([
+        {
+          mode: "inactivity",
+          inactivityDays: 365,
+          action: "transfer",
+          transfer: { email: "bob@example.test", notifyBeneficiary: "atTrigger", fallback: "keep", name: "Bob Example" },
+          password: "s3cret",
+        },
+      ]);
+    });
+
+    it("[ADC21] only transfer offered: a date or period is still offered, with transfer fixed and keep the only fallback", async () => {
+      state.serviceInfo = { features: { autoDeletion: { ...FEATURE, actions: ["transfer"] } } };
+      state.autoDeletion = { ...OFFERED, actions: ["transfer"] };
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "On a date" }));
+      expect(screen.queryByRole("radio", { name: "Transfer my account to someone" })).toBeNull();
+      expect(screen.getByText(/This platform does not delete accounts automatically/)).toBeTruthy();
+      expect(screen.queryByRole("radio", { name: "Delete the account" })).toBeNull();
+      expect(screen.getByRole("radio", { name: "Keep the account" })).toHaveProperty("checked", true);
+      expect(screen.getByTestId("auto-deletion-identity-notice").textContent).toContain(
+        "The operator of this platform (the operator of this platform)",
+      );
+      fireEvent.change(screen.getByLabelText("Deletion date"), { target: { value: "2031-06-01" } });
+      fireEvent.change(screen.getByLabelText("Email address of the person who takes over"), {
+        target: { value: "bob@example.test" },
+      });
+      save();
+      await typePassword("s3cret");
+      await screen.findByText("Your choice is saved.");
+      expect(sets()[0]).toMatchObject({
+        mode: "date",
+        action: "transfer",
+        transfer: { email: "bob@example.test", notifyBeneficiary: "atSetup", fallback: "keep" },
+      });
+    });
+
+    it("[ADC22] a stored identity is never shown back; empty fields keep it, remove them erases it", async () => {
+      state.autoDeletion = withTransfer({
+        setting: {
+          mode: "inactivity",
+          inactivityDays: 365,
+          action: "transfer",
+          transfer: { ...STORED, identityGiven: true },
+          updatedAt: NOW,
+        },
+      });
+      renderCard();
+      expect(await screen.findByTestId("auto-deletion-identity-stored")).toBeTruthy();
+      expect(screen.getByLabelText("Email address of the person who takes over")).toHaveProperty("value", "bob@example.test");
+      expect(screen.getByLabelText("Their name (optional)")).toHaveProperty("value", "");
+      // A longer period, same beneficiary: no password, no identity key.
+      fireEvent.change(screen.getByLabelText("Period without use"), { target: { value: "730" } });
+      save();
+      await confirmDialog();
+      await screen.findByText("Your choice is saved.");
+      expect(sets()[0]).toEqual({
+        mode: "inactivity",
+        inactivityDays: 730,
+        action: "transfer",
+        transfer: { email: "bob@example.test", notifyBeneficiary: "atSetup", fallback: "delete" },
+      });
+      // Remove them: both sent empty, with the password.
+      fireEvent.click(await screen.findByLabelText("Remove them"));
+      expect((screen.getByLabelText("Their name (optional)") as HTMLInputElement).disabled).toBe(true);
+      save();
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog.textContent).toContain("The name and date of birth you gave are removed.");
+      await typePassword("s3cret");
+      await waitFor(() => expect(sets()).toHaveLength(2));
+      expect(sets()[1]).toMatchObject({ transfer: { name: "", dateOfBirth: "" }, password: "s3cret" });
+    });
+
+    it("[ADC23] turning a transfer into a deletion asks the password", async () => {
+      state.autoDeletion = withTransfer();
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "Delete my account" }));
+      save();
+      await typePassword("s3cret");
+      await screen.findByText("Your choice is saved.");
+      expect(sets()[0]).toEqual({ mode: "inactivity", inactivityDays: 365, action: "delete", password: "s3cret" });
+    });
+
+    it("[ADC24] the status names the beneficiary, the fallback and the transfer's state", async () => {
+      state.autoDeletion = withTransfer({
+        transfer: {
+          status: "open",
+          email: "bob@example.test",
+          beneficiaryNotifiedAt: NOW - 10 * DAY,
+          openedAt: NOW - DAY,
+          endsAt: Date.parse("2031-03-01T12:00:00Z") / 1000,
+          failedClaims: { count: 3, lastAt: NOW },
+        },
+      });
+      renderCard();
+      const status = await screen.findByTestId("auto-deletion-status");
+      expect(status.textContent).toMatch(/transferred to bob@example\.test after 365 days without use: currently on /);
+      expect(status.textContent).toContain(
+        "If they do not take it over within 30 days, your account and all of its data will be deleted.",
+      );
+      expect(status.textContent).toMatch(/bob@example\.test was told on /);
+      expect(status.textContent).toMatch(/The transfer has started: bob@example\.test can take over your account until .*2031/);
+      expect(status.textContent).toMatch(/3 attempts to take over your account used a wrong link/);
+      cleanup();
+
+      state.autoDeletion = withTransfer({
+        transfer: { status: "claimed", email: "bob@example.test", claimedBy: { username: "bobby", at: NOW } },
+      });
+      renderCard();
+      expect((await screen.findByTestId("auto-deletion-status")).textContent).toContain(
+        "bobby has claimed your account. Waiting for their acceptance.",
+      );
+      cleanup();
+
+      state.autoDeletion = withTransfer({
+        transfer: { status: "cancelled", email: "bob@example.test", closedAt: NOW, closedReason: "owner-activity" },
+      });
+      renderCard();
+      expect((await screen.findByTestId("auto-deletion-status")).textContent).toContain(
+        "The transfer was cancelled because you used your account.",
+      );
+    });
+
+    it("[ADC25] a refused beneficiary email is explained", async () => {
+      state.setReplies = [
+        {
+          error: {
+            id: "invalid-parameters-format",
+            message: "x",
+            data: { id: AUTO_DELETION_ERRORS.transferInvalid, param: "email" },
+          },
+        },
+      ];
+      renderCard();
+      fireEvent.click(await screen.findByRole("radio", { name: "After a period without use" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Transfer my account to someone" }));
+      fireEvent.change(screen.getByLabelText("Email address of the person who takes over"), {
+        target: { value: "alice@example.test" },
+      });
+      save();
+      await typePassword("s3cret");
+      expect(await screen.findByText(/Enter a valid email address for the person who takes over your account, other than your own/)).toBeTruthy();
+    });
+
+    it("[ADC26] a delegate sees the transfer status, not the controls", async () => {
+      state.actingAs = { username: "alice", parentUsername: "bob" };
+      state.autoDeletion = withTransfer();
+      renderCard();
+      expect((await screen.findByTestId("auto-deletion-status")).textContent).toContain("transferred to bob@example.test");
+      expect(screen.getByTestId("auto-deletion-delegate-note")).toBeTruthy();
+      expect(screen.queryByTestId("auto-deletion-transfer")).toBeNull();
+    });
+  });
+
   it("[ADC19] a deletion on hold says why, by reason and guard", async () => {
     state.autoDeletion = {
       ...NONE,

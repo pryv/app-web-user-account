@@ -13,6 +13,8 @@ import CmcApprove from "./routes/CmcApprove";
 import CmcScopeUpdate from "./routes/CmcScopeUpdate";
 import Auth from "./routes/Auth";
 import Oauth2Authorize from "./routes/Oauth2Authorize";
+import TransferClaim from "./routes/TransferClaim";
+import TransferDecline from "./routes/TransferDecline";
 import AccountLayout from "./routes/account/AccountLayout";
 import AuditAccess from "./routes/account/AuditAccess";
 import { ACCOUNT_TABS, EXTRA_ROUTES } from "./accountTabs";
@@ -60,6 +62,11 @@ export default function App() {
         {/* OAuth2 (RFC 6749) authorize/consent — the core's `oauth:consentUrl`
             points here; reached via 302 from `GET /oauth2/authorize`. */}
         <Route path="/oauth2-authorize" element={<Oauth2Authorize />} />
+
+        {/* Account transfer: the beneficiary's mailed links (claim needs a
+            signed-in account of their own; decline does not). */}
+        <Route path="/transfer-claim" element={<TransferClaim />} />
+        <Route path="/transfer-decline" element={<TransferDecline />} />
 
         {/* Self-service account management (subject). The tabs come from
             src/accountTabs.tsx; audit-access is reached from a tab, not the nav. */}

@@ -1,7 +1,7 @@
 /**
  * Return to a hand-off page after signing in.
  *
- * `/cmc-accept` and `/cmc-scope-update` send an unsigned-in user to `/signin`
+ * `/cmc-accept`, `/cmc-scope-update` and `/transfer-claim` send an unsigned-in user to `/signin`
  * with their own query string plus `next=<route>`. After sign-in (or MFA) the
  * user comes back to that route with the same query string, instead of landing
  * on the account profile and having to reopen the link.
@@ -16,9 +16,15 @@
  */
 
 /** A hand-off page: one of `HANDOFF_ROUTES`. */
-export type HandoffRoute = "/cmc-accept" | "/cmc-scope-update";
+export type HandoffRoute = "/cmc-accept" | "/cmc-scope-update" | "/transfer-claim";
 
-export const HANDOFF_ROUTES: ReadonlySet<string> = new Set<HandoffRoute>(["/cmc-accept", "/cmc-scope-update"]);
+export const HANDOFF_ROUTES: ReadonlySet<string> = new Set<HandoffRoute>([
+  "/cmc-accept",
+  "/cmc-scope-update",
+  // An account transfer's claim link; its owner and token wait in the tab's
+  // sessionStorage during the hop, never in the query (src/lib/accountTransfer.ts).
+  "/transfer-claim",
+]);
 
 /** `/signin` link that returns to `route` with the current query string. */
 export function signInLinkFor(route: string, search: string): string {

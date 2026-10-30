@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Download } from "lucide-react";
 import { Card, Button, Field, Alert, SelectField, SectionLabel } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -16,16 +17,24 @@ import {
   endOfLocalDayIso,
   getAutoDeletion,
   inactivityPresets,
+  localDay,
+  operatorNameOf,
   paramsFor,
   readAutoDeletionFeature,
   remindersFor,
   requiresPassword,
+  sameEmail,
   setAutoDeletion,
   toSeconds,
+  transferChanged,
   type AutoDeletionChoice,
   type AutoDeletionChoiceMode,
   type AutoDeletionFeature,
   type AutoDeletionState,
+  type TransferChoice,
+  type TransferFallback,
+  type TransferNotify,
+  type TransferRecord,
 } from "../../lib/autoDeletion";
 
 /**
@@ -43,9 +52,16 @@ import {
  * may change it, signed in with their own password (the platform refuses a
  * delegate anyway).
  *
- * The action at the deadline is deletion. The platform's contract carries an
- * `action` so another one (handing the account over to someone) can be added
- * as its own section of this card later.
+ * The action at the deadline is deletion, or, when the platform offers it, a
+ * transfer: the account's management is offered to a beneficiary named by
+ * email, who claims it from their own account within the platform's claim
+ * window; if nobody does, the owner's fallback (delete or keep) applies. The
+ * transfer section shows only for a date or a period, and only when the
+ * platform lists `transfer` in its actions; with `delete` absent, the
+ * transfer is the only action and the fallback can only be keep. The
+ * beneficiary's optional name and date of birth are never shown back: the
+ * card only says that they are stored, and offers to remove them. Setting or
+ * changing a transfer, and turning it into a deletion, asks the password.
  */
 export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: string }) {
   const { t } = useTranslation();
@@ -58,12 +74,20 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
   const [state, setState] = useState<AutoDeletionState | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [serverDelegate, setServerDelegate] = useState(false);
+  const [operatorName, setOperatorName] = useState<string | null>(null);
 
   // Form
   const [mode, setMode] = useState<AutoDeletionChoiceMode>("default");
   const [day, setDay] = useState("");
   const [period, setPeriod] = useState("custom");
   const [customDays, setCustomDays] = useState("");
+  const [action, setAction] = useState<"delete" | "transfer">("delete");
+  const [beneficiaryEmail, setBeneficiaryEmail] = useState("");
+  const [beneficiaryName, setBeneficiaryName] = useState("");
+  const [beneficiaryBirth, setBeneficiaryBirth] = useState("");
+  const [removeIdentity, setRemoveIdentity] = useState(false);
+  const [notify, setNotify] = useState<TransferNotify>("atSetup");
+  const [fallback, setFallback] = useState<TransferFallback>("delete");
   const [acknowledged, setAcknowledged] = useState(false);
   const [ackForced, setAckForced] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -79,6 +103,15 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     const preset = days != null && inactivityPresets(null).some((p) => p.days === days);
     setPeriod(days == null ? "custom" : preset ? String(days) : "custom");
     setCustomDays(days != null && !preset ? String(days) : "");
+    const transfer = setting?.action === "transfer" ? setting.transfer ?? null : null;
+    setAction(setting?.action === "transfer" ? "transfer" : "delete");
+    setBeneficiaryEmail(transfer?.email ?? "");
+    setBeneficiaryName("");
+    setBeneficiaryBirth("");
+    setRemoveIdentity(false);
+    setNotify(transfer?.notifyBeneficiary ?? "atSetup");
+    // Without deletion offered, keeping the account is the only fallback.
+    setFallback(transfer?.fallback ?? ((s.actions ?? []).includes("delete") ? "delete" : "keep"));
     setAcknowledged(false);
     setAckForced(false);
   }, []);
@@ -105,6 +138,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
         const f = readAutoDeletionFeature(info);
         setFeature(f);
         if (f == null) return;
+        setOperatorName(operatorNameOf(info));
         void load();
         // The server's word on whether this session acts for another account,
         // as the delegated-session banner reads it.
@@ -131,16 +165,41 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
   const bounds = state?.bounds ?? feature.bounds;
   const actions = state?.actions ?? feature.actions;
   const deleteAllowed = actions.includes("delete");
+  // The holder's own transfer stays shown even if the platform stopped offering it.
+  const transferShown = actions.includes("transfer") || state?.setting?.action === "transfer";
   const userOverride = state?.userOverride ?? feature.userOverride;
   const allowUserOptOut = state?.allowUserOptOut ?? feature.allowUserOptOut;
   const presets = inactivityPresets(bounds);
   const minDay = earliestDay(new Date(), bounds?.minLeadDays ?? 0);
+  const scheduling = mode === "date" || mode === "inactivity";
+  // Transfer when chosen, or when it is the only action offered.
+  const chosenAction: "delete" | "transfer" =
+    scheduling && transferShown && (action === "transfer" || !deleteAllowed) ? "transfer" : "delete";
+  const storedTransfer = state?.setting?.action === "transfer" ? state.setting.transfer ?? null : null;
+  const sameBeneficiary = storedTransfer != null && sameEmail(storedTransfer.email, beneficiaryEmail);
+  const identityStored = sameBeneficiary && storedTransfer?.identityGiven === true;
+
+  const transferChoice: TransferChoice = {
+    email: beneficiaryEmail,
+    notifyBeneficiary: notify,
+    fallback: deleteAllowed ? fallback : "keep",
+  };
+  if (removeIdentity && identityStored) {
+    transferChoice.name = "";
+    transferChoice.dateOfBirth = "";
+  } else {
+    // Empty fields keep what is stored; either one given replaces both.
+    if (beneficiaryName.trim() !== "") transferChoice.name = beneficiaryName;
+    if (beneficiaryBirth !== "") transferChoice.dateOfBirth = beneficiaryBirth;
+  }
+  const withAction = (c: AutoDeletionChoice): AutoDeletionChoice =>
+    chosenAction === "transfer" ? { ...c, action: "transfer", transfer: transferChoice } : c;
 
   const choice: AutoDeletionChoice =
     mode === "date"
-      ? { mode, day }
+      ? withAction({ mode, day })
       : mode === "inactivity"
-        ? { mode, inactivityDays: period === "custom" ? Number(customDays) : Number(period) }
+        ? withAction({ mode, inactivityDays: period === "custom" ? Number(customDays) : Number(period) })
         : { mode };
 
   return (
@@ -202,7 +261,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     if (allowUserOptOut || s.setting?.mode === "never") {
       options.push({ value: "never", label: t("data.autoDeletion.optionNever"), hint: t("data.autoDeletion.optionNeverHint") });
     }
-    const custom = deleteAllowed && userOverride;
+    const custom = (deleteAllowed || transferShown) && userOverride;
     if (custom && feat.triggers.includes("date")) {
       options.push({ value: "date", label: t("data.autoDeletion.optionDate") });
     }
@@ -222,7 +281,7 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     }
     const readOnly = options.some((o) => o.value === mode && o.stale === true);
 
-    const note = !deleteAllowed
+    const note = !deleteAllowed && !transferShown
       ? t("data.autoDeletion.deleteNotAllowed")
       : !userOverride
         ? t("data.autoDeletion.overrideNotAllowedNote")
@@ -323,6 +382,8 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
           </>
         )}
 
+        {scheduling && transferShown && renderTransfer(readOnly)}
+
         {ackRequired && (
           <div className="mb-4 flex items-start gap-2">
             <input
@@ -352,7 +413,135 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     );
   }
 
+  function radio<V extends string>(
+    name: string,
+    value: V,
+    current: V,
+    onPick: (v: V) => void,
+    label: string,
+    disabled: boolean,
+  ): ReactNode {
+    return (
+      <label key={value} className="flex items-start gap-2 text-sm">
+        <input
+          type="radio"
+          name={name}
+          value={value}
+          checked={current === value}
+          onChange={() => {
+            onPick(value);
+            setError(null);
+            setNotice(null);
+          }}
+          disabled={disabled}
+          className="mt-1 accent-primary"
+        />
+        <span>{label}</span>
+      </label>
+    );
+  }
+
+  /** "At that time": delete or transfer, and the transfer's beneficiary, notice and fallback. */
+  function renderTransfer(readOnly: boolean): ReactNode {
+    const off = busy || readOnly;
+    const operator = operatorName ?? t("data.autoDeletion.transfer.operatorUnnamed");
+    return (
+      <div className="mb-4" data-testid="auto-deletion-transfer">
+        {deleteAllowed ? (
+          <fieldset className="mb-4">
+            <legend className="mb-2 text-sm font-medium text-muted">{t("data.autoDeletion.transfer.actionLegend")}</legend>
+            <div className="flex flex-col gap-2">
+              {radio("auto-deletion-action", "delete", chosenAction, setAction, t("data.autoDeletion.transfer.actionDelete"), off)}
+              {radio("auto-deletion-action", "transfer", chosenAction, setAction, t("data.autoDeletion.transfer.actionTransfer"), off)}
+            </div>
+          </fieldset>
+        ) : (
+          <p className="mb-4 text-sm text-muted">{t("data.autoDeletion.transfer.onlyTransfer")}</p>
+        )}
+        {chosenAction === "transfer" && (
+          <>
+            <Field
+              id="auto-deletion-beneficiary-email"
+              type="email"
+              autoComplete="off"
+              label={t("data.autoDeletion.transfer.emailLabel")}
+              hint={t("data.autoDeletion.transfer.emailHint")}
+              value={beneficiaryEmail}
+              onChange={(e) => setBeneficiaryEmail(e.target.value)}
+              disabled={off}
+              required
+            />
+            {storedTransfer?.identityGiven === true && !sameBeneficiary && beneficiaryEmail.trim() !== "" && (
+              <p className="mb-4 text-xs text-muted">{t("data.autoDeletion.transfer.identityDroppedOnChange")}</p>
+            )}
+            {identityStored && (
+              <div className="mb-4 text-sm" data-testid="auto-deletion-identity-stored">
+                <p className="mb-2">{t("data.autoDeletion.transfer.identityStored")}</p>
+                <div className="flex items-start gap-2">
+                  <input
+                    id="auto-deletion-identity-remove"
+                    type="checkbox"
+                    checked={removeIdentity}
+                    onChange={(e) => setRemoveIdentity(e.target.checked)}
+                    disabled={off}
+                    className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                  />
+                  <label htmlFor="auto-deletion-identity-remove" className="text-sm text-ink">
+                    {t("data.autoDeletion.transfer.identityRemove")}
+                  </label>
+                </div>
+              </div>
+            )}
+            <Field
+              id="auto-deletion-beneficiary-name"
+              autoComplete="off"
+              label={t("data.autoDeletion.transfer.nameLabel")}
+              value={beneficiaryName}
+              onChange={(e) => setBeneficiaryName(e.target.value)}
+              disabled={off || (identityStored && removeIdentity)}
+            />
+            <Field
+              id="auto-deletion-beneficiary-birth"
+              type="date"
+              label={t("data.autoDeletion.transfer.birthLabel")}
+              max={localDay(new Date())}
+              value={beneficiaryBirth}
+              onChange={(e) => setBeneficiaryBirth(e.target.value)}
+              disabled={off || (identityStored && removeIdentity)}
+            />
+            <p className="mb-4 text-xs text-muted" data-testid="auto-deletion-identity-notice">
+              {t("data.autoDeletion.transfer.identityNotice", { operator })}
+            </p>
+            <fieldset className="mb-4">
+              <legend className="mb-2 text-sm font-medium text-muted">{t("data.autoDeletion.transfer.notifyLegend")}</legend>
+              <div className="flex flex-col gap-2">
+                {radio("auto-deletion-notify", "atSetup", notify, setNotify, t("data.autoDeletion.transfer.notifyAtSetup"), off)}
+                {radio("auto-deletion-notify", "atTrigger", notify, setNotify, t("data.autoDeletion.transfer.notifyAtTrigger"), off)}
+              </div>
+            </fieldset>
+            <fieldset className="mb-2">
+              <legend className="mb-2 text-sm font-medium text-muted">{t("data.autoDeletion.transfer.fallbackLegend")}</legend>
+              <div className="flex flex-col gap-2">
+                {deleteAllowed &&
+                  radio("auto-deletion-fallback", "delete", fallback, setFallback, t("data.autoDeletion.transfer.fallbackDelete"), off)}
+                {radio(
+                  "auto-deletion-fallback",
+                  "keep",
+                  deleteAllowed ? fallback : "keep",
+                  setFallback,
+                  t("data.autoDeletion.transfer.fallbackKeep"),
+                  off,
+                )}
+              </div>
+            </fieldset>
+          </>
+        )}
+      </div>
+    );
+  }
+
   function isValid(): boolean {
+    if (chosenAction === "transfer" && !/^[^\s@]+@[^\s@]+$/.test(beneficiaryEmail.trim())) return false;
     if (mode === "date") return day !== "" && day >= minDay;
     if (mode === "inactivity") {
       const n = choice.inactivityDays;
@@ -367,6 +556,8 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     if (mode === "default") return setting == null;
     if (setting == null || setting.mode !== mode) return false;
     if (mode === "never") return true;
+    if ((setting.action ?? "delete") !== (choice.action ?? "delete")) return false;
+    if (choice.transfer != null && transferChanged(setting.transfer, choice.transfer)) return false;
     if (mode === "inactivity") return setting.inactivityDays === choice.inactivityDays;
     return dayOf(setting.date) === day;
   }
@@ -375,11 +566,49 @@ export default function AutoDeletionCard({ exportAnchorId }: { exportAnchorId: s
     const lines: string[] = [];
     if (c.mode === "default") lines.push(t("data.autoDeletion.confirmDefault"));
     if (c.mode === "never") lines.push(t("data.autoDeletion.confirmNever"));
+    const tr = c.action === "transfer" ? c.transfer : undefined;
     if (c.mode === "date" && c.day) {
-      lines.push(t("data.autoDeletion.confirmDate", { date: formatDate(Date.parse(endOfLocalDayIso(c.day)) / 1000) }));
+      const date = formatDate(Date.parse(endOfLocalDayIso(c.day)) / 1000);
+      lines.push(
+        tr
+          ? t("data.autoDeletion.transfer.confirmDate", { date, email: tr.email.trim() })
+          : t("data.autoDeletion.confirmDate", { date }),
+      );
     }
     if (c.mode === "inactivity") {
-      lines.push(t("data.autoDeletion.confirmInactivity", { days: c.inactivityDays }));
+      lines.push(
+        tr
+          ? t("data.autoDeletion.transfer.confirmInactivity", { days: c.inactivityDays, email: tr.email.trim() })
+          : t("data.autoDeletion.confirmInactivity", { days: c.inactivityDays }),
+      );
+    }
+    if (tr) {
+      const windowDays = state?.claimWindowDays;
+      lines.push(
+        windowDays != null
+          ? t("data.autoDeletion.transfer.confirmWindow", { count: windowDays })
+          : t("data.autoDeletion.transfer.confirmWindowNoDays"),
+      );
+      const stored = state?.setting?.action === "transfer" ? state.setting.transfer : null;
+      // Said only when the beneficiary or the notice changes: otherwise nothing new is sent.
+      if (stored == null || !sameEmail(stored.email, tr.email) || stored.notifyBeneficiary !== tr.notifyBeneficiary) {
+        lines.push(
+          t(
+            tr.notifyBeneficiary === "atSetup"
+              ? "data.autoDeletion.transfer.confirmNotifyAtSetup"
+              : "data.autoDeletion.transfer.confirmNotifyAtTrigger",
+          ),
+        );
+      }
+      lines.push(
+        t(
+          tr.fallback === "delete"
+            ? "data.autoDeletion.transfer.confirmFallbackDelete"
+            : "data.autoDeletion.transfer.confirmFallbackKeep",
+        ),
+      );
+      if (tr.name === "" && tr.dateOfBirth === "") lines.push(t("data.autoDeletion.transfer.confirmIdentityRemoved"));
+      lines.push(t("data.autoDeletion.transfer.confirmNotIncluded"));
     }
     if (c.mode === "date" || c.mode === "inactivity") {
       const leads = remindersFor(feat.reminderLeadDays, c, new Date());
@@ -471,20 +700,35 @@ function Status({ state }: { state: AutoDeletionState }) {
   const scheduled = eff.source !== "none" && eff.mode !== "never";
   const lines: string[] = [];
 
+  // A transfer names its beneficiary; the platform keeps it on the holder's own setting.
+  const transfer = eff.action === "transfer" ? state.setting?.transfer ?? null : null;
+  const email = transfer?.email ?? state.transfer?.email ?? "";
+  const tr = eff.action === "transfer" ? "data.autoDeletion.transfer." : "data.autoDeletion.";
+
   if (!scheduled) {
     lines.push(t(state.setting?.mode === "never" ? "data.autoDeletion.statusNever" : "data.autoDeletion.statusNone"));
   } else if (eff.mode === "date") {
-    lines.push(t("data.autoDeletion.statusDate", { date: formatDate(at ?? toSeconds(eff.date)) }));
+    lines.push(t(tr + "statusDate", { date: formatDate(at ?? toSeconds(eff.date)), email }));
   } else {
     lines.push(
       at != null
-        ? t("data.autoDeletion.statusInactivity", { days: eff.inactivityDays, date: formatDate(at) })
-        : t("data.autoDeletion.statusInactivityNoDate", { days: eff.inactivityDays }),
+        ? t(tr + "statusInactivity", { days: eff.inactivityDays, date: formatDate(at), email })
+        : t(tr + "statusInactivityNoDate", { days: eff.inactivityDays, email }),
+    );
+  }
+  if (scheduled && transfer != null) {
+    const windowDays = state.claimWindowDays;
+    const key = transfer.fallback === "keep" ? "statusFallbackKeep" : "statusFallbackDelete";
+    lines.push(
+      windowDays != null
+        ? t("data.autoDeletion.transfer." + key, { count: windowDays })
+        : t("data.autoDeletion.transfer." + key + "NoDays"),
     );
   }
   if (scheduled) {
     lines.push(t(eff.source === "user" ? "data.autoDeletion.sourceUser" : "data.autoDeletion.sourceOperator"));
   }
+  if (state.transfer != null) lines.push(...transferLines(state.transfer, t));
   const last = state.lastActivity?.max;
   if (last != null) {
     lines.push(
@@ -500,6 +744,10 @@ function Status({ state }: { state: AutoDeletionState }) {
 
   const pausedNoEmail = state.blocked?.reason === "no-email";
   const warnings: string[] = [];
+  const failed = state.transfer?.failedClaims;
+  if (failed != null && failed.count > 0 && (state.transfer?.status === "open" || state.transfer?.status === "claimed")) {
+    warnings.push(t("data.autoDeletion.transfer.recordFailedClaims", { count: failed.count, date: formatDate(failed.lastAt ?? null) }));
+  }
   if (pausedNoEmail) warnings.push(t("data.autoDeletion.pausedNoEmail"));
   else if (state.blocked != null) warnings.push(t(blockedKey(state.blocked), { reason: state.blocked.reason }));
   if (!pausedNoEmail && state.mail === "no-email") warnings.push(t("data.autoDeletion.mailNoEmail"));
@@ -519,6 +767,49 @@ function Status({ state }: { state: AutoDeletionState }) {
       ))}
     </div>
   );
+}
+
+/** The current or last transfer in plain words: who was told, the claim window, who claimed, how it ended. */
+function transferLines(record: TransferRecord, t: TFunction): string[] {
+  const k = "data.autoDeletion.transfer.";
+  const lines: string[] = [];
+  const email = record.email;
+  if (record.beneficiaryNotifiedAt != null) {
+    lines.push(t(k + "recordNotified", { email, date: formatDate(record.beneficiaryNotifiedAt) }));
+  } else if (record.status === "named") {
+    lines.push(t(k + "recordNotNotified", { email }));
+  }
+  switch (record.status) {
+    case "open":
+      lines.push(
+        record.endsAt != null
+          ? t(k + "recordOpen", { email, date: formatDate(record.endsAt) })
+          : t(k + "recordOpenNoDate", { email }),
+      );
+      break;
+    case "claimed":
+      lines.push(t(k + "recordClaimed", { username: record.claimedBy?.username ?? email }));
+      break;
+    case "completed":
+      lines.push(t(k + "recordCompleted", { username: record.claimedBy?.username ?? email }));
+      break;
+    case "declined":
+      lines.push(t(k + "recordDeclined", { email }));
+      break;
+    case "cancelled": {
+      const reason = record.closedReason;
+      const known = reason === "owner-activity" || reason === "delegate-activity" || reason === "owner-change";
+      lines.push(t(k + (known ? "recordCancelled_" + reason.replace("-", "_") : "recordCancelled")));
+      break;
+    }
+    case "lapsed":
+      lines.push(t(k + "recordLapsed", { email }));
+      break;
+    case "fallback-delete":
+      lines.push(t(k + "recordFallbackDelete", { email }));
+      break;
+  }
+  return lines;
 }
 
 /** "60, 30, 7 and 1" in the page's language. */

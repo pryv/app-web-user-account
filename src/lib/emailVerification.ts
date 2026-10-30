@@ -101,7 +101,8 @@ interface ApiErrorBody {
   error?: { id?: string; message?: string; data?: unknown };
 }
 
-async function postJson(url: string, body: unknown): Promise<Record<string, unknown>> {
+/** POST a JSON body to a public endpoint; throws an ApiCallError on a non-2xx answer. */
+export async function postJson(url: string, body: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },

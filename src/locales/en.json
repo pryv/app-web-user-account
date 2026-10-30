@@ -305,7 +305,70 @@
         "noEmail": "Your account has no email address, so you would get no reminder. Tick the box to confirm you understand, then save again.",
         "delegateRefused": "Only the account owner can change this, signed in with their own password. Nothing was changed.",
         "generic": "Could not save: {{message}}",
-        "unknown": "unknown error"
+        "unknown": "unknown error",
+        "transferInvalid": {
+          "email": "Enter a valid email address for the person who takes over your account, other than your own. Nothing was changed.",
+          "notifyBeneficiary": "Choose when the person who takes over your account is told. Nothing was changed.",
+          "fallback": "This fallback is not offered on this platform. Choose another one. Nothing was changed.",
+          "dateOfBirth": "The date of birth is not valid. Nothing was changed.",
+          "other": "The transfer settings were refused. Nothing was changed."
+        }
+      },
+      "transfer": {
+        "actionLegend": "At that time",
+        "actionDelete": "Delete my account",
+        "actionTransfer": "Transfer my account to someone",
+        "onlyTransfer": "At that time, the management of your account is offered to someone you choose. This platform does not delete accounts automatically.",
+        "emailLabel": "Email address of the person who takes over",
+        "emailHint": "They need, or will need, their own account on this platform to accept.",
+        "nameLabel": "Their name (optional)",
+        "birthLabel": "Their date of birth (optional)",
+        "identityNotice": "Optional. Name and date of birth are only used if your beneficiary cannot be reached by email. They are stored encrypted. The operator of this platform ({{operator}}) can read them only after the transfer has started, to check the identity of a person who asks for your account without access to this email address. Every such reading is logged and reported to your email address. They are deleted when the transfer is completed or cancelled. A transfer does not include the accounts you manage for others.",
+        "operatorUnnamed": "the operator of this platform",
+        "identityStored": "A name and/or date of birth is stored for this person. They are not shown here. Leave the fields below empty to keep them.",
+        "identityRemove": "Remove them",
+        "identityDroppedOnChange": "Changing the person removes the name and date of birth stored for the previous one.",
+        "notifyLegend": "When should they be told?",
+        "notifyAtSetup": "Tell them now (they can decline)",
+        "notifyAtTrigger": "Only when the transfer starts",
+        "fallbackLegend": "If nobody takes it over in time",
+        "fallbackDelete": "Delete the account",
+        "fallbackKeep": "Keep the account",
+        "confirmDate": "On {{date}}, unless you change this before, {{email}} will be invited to take over the management of your account.",
+        "confirmInactivity": "After {{days}} days without use, {{email}} will be invited to take over the management of your account. Signing in, or an app you connected using your account, starts the count again.",
+        "confirmWindow_one": "They will have {{count}} day to accept, signed in with their own account on this platform.",
+        "confirmWindow_other": "They will have {{count}} days to accept, signed in with their own account on this platform.",
+        "confirmWindowNoDays": "They accept signed in with their own account on this platform.",
+        "confirmNotifyAtSetup": "They are told now, by email, and can decline.",
+        "confirmNotifyAtTrigger": "They are told by email only when the transfer starts.",
+        "confirmFallbackDelete": "If nobody takes it over in time, your account and all of its data will be permanently deleted.",
+        "confirmFallbackKeep": "If nobody takes it over in time, your account is kept.",
+        "confirmIdentityRemoved": "The name and date of birth you gave are removed.",
+        "confirmNotIncluded": "A transfer does not include the accounts you manage for others.",
+        "statusDate": "The management of your account will be transferred to {{email}} on {{date}}.",
+        "statusInactivity": "The management of your account will be transferred to {{email}} after {{days}} days without use: currently on {{date}}.",
+        "statusInactivityNoDate": "The management of your account will be transferred to {{email}} after {{days}} days without use.",
+        "statusFallbackDelete_one": "If they do not take it over within {{count}} day, your account and all of its data will be deleted.",
+        "statusFallbackDelete_other": "If they do not take it over within {{count}} days, your account and all of its data will be deleted.",
+        "statusFallbackDeleteNoDays": "If they do not take it over in time, your account and all of its data will be deleted.",
+        "statusFallbackKeep_one": "If they do not take it over within {{count}} day, your account is kept.",
+        "statusFallbackKeep_other": "If they do not take it over within {{count}} days, your account is kept.",
+        "statusFallbackKeepNoDays": "If they do not take it over in time, your account is kept.",
+        "recordNotified": "{{email}} was told on {{date}}.",
+        "recordNotNotified": "{{email}} has not been told yet: they will be when the transfer starts.",
+        "recordOpen": "The transfer has started: {{email}} can take over your account until {{date}}.",
+        "recordOpenNoDate": "The transfer has started: {{email}} can take over your account.",
+        "recordClaimed": "{{username}} has claimed your account. Waiting for their acceptance.",
+        "recordCompleted": "Transfer completed: {{username}} now manages your account.",
+        "recordDeclined": "{{email}} declined to take over your account.",
+        "recordCancelled": "The transfer was cancelled.",
+        "recordCancelled_owner_activity": "The transfer was cancelled because you used your account.",
+        "recordCancelled_delegate_activity": "The transfer was cancelled because your delegate used your account.",
+        "recordCancelled_owner_change": "The transfer was cancelled because you changed this setting.",
+        "recordLapsed": "{{email}} did not take over your account in time.",
+        "recordFallbackDelete": "{{email}} did not take over your account in time: it is deleted, as you chose.",
+        "recordFailedClaims_one": "{{count}} attempt to take over your account used a wrong link (last on {{date}}). It was refused; your beneficiary's link still works.",
+        "recordFailedClaims_other": "{{count}} attempts to take over your account used a wrong link (last on {{date}}). They were refused; your beneficiary's link still works."
       }
     }
   },
@@ -851,5 +914,45 @@
     "otherAccountNoticeUnnamed": "If this is not the account linked to {{label}}, sign in with the other account.",
     "notHolder": "The account {{username}} is not the one linked to {{label}}. Nothing was granted.",
     "refusalTooManyAttempts": "Too many attempts for now. Nothing was granted, please try again later."
+  },
+  "transfer": {
+    "linkIncomplete": "This link is incomplete or was already used. Open the link from your email again.",
+    "claim": {
+      "title": "Take over an account",
+      "intro": "You were invited to take over the management of the account {{owner}}.",
+      "signInPrompt": "To accept, sign in with your own account on this platform. If you do not have one yet, create one first.",
+      "signIn": "Sign in to accept",
+      "register": "Create an account",
+      "registerNote": "After signing in or creating your account, you come back here. If you do not, open the link from your email again in this browser tab.",
+      "actingAs": "You are acting for the account {{username}}. Go back to your own account to accept.",
+      "explain": "Your own account becomes a delegate of this account: you can then open it and manage it. The accounts it manages for others are not included.",
+      "acceptAs": "Accept as {{username}}",
+      "accepting": "Accepting…",
+      "step": {
+        "claim": "Checking the invitation…",
+        "accept": "Accepting the management of the account…",
+        "complete": "Completing the transfer…"
+      },
+      "doneTitle": "Transfer completed",
+      "doneBody": "You now manage the account {{owner}}. Open it from Accounts I manage.",
+      "openDelegation": "Go to Accounts I manage"
+    },
+    "decline": {
+      "title": "Decline an account transfer",
+      "question": "Decline taking over the account {{owner}}?",
+      "explain": "Its holder will be told. Nothing else changes for you.",
+      "button": "Decline",
+      "declining": "Declining…",
+      "doneTitle": "Declined",
+      "doneBody": "Declined; the account holder has been told."
+    },
+    "errors": {
+      "invalidLink": "This link is not valid, or no longer valid.",
+      "expired": "The time to take over this account has passed.",
+      "claimed": "Another account has already taken over this account.",
+      "tooManyAttempts": "Too many attempts. Wait a moment, then try again.",
+      "notCompleted": "The transfer could not be completed. Try again.",
+      "generic": "Something went wrong. Please try again."
+    }
   }
 }
