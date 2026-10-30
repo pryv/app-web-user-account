@@ -1,20 +1,34 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "../i18n";
 import { useLocation } from "react-router-dom";
 import { Pryv } from "../lib/pryvClient";
-import { Card, Alert } from "../components/ui";
+import { Card, Alert, Button } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
-import { consentEntries, grantedPermissions, initialFlags, pickText } from "../lib/consent";
+import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
+import { ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
+import { storedSessionTokens } from "../lib/sessionStore";
+import { streamNamesResolver, NO_STREAM_LABELS, type StreamLabelResolver } from "../lib/streamLabels";
 import { assertHttpUrl } from "../lib/safeRedirect";
+import { navigateTo } from "../lib/returnTarget";
 import {
   parseOAuthState,
   serviceInfoUrlFromPryvApi,
   assertTrustedPryvApi,
   oauth2Accept,
   oauth2Refuse,
+  oauth2FetchOffer,
+  endConsentSession,
+  identityNoticeKey,
+  isStaleConsentError,
+  consentRefusalKey,
+  subjectChangeKey,
+  type ComposedConsent,
+  type OAuthClientDisplay,
+  type OAuthFlowError,
+  type OAuthOffer,
   type OAuthState,
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
@@ -58,7 +72,9 @@ function initFromQuery(search: string): InitResult {
       requireAllowlist: import.meta.env.PROD,
     });
     const oauthState = parseOAuthState(signedState);
-    if (oauthState.offer == null) {
+    // A client registered without an app account sends the offer by
+    // reference: it is fetched once the page is up.
+    if (oauthState.offer == null && oauthState.offerRef == null) {
       return {
         oauthState: null,
         signedState,
@@ -88,6 +104,18 @@ function initFromQuery(search: string): InitResult {
  *
  * Sign-in is always fresh — `userIdHint` only prefills the username; the
  * persisted session is deliberately not reused on this security surface.
+ * The sign-in uses this app's consent appId (never the client id, see
+ * `ACCOUNT_APP_CONSENT_ID`), and the personal session it opens is ended once
+ * Accept or Reject is answered, unless the core handed back a session this
+ * app keeps open in this browser.
+ *
+ * An offer by reference is read again once signed in, with the session: a
+ * core that supports it then shows what the app already holds joined with
+ * what it asks for, and answers a digest of that screen, posted back at
+ * Accept so the ticked set becomes the app's access (unticking something the
+ * app held takes it away). A change of identity mode (pseudonym / account)
+ * must be acknowledged before Accept is enabled. An older core answers no
+ * digest: the page then behaves as before and posts none.
  */
 export default function Oauth2Authorize() {
   const { t, i18n: i18nInstance } = useTranslation();
@@ -100,37 +128,133 @@ export default function Oauth2Authorize() {
   const [busy, setBusy] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Offer by reference: fetched from the core with the signed state.
+  const [fetched, setFetched] = useState<{ offer: OAuthOffer; client: OAuthClientDisplay } | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const needsFetch = oauthState != null && oauthState.offer == null && oauthState.offerRef != null;
+  useEffect(() => {
+    if (!needsFetch) return;
+    let cancelled = false;
+    oauth2FetchOffer({ pryvApi, signedState })
+      .then((r) => { if (!cancelled) setFetched(r); })
+      .catch((err: unknown) => {
+        if (!cancelled) setFetchError(err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"));
+      });
+    return () => { cancelled = true; };
+  }, [needsFetch, pryvApi, signedState]);
+
   // Session captured by the shared sign-in (+ MFA) — gates consent.
   const [username, setUsername] = useState("");
   const [personalToken, setPersonalToken] = useState<string | null>(null);
+  const [sessionEndpoint, setSessionEndpoint] = useState<string | null>(null);
+  // The account's own stream names, read with the personal session.
+  const [accountName, setAccountName] = useState<StreamLabelResolver>(() => NO_STREAM_LABELS);
+
+  // Offer by reference, once signed in: asked again with the session, so the
+  // core joins it with what the app already holds (see ComposedConsent). An
+  // older core answers without a digest: the offer read before sign-in stays.
+  const [composed, setComposed] = useState<{ offer: OAuthOffer; consent: ComposedConsent } | null>(null);
+  const [composeDone, setComposeDone] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  // Replies for a session that is no longer the page's are dropped.
+  const sessionRef = useRef<string | null>(null);
+  // The user's explicit agreement to a change of identity mode.
+  const [acknowledged, setAcknowledged] = useState(false);
+  // Accept was refused because the screen no longer matches the app's access.
+  const [stale, setStale] = useState(false);
+
+  const offer: OAuthOffer | null = composed?.offer ?? oauthState?.offer ?? fetched?.offer ?? null;
+  const subjectChange = composed?.consent.subjectChange ?? null;
 
   // Only looked up once `pryvApi` passed the trust check (initError unset).
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
   // The operator's catalog is the only source of a display name for the app;
   // the client id is shown when the catalog does not know it.
-  const requestingApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  const catalogApp = useRequestingApp(oauthState?.clientId, platformUrl);
+  // A client with no catalog entry is named by its own registration.
+  const requestingApp = catalogApp ?? (fetched?.client.name
+    ? {
+        name: fetched.client.name,
+        icon: fetched.client.logoUri ? { type: "url" as const, value: fetched.client.logoUri } : undefined,
+        description: undefined,
+      }
+    : null);
   const labelFor = useStreamLabels(platformUrl);
+  const lang = i18nInstance.language || "en";
 
   const entries = useMemo(
     () =>
-      oauthState?.offer
-        ? consentEntries(oauthState.offer.permissions, {
-            allowUserChoice: oauthState.offer.allowUserChoice,
+      offer
+        ? consentEntries(offer.permissions, {
+            allowUserChoice: offer.allowUserChoice,
+            entryLabel: offerEntryLabel(offer.entryLabels, lang),
             labelFor,
+            accountName,
           })
         : [],
-    [oauthState, labelFor],
+    [offer, labelFor, accountName, lang],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
-  // the user has to choose deliberately.
+  // the user has to choose deliberately. Reset when a fetched offer arrives.
   const [grantedFlags, setGrantedFlags] = useState<boolean[]>(() => initialFlags(entries));
+  const [flagsOffer, setFlagsOffer] = useState<OAuthOffer | null>(offer);
+  if (flagsOffer !== offer) {
+    setFlagsOffer(offer);
+    setGrantedFlags(initialFlags(entries));
+  }
 
   function makeService() {
     return new Pryv.Service(serviceInfoUrlFromPryvApi(pryvApi));
   }
 
+  /** Back to the sign-in: the session no longer authenticates. */
+  function dropSession(message: string) {
+    sessionRef.current = null;
+    setPersonalToken(null);
+    setSessionEndpoint(null);
+    setAccountName(() => NO_STREAM_LABELS);
+    setComposed(null);
+    setComposeDone(false);
+    setAcknowledged(false);
+    setError(message);
+  }
+
+  /** Read the offer again with the session (offers by reference only). */
+  function compose(u: string, token: string) {
+    if (!needsFetch) return;
+    setComposed(null);
+    setComposeDone(false);
+    setComposeError(null);
+    oauth2FetchOffer({ pryvApi, signedState, username: u, userToken: token })
+      .then((r) => {
+        if (sessionRef.current !== token) return;
+        if (r.authenticated === false) {
+          dropSession(t("oauth.errorSessionEnded"));
+          return;
+        }
+        if (r.composed != null) setComposed({ offer: r.offer, consent: r.composed });
+        setComposeDone(true);
+      })
+      .catch((err: unknown) => {
+        if (sessionRef.current !== token) return;
+        setComposeError(err instanceof Error ? err.message : t("cmc.errorReadOffer"));
+      });
+  }
+
+  /**
+   * End the personal session this page opened, once the consent is answered.
+   * A session this app keeps open in this browser is left alone: the core
+   * hands back a live session of the same appId rather than opening another.
+   * Never throws and is time-bounded, so the redirect always follows.
+   */
+  async function endOwnSession() {
+    if (personalToken == null || sessionEndpoint == null) return;
+    if (storedSessionTokens().includes(personalToken)) return;
+    await endConsentSession({ endpoint: sessionEndpoint, token: personalToken });
+  }
+
   async function accept() {
-    if (!oauthState?.offer || !personalToken) return;
+    if (!offer || !personalToken) return;
     setBusy("accept");
     setError(null);
     try {
@@ -138,7 +262,12 @@ export default function Oauth2Authorize() {
       // always granted; ticked optional entries follow the checkboxes.
       // The consent-layer `mandatory` flag never travels in the grant.
       const granted = grantedPermissions(entries, grantedFlags);
-      if (granted.length === 0) {
+      // An offer by reference must keep a stream: restrictions alone grant
+      // nothing, and the core refuses such a grant.
+      const keepsNothing = needsFetch
+        ? !granted.some((p) => "streamId" in p)
+        : granted.length === 0;
+      if (keepsNothing) {
         setError(t("oauth.errorKeepOne"));
         setBusy(null);
         return;
@@ -149,13 +278,31 @@ export default function Oauth2Authorize() {
         username,
         personalToken,
         grantedPermissions: granted,
+        // Only a composed screen has a digest; an older core sent none.
+        shownDigest: composed?.consent.shownDigest,
+        acknowledgeSubjectChange: subjectChange != null && acknowledged ? true : undefined,
       });
+      await endOwnSession();
       // Defence in depth: never navigate to a non-http(s) target even if the
       // core returned one (guards against a `javascript:`/`data:` redirect).
       assertHttpUrl(redirectTo);
-      window.location.assign(redirectTo);
+      navigateTo(redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
+      if ((err as OAuthFlowError)?.status === 401) {
+        // The session no longer authenticates: most likely a consent on
+        // another device shared it and ended it when it finished. Back to
+        // the sign-in, which opens a fresh one.
+        dropSession(t("oauth.errorSessionEnded"));
+      } else if (isStaleConsentError(err)) {
+        // What the app holds (or what it asks for) changed since this screen
+        // was shown: accepting it again cannot succeed.
+        setStale(true);
+        setError(t("oauth.errorConsentOutOfDate"));
+      } else if (consentRefusalKey(err) != null) {
+        setError(t(consentRefusalKey(err) as string));
+      } else {
+        setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
+      }
       setBusy(null);
     }
   }
@@ -165,21 +312,52 @@ export default function Oauth2Authorize() {
     setError(null);
     try {
       const redirectTo = await oauth2Refuse({ pryvApi, signedState });
+      await endOwnSession();
       assertHttpUrl(redirectTo);
-      window.location.assign(redirectTo);
+      navigateTo(redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t("oauth.errorRefuseFailed"));
       setBusy(null);
     }
   }
 
-  if (initError || !oauthState) {
+  if (initError || fetchError || !oauthState) {
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("oauth.invalidTitle")}</h1>
         <div id="oauthInitError">
-          <Alert>{initError ?? t("oauth.invalidRequest")}</Alert>
+          <Alert>{initError ?? fetchError ?? t("oauth.invalidRequest")}</Alert>
         </div>
+      </Card>
+    );
+  }
+
+  if (personalToken && composeError) {
+    // The offer could not be read with the session: nothing can be shown
+    // truthfully, so the only way on is back to the app.
+    return (
+      <Card>
+        <div id="oauthComposeError">
+          <Alert>{composeError}</Alert>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <Button
+          id="oauthRefuse"
+          type="button"
+          variant="ghost"
+          disabled={busy !== null}
+          onClick={() => void refuse()}
+        >
+          {t("oauth.backToApp")}
+        </Button>
+      </Card>
+    );
+  }
+
+  if (personalToken && (!offer || (needsFetch && !composeDone))) {
+    return (
+      <Card>
+        <p id="oauthLoadingOffer">{t("cmc.loadingOffer")}</p>
       </Card>
     );
   }
@@ -188,14 +366,15 @@ export default function Oauth2Authorize() {
   // granular permission set (full lexicon, incl. feature permissions);
   // when the offer allows user choice, unticking downgrades: the app
   // receives only the ticked subset.
-  if (personalToken && oauthState.offer) {
-    const offer = oauthState.offer;
+  if (personalToken && offer) {
     // The offer's texts in the UI language when the app supplied it
     // (`pickText` falls back from a regional variant to its base language).
-    const lang = i18nInstance.language || "en";
     const title = pickText(offer.title, lang);
     const description = pickText(offer.description, lang);
     const consentText = pickText(offer.consent, lang);
+    const currentGrant = composed?.consent.currentGrant ?? null;
+    const pseudonym = offer.randomAlias === true || subjectChange?.to === "pseudonym";
+    const changeKey = subjectChangeKey(subjectChange);
     return (
       <Card>
         <ConsentPanel
@@ -209,6 +388,17 @@ export default function Oauth2Authorize() {
             <>
               {title && <p className="mb-1 text-lg font-medium">{title}</p>}
               {description && <p className="mb-2 text-sm text-muted">{description}</p>}
+              {identityNoticeKey(offer) && (
+                <p id="oauthIdentityNotice" className="mb-2 text-sm">{t(identityNoticeKey(offer) as string)}</p>
+              )}
+              {pseudonym && (
+                <p id="oauthLinkabilityNotice" className="mb-2 text-sm text-muted">{t("oauth.pseudonymLinkability")}</p>
+              )}
+              {currentGrant != null && (
+                <p id="oauthReconsentNotice" className="mb-2 text-sm">
+                  {t(offer.allowUserChoice ? "oauth.reconsentNoticeChoice" : "oauth.reconsentNotice")}
+                </p>
+              )}
             </>
           }
           entries={entries}
@@ -232,11 +422,31 @@ export default function Oauth2Authorize() {
             </p>
           }
           busy={busy}
+          acceptDisabled={stale || (subjectChange != null && !acknowledged)}
           acceptId="oauthAccept"
           refuseId="oauthRefuse"
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}
         >
+          {changeKey && (
+            <div
+              id="oauthSubjectChange"
+              className="mb-4 rounded border border-info/40 bg-info/10 px-3 py-2 text-sm"
+            >
+              <p className="mb-1 font-medium">{t(changeKey)}</p>
+              <p className="mb-2">{t("oauth.subjectChangeReplaces")}</p>
+              <label className="flex items-center gap-2">
+                <input
+                  id="oauthAcknowledgeSubjectChange"
+                  type="checkbox"
+                  checked={acknowledged}
+                  disabled={busy !== null}
+                  onChange={(ev) => setAcknowledged(ev.target.checked)}
+                />
+                <span>{t("oauth.subjectChangeAcknowledge")}</span>
+              </label>
+            </div>
+          )}
           {error && <Alert>{error}</Alert>}
         </ConsentPanel>
       </Card>
@@ -248,7 +458,7 @@ export default function Oauth2Authorize() {
   return (
     <ConsentSignIn
       makeService={makeService}
-      appId={oauthState.clientId}
+      appId={ACCOUNT_APP_CONSENT_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
         <span id="oauthAppPrompt">
@@ -257,9 +467,14 @@ export default function Oauth2Authorize() {
           })}
         </span>
       }
-      onSignedIn={({ username: u, personalToken: token }) => {
+      onSignedIn={({ username: u, personalToken: token, endpoint, connection }) => {
+        sessionRef.current = token;
         setUsername(u);
         setPersonalToken(token);
+        setSessionEndpoint(endpoint);
+        setStale(false);
+        compose(u, token);
+        void loadAccountStreamNames(connection).then((r) => setAccountName(() => r));
       }}
       onCancel={() => void refuse()}
       cancelId="oauthCancelLogin"
@@ -267,4 +482,22 @@ export default function Oauth2Authorize() {
       externalError={error}
     />
   );
+}
+
+/**
+ * The account's stream names, read with the consent's personal session, so a
+ * stream that already exists is shown by the name the user knows. Display
+ * only: a failure leaves the other sources in charge.
+ */
+async function loadAccountStreamNames(connection: unknown): Promise<StreamLabelResolver> {
+  const api = (connection as { api?: unknown } | null)?.api;
+  if (typeof api !== "function") return NO_STREAM_LABELS;
+  try {
+    const results = (await (api as (calls: unknown[]) => Promise<unknown[]>).call(connection, [
+      { method: "streams.get", params: {} },
+    ])) as Array<{ streams?: unknown }>;
+    return streamNamesResolver(results?.[0]?.streams);
+  } catch {
+    return NO_STREAM_LABELS;
+  }
 }

@@ -15,6 +15,11 @@
  *   2. POST {pryvApi}/oauth2/authorize/refuse — with the signed state only;
  *      returns the redirect URL carrying `error=access_denied`. No user
  *      session needed — refuse works pre-login (Cancel on the sign-in form).
+ *   3. POST {pryvApi}/oauth2/authorize/offer — only when the state carries the
+ *      offer by reference (`offerRef`, clients registered without an app
+ *      account): returns the offer and the client's display fields. Asked
+ *      again once the user signed in, with the personal session, it returns
+ *      the offer joined with what the app already holds (see ComposedConsent).
  *
  * Sign-in itself goes through lib-js `Service.login` (see the route
  * component) — the service-info URL is derived from `pryvApi` below.
@@ -43,6 +48,24 @@ export interface OAuthOffer {
   title: LocalizableText | null;
   description: LocalizableText | null;
   consent: LocalizableText | null;
+  /**
+   * Offers by reference only (clients registered without an app account):
+   * true when the app asked for a pseudonym, false when it will see the
+   * username; null for state-carried offers, which never say.
+   */
+  randomAlias: boolean | null;
+  /**
+   * Display labels the server attached to the offer's entries, keyed by
+   * `permissionKey` (`s|<streamId>|<level>`, `f|<feature>|<setting>`), each a
+   * localized text map. Names streams that may not exist in the account yet.
+   */
+  entryLabels: Record<string, LocalizableText> | null;
+}
+
+/** The locale key telling the user which id the app will see, or null. */
+export function identityNoticeKey(offer: OAuthOffer | null): string | null {
+  if (offer == null || offer.randomAlias == null) return null;
+  return offer.randomAlias ? "oauth.identityPseudonym" : "oauth.identityUsername";
 }
 
 /** Display fields decoded from the signed state payload. */
@@ -51,6 +74,8 @@ export interface OAuthState {
   redirectUri: string;
   scope: string[];
   offer: OAuthOffer | null;
+  /** Set when the offer is not in the state and must be fetched (see oauth2FetchOffer). */
+  offerRef: { kind: string; digest: string } | null;
   userIdHint: string | null;
   iat: number | null;
   exp: number | null;
@@ -60,6 +85,8 @@ export interface OAuthState {
 export interface OAuthFlowError extends Error {
   oauthError?: string;
   status?: number;
+  /** Stable marker some refusals carry next to `error` (e.g. `consent-out-of-date`). */
+  reason?: string;
 }
 
 /**
@@ -106,10 +133,156 @@ export function parseOAuthState(signedState: string): OAuthState {
     redirectUri: typeof p.redirectUri === "string" ? p.redirectUri : "",
     scope: Array.isArray(p.scope) ? p.scope.filter((s): s is string => typeof s === "string") : [],
     offer: parseOffer(p.offer),
+    offerRef: parseOfferRef(p.offerRef),
     userIdHint: typeof p.userIdHint === "string" ? p.userIdHint : null,
     iat: typeof p.iat === "number" ? p.iat : null,
     exp: typeof p.exp === "number" ? p.exp : null,
   };
+}
+
+function parseOfferRef(v: unknown): OAuthState["offerRef"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.kind !== "string" || typeof o.digest !== "string") return null;
+  return { kind: o.kind, digest: o.digest };
+}
+
+/** Display fields of a client registered without an app account. */
+export interface OAuthClientDisplay {
+  clientId: string;
+  name: string | null;
+  logoUri: string | null;
+  clientUri: string | null;
+  policyUri: string | null;
+  tosUri: string | null;
+}
+
+/** How an app knows the user: by a pseudonym, or by the account itself. */
+export type SubjectMode = "pseudonym" | "account";
+
+/**
+ * What the core adds to the offer once the user is signed in: the offer then
+ * shows what the app already holds joined with what it asks for (entries the
+ * app holds carry `currentlyGranted`), and `shownDigest` names exactly that
+ * screen. Posting the digest back at Accept makes the ticked set the app's
+ * new access (unticking something it held takes it away).
+ */
+export interface ComposedConsent {
+  /** Proof of the screen shown, posted back at Accept. */
+  shownDigest: string;
+  /** The access the app holds today, if any. */
+  currentGrant: { subjectMode: SubjectMode } | null;
+  /** Set when accepting switches how the app knows the user; must be acknowledged. */
+  subjectChange: { from: SubjectMode; to: SubjectMode } | null;
+}
+
+/**
+ * POST `{pryvApi}/oauth2/authorize/offer` with the signed state: the server
+ * re-derives the offer the state points at and returns it with the client's
+ * display fields. Display-only, like a state-carried offer: /accept
+ * re-derives it again and checks the granted subset.
+ *
+ * With `username` + `userToken` (the consent's personal session), a core
+ * that supports it answers the composed offer and `composed` is set; an
+ * older core answers as without them and `composed` is null. `authenticated`
+ * is false when the core says the token did not authenticate.
+ */
+export async function oauth2FetchOffer(opts: {
+  pryvApi: string;
+  signedState: string;
+  username?: string;
+  userToken?: string;
+}): Promise<{
+  offer: OAuthOffer;
+  client: OAuthClientDisplay;
+  composed: ComposedConsent | null;
+  authenticated: boolean | null;
+}> {
+  const body: Record<string, unknown> = { state: opts.signedState };
+  if (opts.username != null && opts.userToken != null) {
+    body.username = opts.username;
+    body.userToken = opts.userToken;
+  }
+  const json = await postOAuthJson(opts.pryvApi, "/oauth2/authorize/offer", body);
+  const offer = parseOffer(json.offer);
+  if (offer == null) throw new Error("oauth2: the server returned no consent offer");
+  const c = (typeof json.client === "object" && json.client != null ? json.client : {}) as Record<string, unknown>;
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  const shownDigest = str(json.shownDigest);
+  return {
+    offer,
+    client: {
+      clientId: str(c.clientId) ?? "",
+      name: str(c.clientName),
+      logoUri: str(c.logoUri),
+      clientUri: str(c.clientUri),
+      policyUri: str(c.policyUri),
+      tosUri: str(c.tosUri),
+    },
+    composed:
+      shownDigest == null
+        ? null
+        : {
+            shownDigest,
+            currentGrant: parseCurrentGrant(json.currentGrant),
+            subjectChange: parseSubjectChange(json.subjectChange),
+          },
+    authenticated: typeof json.authenticated === "boolean" ? json.authenticated : null,
+  };
+}
+
+function asSubjectMode(v: unknown): SubjectMode | null {
+  return v === "pseudonym" || v === "account" ? v : null;
+}
+
+function parseCurrentGrant(v: unknown): ComposedConsent["currentGrant"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const mode = asSubjectMode((v as Record<string, unknown>).subjectMode);
+  return mode == null ? null : { subjectMode: mode };
+}
+
+function parseSubjectChange(v: unknown): ComposedConsent["subjectChange"] {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const from = asSubjectMode(o.from);
+  const to = asSubjectMode(o.to);
+  return from == null || to == null || from === to ? null : { from, to };
+}
+
+/** The locale key of the warning shown for a change of identity mode. */
+export function subjectChangeKey(change: ComposedConsent["subjectChange"]): string | null {
+  if (change == null) return null;
+  return change.to === "account" ? "oauth.subjectChangeToAccount" : "oauth.subjectChangeToPseudonym";
+}
+
+/**
+ * True when the core refused Accept because the consent screen it was given
+ * no longer matches what it would show now (the app's access or the request
+ * changed meanwhile): the user has to restart the authorization from the app.
+ * The core says so with `reason: "consent-out-of-date"`; a core that sends no
+ * `reason` is recognised by its wording.
+ */
+export function isStaleConsentError(err: unknown): boolean {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 400 || e.oauthError !== "invalid_request") return false;
+  if (e.reason != null) return e.reason === "consent-out-of-date";
+  return /out of date|restart the authori[sz]ation/i.test(e.message ?? "");
+}
+
+/**
+ * The page's own wording for a refusal the user can fix on the screen, or
+ * null to show the core's message (which already names what went wrong, e.g.
+ * `permission-level-conflict`, `keep-one-stream`). `consent-widens-offer`: an
+ * unticked entry sits under one kept, so it would be reached anyway; a core
+ * that sends no `reason` is recognised by its wording.
+ */
+export function consentRefusalKey(err: unknown): string | null {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 400) return null;
+  const widens = e.reason != null
+    ? e.reason === "consent-widens-offer"
+    : /widen the offer under the stream hierarchy/i.test(e.message ?? "");
+  return widens ? "oauth.errorWidensOffer" : null;
 }
 
 function parseOffer(v: unknown): OAuthOffer | null {
@@ -131,7 +304,17 @@ function parseOffer(v: unknown): OAuthOffer | null {
     title: asTextMap(o.title),
     description: asTextMap(o.description),
     consent: asTextMap(o.consent),
+    randomAlias: typeof o.randomAlias === "boolean" ? o.randomAlias : null,
+    entryLabels: asLabelMap(o.entryLabels),
   };
+}
+
+function asLabelMap(v: unknown): Record<string, LocalizableText> | null {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>)
+    .map(([k, t]) => [k, asTextMap(t)] as const)
+    .filter((e): e is readonly [string, LocalizableText] => e[1] != null);
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 function asTextMap(v: unknown): LocalizableText | null {
@@ -248,6 +431,11 @@ function registrableDomain(host: string): string {
  * user kept ticked — validated ⊆ the signed offer by the server). The server
  * establishes the durable consent (data-grant) and mints the session access,
  * then returns the redirect URL the browser should navigate to.
+ *
+ * `shownDigest` (from a composed offer, see {@link ComposedConsent}) says the
+ * user saw what the app already holds, so the ticked set replaces it;
+ * `acknowledgeSubjectChange` is the user's explicit agreement to a change of
+ * identity mode. Neither is sent when unset.
  */
 export async function oauth2Accept(opts: {
   pryvApi: string;
@@ -255,13 +443,18 @@ export async function oauth2Accept(opts: {
   username: string;
   personalToken: string;
   grantedPermissions: OfferPermission[];
+  shownDigest?: string;
+  acknowledgeSubjectChange?: boolean;
 }): Promise<string> {
-  return postOAuth(opts.pryvApi, "/oauth2/authorize/accept", {
+  const body: Record<string, unknown> = {
     state: opts.signedState,
     username: opts.username,
     userToken: opts.personalToken,
     grantedPermissions: opts.grantedPermissions,
-  });
+  };
+  if (opts.shownDigest != null) body.shownDigest = opts.shownDigest;
+  if (opts.acknowledgeSubjectChange === true) body.acknowledgeSubjectChange = true;
+  return postOAuth(opts.pryvApi, "/oauth2/authorize/accept", body);
 }
 
 /**
@@ -277,6 +470,38 @@ export async function oauth2Refuse(opts: {
 }
 
 /**
+ * End the personal session the consent page opened for itself
+ * (POST `{endpoint}auth/logout` with its token): once the consent is answered,
+ * the page has no further use for it and it should not outlive the consent.
+ *
+ * Best effort and bounded: it never throws and gives up after `timeoutMs`, so
+ * a failure never holds back the redirect to the app (the session then simply
+ * expires on its own).
+ */
+export async function endConsentSession(opts: {
+  endpoint: string;
+  token: string;
+  timeoutMs?: number;
+}): Promise<boolean> {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = setTimeout(() => controller?.abort(), opts.timeoutMs ?? 3000);
+  try {
+    const url = opts.endpoint.replace(/\/?$/, "/") + "auth/logout";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: opts.token },
+      body: "{}",
+      signal: controller?.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Shared POST + response handling: errors are RFC-shaped
  * `{error, error_description}` — surface `error_description || error` as the
  * message and keep `oauthError` + `status` on the thrown error.
@@ -286,6 +511,18 @@ async function postOAuth(
   path: string,
   body: Record<string, unknown>,
 ): Promise<string> {
+  const json = await postOAuthJson(pryvApi, path, body);
+  if (typeof json.redirectTo !== "string" || json.redirectTo.length === 0) {
+    throw new Error("oauth2: server response missing redirectTo");
+  }
+  return json.redirectTo;
+}
+
+async function postOAuthJson(
+  pryvApi: string,
+  path: string,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   if (typeof pryvApi !== "string" || pryvApi.length === 0) {
     throw new Error("oauth2: pryvApi is required");
   }
@@ -298,10 +535,9 @@ async function postOAuth(
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => ({}))) as {
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
     error?: string;
     error_description?: string;
-    redirectTo?: string;
   };
   if (!res.ok) {
     const err: OAuthFlowError = new Error(
@@ -309,10 +545,8 @@ async function postOAuth(
     );
     err.oauthError = json.error;
     err.status = res.status;
+    if (typeof json.reason === "string" && json.reason.length > 0) err.reason = json.reason;
     throw err;
   }
-  if (typeof json.redirectTo !== "string" || json.redirectTo.length === 0) {
-    throw new Error("oauth2: server response missing redirectTo");
-  }
-  return json.redirectTo;
+  return json;
 }

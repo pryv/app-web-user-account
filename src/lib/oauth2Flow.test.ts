@@ -5,6 +5,12 @@ import {
   assertTrustedPryvApi,
   oauth2Accept,
   oauth2Refuse,
+  oauth2FetchOffer,
+  identityNoticeKey,
+  endConsentSession,
+  isStaleConsentError,
+  consentRefusalKey,
+  subjectChangeKey,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -309,5 +315,212 @@ describe("oauth2Refuse", () => {
       /signedState/,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("[OAFR] offer by reference", () => {
+  it("[OAFR1] parses offerRef and leaves offer null when the state carries none", () => {
+    const st = parseOAuthState(makeSignedState({ offer: undefined, offerRef: { kind: "synthesised", digest: "d1" } }));
+    expect(st.offer).toBeNull();
+    expect(st.offerRef).toEqual({ kind: "synthesised", digest: "d1" });
+    expect(parseOAuthState(makeSignedState()).offerRef).toBeNull();
+  });
+
+  it("[OAFR2] fetches the offer and the client display from /oauth2/authorize/offer", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      client: { clientId: "reg-app", clientName: "Registry app", logoUri: "https://x.example/l.png" },
+      offer: { permissions: [{ streamId: "a", level: "read" }], allowUserChoice: false },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com/", signedState: "s.t" });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://core.example.com/oauth2/authorize/offer");
+    expect(JSON.parse(init.body)).toEqual({ state: "s.t" });
+    expect(r.offer.permissions).toEqual([{ streamId: "a", level: "read" }]);
+    expect(r.client.name).toBe("Registry app");
+    expect(r.client.policyUri).toBeNull();
+  });
+
+  it("[OAFR3] surfaces the server's refusal (e.g. the request changed)", async () => {
+    mockFetchOnce(400, { error: "invalid_request", error_description: "the consent request changed" });
+    const err = (await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" }).catch((e) => e)) as OAuthFlowError;
+    expect(err.message).toMatch(/changed/);
+    expect(err.oauthError).toBe("invalid_request");
+  });
+
+  it("[OAFR4] refuses an answer without a usable offer", async () => {
+    mockFetchOnce(200, { offer: { permissions: [] } });
+    await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);
+  });
+});
+
+describe("[OAID] which id the app will see", () => {
+  it("[OAID1] fetched offers say pseudonym or username; state-carried offers say nothing", async () => {
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], randomAlias: true } });
+    const pseudo = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(identityNoticeKey(pseudo.offer)).toBe("oauth.identityPseudonym");
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], randomAlias: false } });
+    const plain = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(identityNoticeKey(plain.offer)).toBe("oauth.identityUsername");
+    expect(identityNoticeKey(parseOAuthState(makeSignedState()).offer)).toBeNull();
+  });
+});
+
+describe("[OAEL] entry labels carried by a fetched offer", () => {
+  it("[OAEL1] keeps the localized labels, drops malformed ones", async () => {
+    mockFetchOnce(200, {
+      offer: {
+        permissions: [{ streamId: "a", level: "read" }],
+        entryLabels: { "s|a|read": { en: "Blood pressure", fr: "Tension" }, "s|b|read": "not a map", "s|c|read": { en: 3 } },
+      },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryLabels).toEqual({ "s|a|read": { en: "Blood pressure", fr: "Tension" } });
+  });
+
+  it("[OAEL2] an offer without labels has none", async () => {
+    mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }] } });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryLabels).toBeNull();
+  });
+});
+
+describe("[OAES] endConsentSession", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("[OAES1] posts auth/logout on the session's endpoint with its token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice", token: "tok" })).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://core.example.com/alice/auth/logout");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBe("tok");
+  });
+
+  it("[OAES2] never throws: a refusal or a network failure answers false", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t" })).toBe(false);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("network")));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t" })).toBe(false);
+  });
+
+  it("[OAES3] gives up after the timeout when the core does not answer", async () => {
+    vi.stubGlobal("fetch", vi.fn((_u: string, init: RequestInit) => new Promise((_r, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    })));
+    expect(await endConsentSession({ endpoint: "https://core.example.com/alice/", token: "t", timeoutMs: 20 })).toBe(false);
+  });
+});
+
+describe("[OACP] composed offer once signed in", () => {
+  const OFFER = { permissions: [{ streamId: "a", level: "read", currentlyGranted: true }], allowUserChoice: true };
+
+  it("[OACP1] posts the session with the state and parses the composed answer", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      offer: OFFER,
+      shownDigest: "dig-1",
+      currentGrant: { subjectMode: "pseudonym" },
+      subjectChange: { from: "pseudonym", to: "account" },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "tok" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ state: "s.t", username: "alice", userToken: "tok" });
+    expect(r.composed).toEqual({
+      shownDigest: "dig-1",
+      currentGrant: { subjectMode: "pseudonym" },
+      subjectChange: { from: "pseudonym", to: "account" },
+    });
+    expect(r.offer.permissions[0]).toEqual({ streamId: "a", level: "read", currentlyGranted: true });
+    expect(r.authenticated).toBeNull();
+  });
+
+  it("[OACP2] an older core (no shownDigest) yields no composition", async () => {
+    mockFetchOnce(200, { offer: OFFER });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "tok" });
+    expect(r.composed).toBeNull();
+  });
+
+  it("[OACP3] reports a token the core did not accept", async () => {
+    mockFetchOnce(200, { offer: OFFER, authenticated: false });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "bad" });
+    expect(r.authenticated).toBe(false);
+    expect(r.composed).toBeNull();
+  });
+
+  it("[OACP4] drops malformed grant and subject-change fields", async () => {
+    mockFetchOnce(200, {
+      offer: OFFER,
+      shownDigest: "dig-2",
+      currentGrant: { subjectMode: "other" },
+      subjectChange: { from: "account", to: "account" },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "tok" });
+    expect(r.composed).toEqual({ shownDigest: "dig-2", currentGrant: null, subjectChange: null });
+  });
+
+  it("[OACP5] Accept posts shownDigest and the acknowledgement only when given", async () => {
+    const base = { pryvApi: "https://reg.test", signedState: makeSignedState(), username: "alice", personalToken: "t", grantedPermissions: [] };
+    let fetchMock = mockFetchOnce(200, { redirectTo: "https://app.example/cb" });
+    await oauth2Accept({ ...base, shownDigest: "dig-1", acknowledgeSubjectChange: true });
+    let body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.shownDigest).toBe("dig-1");
+    expect(body.acknowledgeSubjectChange).toBe(true);
+    fetchMock = mockFetchOnce(200, { redirectTo: "https://app.example/cb" });
+    await oauth2Accept({ ...base, shownDigest: undefined, acknowledgeSubjectChange: false });
+    body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect("shownDigest" in body).toBe(false);
+    expect("acknowledgeSubjectChange" in body).toBe(false);
+  });
+
+  it("[OACP6] recognises the out-of-date refusal, and only that one", async () => {
+    const mk = (status: number, oauthError: string, message: string) =>
+      Object.assign(new Error(message), { status, oauthError }) as OAuthFlowError;
+    expect(isStaleConsentError(mk(400, "invalid_request", "the consent screen is out of date, restart the authorization flow"))).toBe(true);
+    expect(isStaleConsentError(mk(400, "invalid_request", "the consent request changed since it was issued, restart the authorization flow"))).toBe(true);
+    expect(isStaleConsentError(mk(400, "invalid_request", "the change of identity mode must be acknowledged"))).toBe(false);
+    expect(isStaleConsentError(mk(400, "invalid_scope", "the consent screen is out of date"))).toBe(false);
+    expect(isStaleConsentError(mk(401, "invalid_request", "out of date"))).toBe(false);
+    expect(isStaleConsentError(null)).toBe(false);
+  });
+
+  it("[OACP9] the hierarchy refusal gets the page's own copy; other refusals keep the core's message", () => {
+    const mk = (status: number, message: string, reason?: string) =>
+      Object.assign(new Error(message), { status, oauthError: "invalid_request", reason }) as OAuthFlowError;
+    expect(consentRefusalKey(mk(400, "x", "consent-widens-offer"))).toBe("oauth.errorWidensOffer");
+    expect(consentRefusalKey(mk(400, "grantedPermissions widen the offer under the stream hierarchy, the kept subset must not grant more"))).toBe("oauth.errorWidensOffer");
+    expect(consentRefusalKey(mk(400, "widen the offer under the stream hierarchy", "keep-one-stream"))).toBeNull();
+    expect(consentRefusalKey(mk(400, "conflicting permission level", "permission-level-conflict"))).toBeNull();
+    expect(consentRefusalKey(mk(400, "keep at least one stream", "keep-one-stream"))).toBeNull();
+    expect(consentRefusalKey(mk(500, "x", "consent-widens-offer"))).toBeNull();
+    expect(consentRefusalKey(null)).toBeNull();
+  });
+
+  it("[OACP8] reads the core's reason marker first, the wording only when there is none", async () => {
+    mockFetchOnce(400, { error: "invalid_request", error_description: "anything", reason: "consent-out-of-date" });
+    const base = { pryvApi: "https://reg.test", signedState: makeSignedState(), username: "alice", personalToken: "t", grantedPermissions: [] };
+    const stale = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(stale.reason).toBe("consent-out-of-date");
+    expect(isStaleConsentError(stale)).toBe(true);
+    // A marker other than out-of-date wins over a wording that would match.
+    mockFetchOnce(400, {
+      error: "invalid_request",
+      error_description: "the consent screen is out of date, restart the authorization flow",
+      reason: "subject-change-unacknowledged",
+    });
+    const unack = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(unack.reason).toBe("subject-change-unacknowledged");
+    expect(isStaleConsentError(unack)).toBe(false);
+    // No marker (an older core): the wording decides.
+    mockFetchOnce(400, { error: "invalid_request", error_description: "the consent screen is out of date, restart the authorization flow" });
+    const legacy = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(legacy.reason).toBeUndefined();
+    expect(isStaleConsentError(legacy)).toBe(true);
+  });
+
+  it("[OACP7] picks the subject-change copy by direction", () => {
+    expect(subjectChangeKey({ from: "pseudonym", to: "account" })).toBe("oauth.subjectChangeToAccount");
+    expect(subjectChangeKey({ from: "account", to: "pseudonym" })).toBe("oauth.subjectChangeToPseudonym");
+    expect(subjectChangeKey(null)).toBeNull();
   });
 });

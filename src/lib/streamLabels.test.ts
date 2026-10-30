@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const ext = vi.hoisted(() => ({ loadStreamLabels: vi.fn() }));
 vi.mock("../extensions/streamLabels", () => ext);
 
-import { getStreamLabels, resetStreamLabels, NO_STREAM_LABELS } from "./streamLabels";
+import { getStreamLabels, resetStreamLabels, NO_STREAM_LABELS, streamNamesResolver } from "./streamLabels";
 
 describe("[SLBL] getStreamLabels", () => {
   beforeEach(() => {
@@ -48,5 +48,24 @@ describe("[SLBL] getStreamLabels", () => {
     );
     const r = await real.loadStreamLabels("https://core.test/service/info");
     expect(r("anything")).toBeNull();
+  });
+});
+
+describe("[SLAN] streamNamesResolver", () => {
+  it("[SLA1] names streams from an account's tree, children included", () => {
+    const r = streamNamesResolver([
+      { id: "body", name: "Body", children: [{ id: "body-bp", name: "Blood pressure", children: [] }] },
+      { id: "noname" },
+      null,
+    ]);
+    expect(r("body")).toBe("Body");
+    expect(r("body-bp")).toBe("Blood pressure");
+    expect(r("noname")).toBeNull();
+    expect(r("missing")).toBeNull();
+  });
+
+  it("[SLA2] anything but a list knows nothing", () => {
+    expect(streamNamesResolver(undefined)).toBe(NO_STREAM_LABELS);
+    expect(streamNamesResolver({})).toBe(NO_STREAM_LABELS);
   });
 });

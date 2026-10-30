@@ -3,8 +3,10 @@ import {
   consentEntries,
   grantedPermissions,
   initialFlags,
+  levelLabel,
   permissionLabel,
   permissionKey,
+  offerEntryLabel,
   pickText,
   withRequestedNames,
   type OfferPermission,
@@ -27,9 +29,9 @@ describe("consentEntries (display-model mapper)", () => {
     }
   });
 
-  it("with user choice, locks only mandatory entries and hints them as required", () => {
+  it("with user choice, locks only mandatory entries and restrictions, and hints the mandatory ones as required", () => {
     const entries = consentEntries(PERMISSIONS, { allowUserChoice: true });
-    expect(entries.map((e) => e.locked)).toEqual([true, false, false]);
+    expect(entries.map((e) => e.locked)).toEqual([true, false, true]);
     expect(entries.map((e) => e.showRequiredHint)).toEqual([true, false, false]);
   });
 
@@ -44,8 +46,8 @@ describe("consentEntries (display-model mapper)", () => {
 describe("grantedPermissions", () => {
   const entries = consentEntries(PERMISSIONS, { allowUserChoice: true });
 
-  it("always grants locked (mandatory) entries; unlocked ones follow the flags", () => {
-    const granted = grantedPermissions(entries, [false, false, true]);
+  it("always grants locked (mandatory, restriction) entries; unlocked ones follow the flags", () => {
+    const granted = grantedPermissions(entries, [false, false, false]);
     expect(granted).toEqual([
       { streamId: "health", level: "read", defaultName: "Health" },
       { feature: "selfRevoke", setting: "forbidden" },
@@ -76,7 +78,8 @@ describe("the optIn display annotation", () => {
 
   it("[CSO1] opens optIn entries unticked, but only when the user has a choice", () => {
     const withChoice = consentEntries(MIXED, { allowUserChoice: true });
-    expect(withChoice.map((e) => e.initiallyTicked)).toEqual([true, true, false, false]);
+    // The restriction is locked and ticked even though it says optIn.
+    expect(withChoice.map((e) => e.initiallyTicked)).toEqual([true, true, false, true]);
     // All-or-nothing: every entry is locked and granted, so opening one
     // unticked would show a state the user cannot act on.
     const allOrNothing = consentEntries(MIXED);
@@ -96,12 +99,13 @@ describe("the optIn display annotation", () => {
     expect(granted).toEqual([
       { streamId: "health", level: "read" },
       { streamId: "diary", level: "contribute" },
+      { feature: "selfRevoke", setting: "forbidden" },
     ]);
   });
 
   it("[CSO3] initialFlags reflects the opening state of a mixed list", () => {
     const entries = consentEntries(MIXED, { allowUserChoice: true });
-    expect(initialFlags(entries)).toEqual([true, true, false, false]);
+    expect(initialFlags(entries)).toEqual([true, true, false, true]);
     // Ticking an opt-in entry brings it into the grant.
     const flags = initialFlags(entries);
     flags[2] = true;
@@ -111,12 +115,87 @@ describe("the optIn display annotation", () => {
     });
   });
 
-  it("[CSO4] an optIn entry is never locked out of being granted", () => {
-    // It starts unticked; it is still the user's to tick.
+  it("[CSO4] an optIn stream entry is never locked out of being granted", () => {
+    // It starts unticked; it is still the user's to tick. A restriction is
+    // locked whatever it says: unticking it would hand the app more.
     const entries = consentEntries(MIXED, { allowUserChoice: true });
     expect(entries[2].locked).toBe(false);
-    expect(entries[3].locked).toBe(false);
+    expect(entries[3].locked).toBe(true);
     expect(grantedPermissions(entries, [true, true, true, true])).toHaveLength(4);
+  });
+});
+
+describe("[CCMP] a consent shown again: entries the app already holds, restrictions", () => {
+  const COMPOSED: OfferPermission[] = [
+    { streamId: "health", level: "read", mandatory: true, currentlyGranted: true },
+    { streamId: "diary", level: "contribute", currentlyGranted: true },
+    // The core never sends optIn on a held entry; if it did, held wins.
+    { streamId: "steps", level: "read", currentlyGranted: true, optIn: true },
+    { streamId: "location", level: "read", optIn: true },
+    { feature: "webhooks", setting: "forbidden", mandatory: true, currentlyGranted: true },
+    { feature: "exports", setting: "forbidden" },
+  ];
+
+  it("[CCM1] held entries open ticked (locked when mandatory), new optIn entries unticked", () => {
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
+    expect(entries.map((e) => e.initiallyTicked)).toEqual([true, true, true, false, true, true]);
+    expect(entries.map((e) => e.locked)).toEqual([true, false, false, false, true, true]);
+    // A held restriction is not flagged "already allowed".
+    expect(entries.map((e) => e.currentlyGranted)).toEqual([true, true, true, false, false, false]);
+    // A restriction is not something the app "requires".
+    expect(entries.map((e) => e.showRequiredHint)).toEqual([true, false, false, false, false, false]);
+  });
+
+  it("[CCM2] unticking a held entry leaves it out of the grant; annotations never travel", () => {
+    const entries = consentEntries(COMPOSED, { allowUserChoice: true });
+    const flags = initialFlags(entries);
+    flags[1] = false;
+    flags[4] = false;
+    flags[5] = false;
+    expect(grantedPermissions(entries, flags)).toEqual([
+      { streamId: "health", level: "read" },
+      { streamId: "steps", level: "read" },
+      { feature: "webhooks", setting: "forbidden" },
+      { feature: "exports", setting: "forbidden" },
+    ]);
+  });
+
+  it("[CCM5] a held stream shown at another level keeps the level the app holds today", () => {
+    const entries = consentEntries([
+      { streamId: "diary", level: "contribute", currentlyGranted: true, currentLevel: "read" },
+      { streamId: "health", level: "read", currentlyGranted: true, currentLevel: "read" },
+      { streamId: "steps", level: "read", currentlyGranted: true },
+      { streamId: "location", level: "read", currentLevel: "manage" },
+    ], { allowUserChoice: true });
+    expect(entries.map((e) => e.heldLevel)).toEqual(["read", null, null, null]);
+    expect(grantedPermissions(entries, initialFlags(entries))[0]).toEqual({ streamId: "diary", level: "contribute" });
+    expect(levelLabel("contribute")).toBe("Add and modify");
+    expect(levelLabel("odd")).toBe("odd");
+  });
+
+  it("[CCM3] a restriction is locked and granted whatever mandatory and optIn say", () => {
+    for (const p of [
+      { feature: "webhooks", setting: "forbidden" },
+      { feature: "webhooks", setting: "forbidden", mandatory: false },
+      { feature: "webhooks", setting: "forbidden", optIn: true },
+    ] as OfferPermission[]) {
+      const entries = consentEntries([p], { allowUserChoice: true });
+      expect(entries[0].locked).toBe(true);
+      expect(entries[0].initiallyTicked).toBe(true);
+      expect(entries[0].showRequiredHint).toBe(false);
+      expect(grantedPermissions(entries, [false])).toEqual([{ feature: "webhooks", setting: "forbidden" }]);
+    }
+    // An allowed feature stays the user's choice.
+    expect(consentEntries([{ feature: "webhooks", setting: "allowed" }], { allowUserChoice: true })[0].locked).toBe(false);
+  });
+
+  it("[CCM4] an unknown restriction reads as something the app cannot use", () => {
+    expect(permissionLabel({ feature: "exports", setting: "forbidden" })).toBe("The app cannot use “exports”");
+    expect(permissionLabel({ feature: "exports", setting: "allowed" })).toBe("exports: allowed");
+    const label = offerEntryLabel({ "f|exports|forbidden": { en: "The app cannot export your data" } }, "en");
+    expect(permissionLabel({ feature: "exports", setting: "forbidden" }, { entryLabel: label })).toBe(
+      "The app cannot export your data",
+    );
   });
 });
 
@@ -138,8 +217,13 @@ describe("permissionLabel + pickText", () => {
     expect(permissionLabel({ feature: "webhooks", setting: "forbidden" })).toMatch(
       /cannot register webhooks/,
     );
+    expect(permissionLabel({ feature: "secretSharing", setting: "forbidden" })).toMatch(
+      /^The app cannot create shared secrets/,
+    );
     expect(permissionLabel({ feature: "webhooks", setting: "allowed" })).toBe("webhooks: allowed");
-    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("other: forbidden");
+    // An unknown restriction still reads as one.
+    expect(permissionLabel({ feature: "other", setting: "forbidden" })).toBe("The app cannot use “other”");
+    expect(permissionLabel({ feature: "other", setting: "on" })).toBe("other: on");
   });
 
   it("pickText prefers the requested language, then its base, then en, then first", () => {
@@ -235,5 +319,41 @@ describe("[CSRN] withRequestedNames: an access read back gets the request's stre
       labelFor: (id) => (id === "diary" ? "Daily diary" : null),
     });
     expect(e.label).toBe("Read “Daily diary”");
+  });
+});
+
+describe("[CLBP] stream name precedence", () => {
+  const p: OfferPermission = { streamId: "body-bp", level: "read", defaultName: "Requested name" };
+  const entryLabel = offerEntryLabel({ "s|body-bp|read": { en: "Blood pressure", fr: "Tension" } }, "fr-CH");
+  const labelFor = () => "Deployment label";
+  const accountName = () => "Account name";
+
+  it("[CLB1] the offer's own entry label comes first, in the UI language", () => {
+    expect(permissionLabel(p, { entryLabel, labelFor, accountName })).toBe("Read “Tension”");
+  });
+
+  it("[CLB2] then the deployment label, the account's stream name, the request's name, the id", () => {
+    expect(permissionLabel(p, { labelFor, accountName })).toBe("Read “Deployment label”");
+    expect(permissionLabel(p, { accountName })).toBe("Read “Account name”");
+    expect(permissionLabel(p)).toBe("Read “Requested name”");
+    expect(permissionLabel({ streamId: "body-bp", level: "read" })).toBe("Read “body-bp”");
+  });
+
+  it("[CLB3] a label is matched on the whole entry: another level gets none", () => {
+    expect(permissionLabel({ streamId: "body-bp", level: "manage" }, { entryLabel })).toBe("Fully manage “body-bp”");
+  });
+
+  it("[CLB4] the level verb is always this app's; a failing source falls through", () => {
+    const throwing = () => { throw new Error("x"); };
+    expect(permissionLabel(p, { entryLabel: throwing, labelFor: throwing, accountName })).toBe("Read “Account name”");
+  });
+
+  it("[CLB5] known feature restrictions keep their own wording; unknown ones use the offer's label", () => {
+    const labels = offerEntryLabel({
+      "f|webhooks|forbidden": { en: "Something else" },
+      "f|custom|on": { en: "Custom feature" },
+    }, "en");
+    expect(permissionLabel({ feature: "webhooks", setting: "forbidden" }, { entryLabel: labels })).toMatch(/cannot register webhooks/);
+    expect(permissionLabel({ feature: "custom", setting: "on" }, { entryLabel: labels })).toBe("Custom feature");
   });
 });

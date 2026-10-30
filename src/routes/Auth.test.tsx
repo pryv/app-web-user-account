@@ -180,6 +180,34 @@ describe("[AUCP] /auth consent panel", () => {
     ]);
   });
 
+  it("[AUC11] a feature restriction is a locked \"The app cannot …\" line, granted whatever mandatory / optIn say", async () => {
+    const state = stateWithConsent();
+    state.consent.permissions.push(
+      { feature: "webhooks", setting: "forbidden", optIn: true } as never,
+      { feature: "exports", setting: "forbidden", mandatory: false } as never,
+    );
+    await renderAndSignIn(state);
+
+    const boxes = checkboxes();
+    expect(boxes).toHaveLength(4);
+    for (const b of boxes.slice(2)) {
+      expect(b.checked).toBe(true);
+      expect(b.disabled).toBe(true);
+    }
+    expect(screen.getByText(/The app cannot register webhooks/)).toBeTruthy();
+    expect(screen.getByText("The app cannot use “exports”")).toBeTruthy();
+    // Only the stream entry carries the "required" hint.
+    expect(screen.getAllByText(/required by this app/)).toHaveLength(1);
+
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual([
+      { streamId: "diary", level: "read", defaultName: "Journal" },
+      { feature: "webhooks", setting: "forbidden" },
+      { feature: "exports", setting: "forbidden" },
+    ]);
+  });
+
   it("[AUC6] a shared-secret request hands the credential off: the page creates the secret and posts the key, never the token", async () => {
     flow.createHandoffSecret.mockResolvedValue("evt.the-key");
     // A plain (no-consent) request that asked for shared-secret delivery.

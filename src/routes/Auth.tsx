@@ -38,6 +38,7 @@ import {
   type OfferPermission,
 } from "../lib/consent";
 import { type PryvConnection } from "../lib/session";
+import { ACCOUNT_APP_ID } from "../lib/accountApp";
 import { accountActsGate } from "../lib/accountActsGate";
 import { useSession } from "../lib/useSession";
 import { storedServiceInfoUrl, storedParentConnection } from "../lib/sessionStore";
@@ -108,7 +109,7 @@ import {
   type AppCheck,
 } from "../lib/accessFlow";
 
-const APP_ID = "pryv-app-web-user-account";
+const APP_ID = ACCOUNT_APP_ID;
 
 /** The register's answers to ACCEPTED on a forced external-id request. */
 const EXTERNAL_ID_MISMATCH = "external-id-mismatch";

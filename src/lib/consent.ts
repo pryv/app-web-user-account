@@ -22,18 +22,24 @@ export type LocalizableText = Record<string, string>;
  * optional display names) or a feature permission (e.g.
  * `{ feature: "selfRevoke", setting: "forbidden" }`).
  *
- * Two consent-layer annotations may ride along, and together they say how
- * the row should open:
+ * Consent-layer annotations may ride along, and together they say how the
+ * row should open:
  *   `mandatory: true`: required; the user cannot untick it.
  *   neither         : optional, ticked to begin with (the user opts out).
  *   `optIn: true`   : optional, UNticked to begin with (the user opts in).
- * Both are display-layer only: they never travel on a grant, and the
+ *   `currentlyGranted: true`: the app already holds this entry (a consent
+ *                     shown again to an app the user already allowed); it
+ *                     opens ticked, and unticking it takes it away.
+ *   `currentLevel`  : on a held stream entry, the level the app holds today
+ *                     (`level` is then what it will hold: today's level joined
+ *                     with what it asks for).
+ * All are display-layer only: they never travel on a grant, and the
  * server strips them before minting an access.
  */
 export type OfferPermission = (
   | { streamId: string; level: string; defaultName?: string; name?: string }
   | { feature: string; setting: string }
-) & { mandatory?: boolean; optIn?: boolean };
+) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean; currentLevel?: string };
 
 /**
  * Display model for one consent-screen row.
@@ -44,7 +50,12 @@ export type OfferPermission = (
  * meaningful when the rest of the list IS untickable, i.e. on `mandatory`
  * entries of a choice-enabled request.
  * `initiallyTicked`: the state the row opens in. Locked rows are always
- * ticked; an `optIn` row opens unticked so the user has to choose it.
+ * ticked; an `optIn` row opens unticked so the user has to choose it, unless
+ * the app already holds it.
+ * `currentlyGranted`: the app already holds this entry (never set on a
+ * feature restriction, which reads as one on its own).
+ * `heldLevel`: on a held stream entry whose level changes, the level the app
+ * holds today (null when it already holds the level shown, or holds nothing).
  */
 export interface ConsentEntry {
   permission: OfferPermission;
@@ -52,6 +63,17 @@ export interface ConsentEntry {
   locked: boolean;
   showRequiredHint: boolean;
   initiallyTicked: boolean;
+  currentlyGranted: boolean;
+  heldLevel: string | null;
+}
+
+/**
+ * A feature restriction (`setting: "forbidden"`): it only ever narrows what
+ * the app can do, so it is never the user's to untick (that would hand the
+ * app more than it asked for).
+ */
+export function isFeatureRestriction(p: OfferPermission): boolean {
+  return "feature" in p && p.setting === "forbidden";
 }
 
 /**
@@ -65,25 +87,43 @@ export interface ConsentEntry {
  * `optIn` only means anything once the user HAS a choice: with an
  * all-or-nothing consent every row is locked and ticked, so opening one
  * unticked would show a state the user cannot act on and the server would
- * refuse.
+ * refuse. An entry the app already holds (`currentlyGranted`) always opens
+ * ticked: what the app has is shown as it is, and unticking takes it away.
+ * Feature restrictions are always locked, whatever `mandatory` and `optIn`
+ * say (see {@link isFeatureRestriction}); they never get the required hint.
  *
- * `labelFor` (a deployment's stream-label resolver, see `streamLabels.ts`)
- * names a stream before the request's own `name` / `defaultName`; a `null`
- * answer keeps those.
+ * Names, see {@link permissionLabel}: `entryLabel` (labels the offer carries
+ * for its own entries), `labelFor` (a deployment's stream-label resolver, see
+ * `streamLabels.ts`) and `accountName` (the account's own stream names); a
+ * `null` answer from any of them falls through to the next source.
  */
 export function consentEntries(
   permissions: OfferPermission[],
-  opts: { allowUserChoice?: boolean; labelFor?: StreamLabelResolver } = {},
+  opts: { allowUserChoice?: boolean } & LabelSources = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
   return permissions.map((p) => {
-    const locked = !allowUserChoice || p.mandatory === true;
+    const restriction = isFeatureRestriction(p);
+    const locked = !allowUserChoice || p.mandatory === true || restriction;
+    // A restriction the app is already under is not something "allowed": the
+    // row's own wording ("The app cannot …") says it all.
+    const currentlyGranted = p.currentlyGranted === true && !restriction;
+    const heldLevel =
+      currentlyGranted &&
+      "streamId" in p &&
+      typeof p.currentLevel === "string" &&
+      p.currentLevel !== "" &&
+      p.currentLevel !== p.level
+        ? p.currentLevel
+        : null;
     return {
       permission: p,
-      label: permissionLabel(p, opts.labelFor),
+      label: permissionLabel(p, opts),
       locked,
-      showRequiredHint: allowUserChoice && p.mandatory === true,
-      initiallyTicked: locked || p.optIn !== true,
+      showRequiredHint: allowUserChoice && p.mandatory === true && !restriction,
+      initiallyTicked: locked || currentlyGranted || p.optIn !== true,
+      currentlyGranted,
+      heldLevel,
     };
   });
 }
@@ -145,7 +185,7 @@ export function grantedPermissions(
 ): OfferPermission[] {
   return entries
     .filter((e, i) => e.locked || flags[i])
-    .map(({ permission: { mandatory: _m, optIn: _o, ...p } }) => p as OfferPermission);
+    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, currentLevel: _l, ...p } }) => p as OfferPermission);
 }
 
 /** Catalog key of each access level's verb (what the row lets the app do). */
@@ -157,38 +197,85 @@ const LEVEL_LABEL_KEYS: Record<string, string> = {
   none: "consent.permLevelNone",
 };
 
+/** This app's verb for an access level (the level itself when unknown). */
+export function levelLabel(level: string): string {
+  return Object.hasOwn(LEVEL_LABEL_KEYS, level) ? i18n.t(LEVEL_LABEL_KEYS[level]) : level;
+}
+
+/** Where a consent row's name can come from, most specific first. */
+export interface LabelSources {
+  /** A label the offer itself carries for this entry. */
+  entryLabel?: (p: OfferPermission) => string | null;
+  /** The deployment's stream labels. */
+  labelFor?: StreamLabelResolver;
+  /** The name of the stream in the account, when it exists there. */
+  accountName?: StreamLabelResolver;
+}
+
+/** Catalog key of the dedicated wording of each known feature restriction. */
+const FEATURE_LABEL_KEYS: Record<string, string> = {
+  "selfRevoke|forbidden": "consent.featureSelfRevokeForbidden",
+  "webhooks|forbidden": "consent.featureWebhooksForbidden",
+  "secretSharing|forbidden": "consent.featureSecretSharingForbidden",
+};
+
 /**
  * Human label for one granular permission entry. Stream permissions
- * render as "<level verb> “<stream name>”"; known feature permissions
- * get a dedicated wording, unknown ones fall back to `feature: setting`.
+ * render as "<level verb> “<stream name>”", the stream named by the first
+ * source that knows it: the offer's own label for the entry, the deployment's
+ * stream labels, the account's stream name, the request's `name` /
+ * `defaultName`, and last the stream id. The level verb always comes from this
+ * app, never from a label. Known feature permissions get a dedicated wording;
+ * unknown ones use the offer's label, else "The app cannot use …" for a
+ * restriction and `feature: setting` otherwise.
  */
-export function permissionLabel(p: OfferPermission, labelFor?: StreamLabelResolver): string {
+export function permissionLabel(p: OfferPermission, sources: LabelSources = {}): string {
+  const entryLabel = safeLabel(() => sources.entryLabel?.(p));
   if ("streamId" in p && typeof p.streamId === "string") {
-    const levelKey = Object.hasOwn(LEVEL_LABEL_KEYS, p.level) ? LEVEL_LABEL_KEYS[p.level] : null;
-    const level = levelKey != null ? i18n.t(levelKey) : p.level;
+    const level = levelLabel(p.level);
     if (p.streamId === "*") return i18n.t("consent.permissionOnAllData", { level });
-    const name = resolvedLabel(labelFor, p.streamId) ?? p.name ?? p.defaultName ?? p.streamId;
+    const streamId = p.streamId;
+    const name =
+      entryLabel ??
+      safeLabel(() => sources.labelFor?.(streamId)) ??
+      safeLabel(() => sources.accountName?.(streamId)) ??
+      p.name ??
+      p.defaultName ??
+      streamId;
     return i18n.t("consent.permissionOnStream", { level, name });
   }
   const f = p as { feature: string; setting: string };
-  if (f.feature === "selfRevoke" && f.setting === "forbidden") {
-    return i18n.t("consent.featureSelfRevokeForbidden");
-  }
-  if (f.feature === "webhooks" && f.setting === "forbidden") {
-    return i18n.t("consent.featureWebhooksForbidden");
-  }
+  const key = `${f.feature}|${f.setting}`;
+  if (Object.hasOwn(FEATURE_LABEL_KEYS, key)) return i18n.t(FEATURE_LABEL_KEYS[key]);
+  if (entryLabel != null) return entryLabel;
+  if (f.setting === "forbidden") return i18n.t("consent.featureForbidden", { feature: f.feature });
   return `${f.feature}: ${f.setting}`;
 }
 
-/** A resolver's label, or null when it has none (or fails: display only, never fatal). */
-function resolvedLabel(labelFor: StreamLabelResolver | undefined, streamId: string): string | null {
-  if (labelFor == null) return null;
+/** A source's label, or null when it has none (or fails: display only, never fatal). */
+function safeLabel(get: () => string | null | undefined): string | null {
   try {
-    const label = labelFor(streamId);
+    const label = get();
     return typeof label === "string" && label !== "" ? label : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * The offer's own label for an entry, in the UI language: `labels` is keyed
+ * by {@link permissionKey}, each value a localized text map.
+ */
+export function offerEntryLabel(
+  labels: Record<string, LocalizableText> | null | undefined,
+  lang: string,
+): (p: OfferPermission) => string | null {
+  return (p) => {
+    if (labels == null) return null;
+    const key = permissionKey(p);
+    if (!Object.hasOwn(labels, key)) return null;
+    return pickText(labels[key], lang) || null;
+  };
 }
 
 /**
