@@ -90,6 +90,27 @@ export function storedParentConnection(): PryvConnection | null {
   }
 }
 
+/**
+ * Tokens of the sessions this app keeps in this browser (the signed-in one
+ * and, while acting for another account, the parent one). A page that opens a
+ * personal session of its own checks this before ending it: a sign-in may hand
+ * back a session the app is already using.
+ */
+export function storedSessionTokens(): string[] {
+  const tokens: string[] = [];
+  for (const key of [STORE_KEY_API, STORE_KEY_PARENT_API]) {
+    try {
+      const api = localStorage.getItem(key);
+      if (!api) continue;
+      const token = decodeURIComponent(new URL(api).username);
+      if (token) tokens.push(token);
+    } catch {
+      // Unreadable entry: nothing to compare against.
+    }
+  }
+  return tokens;
+}
+
 export function readActingAs(): ActingAs | null {
   try {
     const raw = localStorage.getItem(STORE_KEY_ACTING);

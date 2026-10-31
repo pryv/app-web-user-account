@@ -48,6 +48,74 @@
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
 
+## 0.27.0 - 2026-10-30
+
+The offer by reference and the composed re-consent need open-pryv.io 2.0.0-rc.68 or later; with
+an earlier core the consent pages behave as in 0.26.0.
+
+### Added
+
+- **OAuth consent for clients registered without an app account.** When the signed state carries
+  the offer by reference (`offerRef`) instead of the offer itself, the consent page reads it from
+  the core's `POST /oauth2/authorize/offer` and names the app from the client's own registration
+  when the app catalog does not know it. A state with neither is still refused. Such a consent
+  screen also says which id the app will see: a pseudonym, or the user's username.
+- **OAuth consent rows name streams that do not exist yet.** An offer may carry `entryLabels`
+  (keyed by entry: `s|<streamId>|<level>`, `f|<feature>|<setting>`; each a localized text map).
+  A stream row is named by, in order: the offer's label for that entry, the deployment's stream
+  labels, the stream's name in the account (read with the consent's session), the request's
+  `name` / `defaultName`, the stream id. The level verb is always this app's own. New catalog key
+  `consent.featureSecretSharingForbidden`: the `secretSharing: forbidden` restriction gets a
+  sentence like the other known restrictions.
+- **OAuth consent shown again to an app the user already allowed.** For an offer by reference,
+  the page reads `POST /oauth2/authorize/offer` again once signed in, with `username` +
+  `userToken`. A core that supports it answers the offer joined with what the app already
+  holds: entries flagged `currentlyGranted` open ticked (locked when `mandatory`) and are marked
+  "(already allowed)"; a held stream shown at a wider level than the app holds today
+  (`currentLevel` differs from `level`) says both instead ("the app can already: Read; it now
+  asks for: Add and modify"). New `optIn` entries open unticked, and entries the app only holds are
+  named from the account's streams. Accept posts the answer's `shownDigest`, so the ticked set
+  becomes the app's access: unticking an entry the app held takes it away. When the answer
+  carries `subjectChange` (the app switches between a pseudonym and the account identity), a
+  warning worded for the direction and an "I understand" checkbox are shown, Accept stays
+  disabled until it is ticked, and Accept posts `acknowledgeSubjectChange: true`. A pseudonym
+  offer also says that a pseudonym does not stop the data itself from identifying the user.
+  Feature restrictions are locked lines (see Fixed). Accept asks to keep at least one stream
+  ticked (restrictions alone grant nothing, and the core refuses them). A refusal saying the
+  screen is out of date (`reason: "consent-out-of-date"`, or its wording from a core that sends
+  no `reason`) disables Accept and asks the user to restart the authorization from the app. A
+  refusal because an unticked entry sits under a kept one (`reason: "consent-widens-offer"`, or
+  its wording) explains what to change on the screen; other refusals (`permission-level-conflict`,
+  `keep-one-stream`, …) show the core's message. A session the
+  core does not accept (`authenticated: false`) returns to the sign-in. A core that answers no
+  `shownDigest` keeps the previous behaviour, and no digest is posted. New catalog keys
+  `oauth.pseudonymLinkability`, `oauth.reconsentNotice`, `oauth.reconsentNoticeChoice`,
+  `oauth.subjectChangeToAccount`, `oauth.subjectChangeToPseudonym`,
+  `oauth.subjectChangeReplaces`, `oauth.subjectChangeAcknowledge`,
+  `oauth.errorConsentOutOfDate`, `oauth.backToApp`, `consent.featureForbidden`,
+  `consent.currentlyGranted`, `consent.currentlyGrantedOtherLevel`, `oauth.errorWidensOffer`.
+
+### Fixed
+
+- **A feature restriction can no longer be unticked on any consent screen.** On `/auth` (and in
+  the shared consent rows `/cmc-accept`, `/cmc-scope-update` and the OAuth consent render), an
+  offer that let the
+  user choose could show a `setting: "forbidden"` feature entry as an optional checkbox when it
+  was not `mandatory`; unticking it handed the app more than it asked for. A restriction is now
+  always a locked, ticked "The app cannot …" line, whatever `mandatory` or `optIn` say, and is
+  always part of the grant. An unknown restriction reads "The app cannot use …".
+- **The OAuth consent signs in as this app.** The consent page signed in with the requesting
+  client's id as appId, so the account kept a personal access named after a third-party client.
+  It now uses an appId of its own, `pryv-app-web-user-account-consent`, so the personal access
+  it leaves is named after this app's consent.
+- **The OAuth consent's session ends with the consent.** Once Accept or Reject is answered, the
+  page ends the personal session it opened (`auth/logout`), so it no longer outlives the consent.
+  The consent's own appId means the core can only hand it another consent's session, never one
+  the account app uses on another device; a session this app keeps open in the same browser is
+  left alone too. Ending it is best effort and time-bounded: it never holds back the redirect.
+  When two consents on two devices shared a session and the other one ended it first, Accept
+  now asks for a new sign-in with a clear message instead of showing the core's raw refusal.
+
 ## 0.26.0 - 2026-10-30
 
 ### Added
