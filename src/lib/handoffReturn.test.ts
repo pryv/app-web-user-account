@@ -12,6 +12,8 @@ describe("signInLinkFor / handoffReturnPath", () => {
 
   it("accepts only the exact hand-off routes", () => {
     expect(handoffReturnPath("?next=/cmc-accept&capabilityUrl=x")).toBe("/cmc-accept?capabilityUrl=x");
+    // An account transfer's claim page: its owner and token never ride in the query.
+    expect(handoffReturnPath("?next=/transfer-claim&pryvServiceInfoUrl=x")).toBe("/transfer-claim?pryvServiceInfoUrl=x");
     for (const next of [
       "https://evil.example/cmc-accept",
       "//evil.example",

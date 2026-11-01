@@ -217,6 +217,18 @@ Every route accepts these query parameters:
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.
+- `/transfer-claim`, `/transfer-decline`: the landing pages of an account
+  transfer's mailed links (`?username=<owner>&token=<token>`), built by the
+  core from the platform's `service.account` URL. Don't link them directly.
+  The claim needs the beneficiary's own account on the platform: the page
+  keeps the link in the tab's sessionStorage while they sign in or register,
+  and comes back. The decline needs no sign-in. Both pages drop the token
+  from the address bar as soon as they load, and `index.html` sets
+  `<meta name="referrer" content="same-origin">`, so the full address never
+  reaches another origin. The first request still reaches the server that
+  hosts this app with the token in its query, as `/verify-email` does: keep
+  query strings out of that server's access log, or keep the log private
+  and short-lived.
 - `/auth` — the access-request consent flow. Don't link it directly: create an
   access request (lib-js `Pryv.Browser.setupAuth(...)` or
   `POST {register}/access`, optionally passing `authUrl` pointing at this
@@ -249,7 +261,8 @@ Every route accepts these query parameters:
   signed in with, shows the offer with its own Approve and Decline, and reports
   its outcome as `/cmc-accept` always does. Two decisions: declining the offer
   leaves the app access in place. The rules:
-  - `next` must be exactly `/cmc-accept` or `/cmc-scope-update`, followed only
+  - `next` must be exactly `/cmc-accept` or `/cmc-scope-update` (or
+    `/transfer-claim`, the other hand-off route), followed only
     by its query; any other path, a URL or `//host` is ignored and the window
     closes as usual. It is page-only: the access request knows nothing of it.
   - Accept only: Cancel and Reject end the flow and never follow `next`; a

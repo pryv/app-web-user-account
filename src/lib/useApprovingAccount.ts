@@ -52,13 +52,20 @@ export interface ApprovingAccountView {
  * holds, which is not necessarily the person the request was meant for.
  * `route` is the page's own path, returned to after switching account: a
  * hand-off route, the only kind `/signin` returns to with the request kept.
+ *
+ * `expectUsername: false` ignores `username=`: on a page where it names
+ * someone else than the account expected to answer (the owner of a
+ * transferred account, on `/transfer-claim`), any signed-in account may answer.
  */
-export function useApprovingAccount(route: HandoffRoute): ApprovingAccountView {
+export function useApprovingAccount(
+  route: HandoffRoute,
+  opts: { expectUsername?: boolean } = {},
+): ApprovingAccountView {
   const logLabel = route.slice(1);
   const { connection, setConnection } = useSession();
   const { search } = useLocation();
   const navigate = useNavigate();
-  const expectedUsername = expectedUsernameOf(search);
+  const expectedUsername = opts.expectUsername === false ? null : expectedUsernameOf(search);
   const accountEndpoint = connection?.apiEndpoint ?? null;
 
   const [account, setAccount] = useState<ApprovingAccount>({ status: "loading" });
