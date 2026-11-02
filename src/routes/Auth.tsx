@@ -465,10 +465,16 @@ function AuthFlow({
   // (check-app runs after sign-in), so a one-shot initializer would capture
   // an empty list and leave every optional entry unticked. Keyed on `rows`,
   // not `entries`: a label arriving late must never reset the user's choices.
-  const [grantedFlags, setGrantedFlags] = useState<boolean[]>([]);
-  useEffect(() => {
-    setGrantedFlags(initialFlags(rows));
-  }, [rows]);
+  // Re-seeded during render, not in an effect: an effect leaves one frame
+  // where the boxes show ticked while the flags are still empty, and a click
+  // in that frame is lost (the effect then ticks the row back).
+  const [flagState, setFlagState] = useState(() => ({ rows, flags: initialFlags(rows) }));
+  let grantedFlags = flagState.flags;
+  if (flagState.rows !== rows) {
+    grantedFlags = initialFlags(rows);
+    setFlagState({ rows, flags: grantedFlags });
+  }
+  const setGrantedFlags = (flags: boolean[]) => setFlagState({ rows, flags });
 
   // The invites' offers, read once the consent step is reached (after the
   // platform check and the sign-in), through each capability, as

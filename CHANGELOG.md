@@ -48,6 +48,13 @@
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
 
+### Fixed
+
+- **`/auth` consent: an untick right as the permissions appear is kept.** The choices were seeded
+  in an effect, which left one frame where the boxes showed ticked while the choices were still
+  empty: a click then was lost and the row ticked itself back. They are now seeded with the rows,
+  as on the OAuth2 consent screen (the likely cause of an intermittent `[AUT4]` test failure).
+
 ## 0.27.0 - 2026-10-30
 
 The offer by reference and the composed re-consent need open-pryv.io 2.0.0-rc.68 or later; with
