@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   consentEntries,
+  consentGroupCounts,
+  consentLayout,
+  groupTickState,
+  levellessKey,
+  setGroupTicks,
   grantedPermissions,
   initialFlags,
   levelLabel,
@@ -9,6 +14,7 @@ import {
   offerEntryLabel,
   pickText,
   withRequestedNames,
+  type OfferEntryGroup,
   type OfferPermission,
 } from "./consent";
 
@@ -355,5 +361,115 @@ describe("[CLBP] stream name precedence", () => {
     }, "en");
     expect(permissionLabel({ feature: "webhooks", setting: "forbidden" }, { entryLabel: labels })).toMatch(/cannot register webhooks/);
     expect(permissionLabel({ feature: "custom", setting: "on" }, { entryLabel: labels })).toBe("Custom feature");
+  });
+
+  it("[CLB6] a level-less key names the entry at any level or setting; the exact key wins", () => {
+    const labels = offerEntryLabel({
+      "s|body-bp": { en: "Blood pressure" },
+      "s|body-bp|manage": { en: "Blood pressure (all of it)" },
+      "f|custom": { en: "Custom feature" },
+    }, "en");
+    expect(permissionLabel({ streamId: "body-bp", level: "read" }, { entryLabel: labels })).toBe("Read “Blood pressure”");
+    expect(permissionLabel({ streamId: "body-bp", level: "contribute" }, { entryLabel: labels })).toBe("Add and modify “Blood pressure”");
+    expect(permissionLabel({ streamId: "body-bp", level: "manage" }, { entryLabel: labels })).toBe("Fully manage “Blood pressure (all of it)”");
+    expect(permissionLabel({ feature: "custom", setting: "on" }, { entryLabel: labels })).toBe("Custom feature");
+    expect(permissionLabel({ feature: "custom", setting: "off" }, { entryLabel: labels })).toBe("Custom feature");
+    // Literal match: another spelling of the stream id gets none.
+    expect(permissionLabel({ streamId: ":local:body-bp", level: "read" }, { entryLabel: labels })).toBe("Read “:local:body-bp”");
+  });
+});
+
+describe("[CGRP] entry groups: layout, legend counts, the group's box", () => {
+  const permissions: OfferPermission[] = [
+    { streamId: "notes", level: "read" },                                  // 0 ungrouped
+    { streamId: "bp", level: "read", mandatory: true, currentlyGranted: true }, // 1 vitals (exact key)
+    { feature: "webhooks", setting: "forbidden" },                         // 2 ungrouped restriction
+    { streamId: "hr", level: "contribute", optIn: true },                  // 3 vitals (level-less)
+    { streamId: "steps", level: "read", currentlyGranted: true },          // 4 activity
+    { streamId: "weight", level: "read", optIn: true },                    // 5 vitals (level-less)
+    { feature: "selfRevoke", setting: "forbidden" },                       // 6 grouped restriction (activity)
+  ];
+  const groups: OfferEntryGroup[] = [
+    { key: "empty", label: { en: "Nothing here" }, entries: [] },
+    { key: "vitals", label: { en: "Vital signs", fr: "Signes vitaux" }, entries: ["s|bp|read", "s|hr", "s|weight", "s|elsewhere"] },
+    { key: "outside", label: { en: "Not on this screen" }, entries: ["s|elsewhere|read"] },
+    { key: "activity", label: null, entries: ["s|steps", "f|selfRevoke", "s|hr"] },
+  ];
+  const entries = consentEntries(permissions, { allowUserChoice: true });
+
+  it("[CGR1] ungrouped entries first in offer order, then groups in array order, restrictions last", () => {
+    const layout = consentLayout(entries, groups, "fr-CH");
+    expect(layout).toEqual({
+      ungrouped: [0],
+      groups: [
+        { key: "vitals", label: "Signes vitaux", indices: [1, 3, 5] },
+        // No label: the key is the legend text. `s|hr` was already in vitals.
+        { key: "activity", label: "activity", indices: [4, 6] },
+      ],
+      restrictions: [2],
+    });
+  });
+
+  it("[CGR2] the exact key wins over a level-less one named by an earlier group", () => {
+    const layout = consentLayout(entries, [
+      { key: "a", label: { en: "A" }, entries: ["s|bp"] },
+      { key: "b", label: { en: "B" }, entries: ["s|bp|read"] },
+    ], "en");
+    expect(layout?.groups).toEqual([{ key: "b", label: "B", indices: [1] }]);
+    expect(layout?.ungrouped).toEqual([0, 3, 4, 5]);
+  });
+
+  it("[CGR3] no group with an entry on the screen (or no groups) leaves the flat list", () => {
+    expect(consentLayout(entries, null, "en")).toBeNull();
+    expect(consentLayout(entries, [], "en")).toBeNull();
+    expect(consentLayout(entries, [{ key: "x", label: null, entries: ["s|elsewhere"] }], "en")).toBeNull();
+  });
+
+  it("[CGR4] legend counts: entries per level, restrictions, required, already allowed, new", () => {
+    expect(consentGroupCounts(entries, [1, 3, 5], true)).toEqual({
+      total: 3,
+      levels: [{ level: "read", count: 2 }, { level: "contribute", count: 1 }],
+      restrictions: 0,
+      otherFeatures: 0,
+      required: 1,
+      alreadyAllowed: 1,
+      fresh: 2,
+    });
+    expect(consentGroupCounts(entries, [4, 6], true)).toMatchObject({ restrictions: 1, required: 1, alreadyAllowed: 1, fresh: 0 });
+    // Without a choice every entry is required: neither count is stated.
+    const locked = consentEntries(permissions, { allowUserChoice: false });
+    expect(consentGroupCounts(locked, [1, 3, 5], false)).toMatchObject({ required: null, fresh: null, alreadyAllowed: 1 });
+  });
+
+  it("[CGR5] the group's box is tri-state over unlocked entries; setting it never changes locked ones", () => {
+    const vitals = [1, 3, 5];
+    let flags = initialFlags(entries);
+    // optIn entries open unticked: the mandatory one does not count.
+    expect(groupTickState(entries, vitals, flags)).toBe("unchecked");
+    flags = flags.map((f, i) => (i === 3 ? true : f));
+    expect(groupTickState(entries, vitals, flags)).toBe("mixed");
+    flags = setGroupTicks(entries, flags, vitals, true);
+    expect(groupTickState(entries, vitals, flags)).toBe("checked");
+    expect(flags).toEqual([true, true, true, true, true, true, true]);
+    flags = setGroupTicks(entries, flags, vitals, false);
+    expect(groupTickState(entries, vitals, flags)).toBe("unchecked");
+    // The locked entry stays granted, entries outside the group are untouched.
+    expect(flags).toEqual([true, true, true, false, true, false, true]);
+    expect(grantedPermissions(entries, flags).map((p) => permissionKey(p))).toEqual([
+      "s|notes|read", "s|bp|read", "f|webhooks|forbidden", "s|steps|read", "f|selfRevoke|forbidden",
+    ]);
+    // A group of locked entries only has no box.
+    expect(groupTickState(entries, [1, 6], flags)).toBeNull();
+  });
+
+  it("[CGR6] unticking a group takes held entries away (a narrowing)", () => {
+    const flags = setGroupTicks(entries, initialFlags(entries), [4, 6], false);
+    expect(flags[4]).toBe(false);
+    expect(grantedPermissions(entries, flags).some((p) => "streamId" in p && p.streamId === "steps")).toBe(false);
+  });
+
+  it("[CGR7] levellessKey names streams and features without their level or setting", () => {
+    expect(levellessKey({ streamId: "a", level: "read" })).toBe("s|a");
+    expect(levellessKey({ feature: "webhooks", setting: "forbidden" })).toBe("f|webhooks");
   });
 });

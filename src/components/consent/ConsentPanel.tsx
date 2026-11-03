@@ -25,6 +25,8 @@ export interface ConsentPanelProps {
   flags?: boolean[];
   onToggle?: (index: number, checked: boolean) => void;
   idPrefix?: string;
+  /** Replaces the flat permission rows (e.g. the offer's groups, see GroupedPermissionList). */
+  permissionList?: ReactNode;
   /** Rendered right after the permission rows. */
   afterList?: ReactNode;
   /** Explanation of what ticking means, under the list. */
@@ -64,6 +66,7 @@ export function ConsentPanel({
   flags,
   onToggle,
   idPrefix,
+  permissionList,
   afterList,
   choiceHint,
   expireAfterSeconds,
@@ -90,7 +93,7 @@ export function ConsentPanel({
       {title}
       <p className="mb-2 text-sm">{requesting ?? t("common.requestingPermission")}</p>
       {consentText}
-      <PermissionList entries={entries} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />
+      {permissionList ?? <PermissionList entries={entries} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />}
       {afterList}
       {choiceHint}
       {expireAfterSeconds != null && (

@@ -8,7 +8,16 @@ import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
 import { AppIcon } from "../components/AppIcon";
-import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
+import {
+  consentEntries,
+  consentLayout,
+  grantedPermissions,
+  initialFlags,
+  offerEntryLabel,
+  pickText,
+  setGroupTicks,
+} from "../lib/consent";
+import { GroupedPermissionList } from "../components/consent/GroupedPermissionList";
 import { ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
 import { storedSessionTokens } from "../lib/sessionStore";
 import { streamNamesResolver, NO_STREAM_LABELS, type StreamLabelResolver } from "../lib/streamLabels";
@@ -201,6 +210,11 @@ export default function Oauth2Authorize() {
           })
         : [],
     [offer, labelFor, accountName, lang],
+  );
+  // The offer's groups, when it declares any that has an entry on this screen.
+  const layout = useMemo(
+    () => (offer ? consentLayout(entries, offer.entryGroups, lang) : null),
+    [offer, entries, lang],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
   // the user has to choose deliberately. Reset when a fetched offer arrives.
@@ -424,6 +438,25 @@ export default function Oauth2Authorize() {
           idPrefix="oauthScope"
           onToggle={(i, checked) =>
             setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+          }
+          permissionList={
+            // Grouped or flat, the ticks stay those of the flat list, and so
+            // does the grant posted at Accept.
+            layout == null ? undefined : (
+              <GroupedPermissionList
+                entries={entries}
+                flags={grantedFlags}
+                layout={layout}
+                allowUserChoice={offer.allowUserChoice}
+                idPrefix="oauthScope"
+                onToggle={(i, checked) =>
+                  setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+                }
+                onToggleGroup={(indices, checked) =>
+                  setGrantedFlags(setGroupTicks(entries, grantedFlags, indices, checked))
+                }
+              />
+            )
           }
           afterList={
             consentText && (

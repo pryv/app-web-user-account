@@ -407,6 +407,36 @@ describe("[OAEL] entry labels carried by a fetched offer", () => {
     expect(r.offer.entryLabels).toEqual({ "s|a|read": { en: "Blood pressure", fr: "Tension" } });
   });
 
+  it("[OAEL3] reads entry groups tolerantly: a malformed group is dropped, never fatal", async () => {
+    mockFetchOnce(200, {
+      offer: {
+        permissions: [{ streamId: "a", level: "read" }],
+        entryGroups: [
+          { key: "vitals", label: { en: "Vital signs", fr: 3 }, entries: ["s|a", 7, "", "s|b|read"], extra: true },
+          "not a group",
+          null,
+          { label: { en: "No key" }, entries: ["s|a"] },
+          { key: "", label: { en: "Empty key" }, entries: ["s|a"] },
+          { key: "bad-entries", label: { en: "Entries not a list" }, entries: "s|a" },
+          { key: "vitals", label: { en: "Same key again" }, entries: ["s|c"] },
+          { key: "no-label", entries: [] },
+          { key: "bad-label", label: "not a map", entries: ["s|d"] },
+        ],
+      },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryGroups).toEqual([
+      { key: "vitals", label: { en: "Vital signs" }, entries: ["s|a", "s|b|read"] },
+      { key: "no-label", label: null, entries: [] },
+      { key: "bad-label", label: null, entries: ["s|d"] },
+    ]);
+    for (const entryGroups of [undefined, null, "x", {}, [], [null]]) {
+      mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], entryGroups } });
+      const o = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+      expect(o.offer.entryGroups).toBeNull();
+    }
+  });
+
   it("[OAEL2] an offer without labels has none", async () => {
     mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }] } });
     const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });

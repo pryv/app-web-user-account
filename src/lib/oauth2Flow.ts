@@ -25,7 +25,7 @@
  * component) — the service-info URL is derived from `pryvApi` below.
  */
 
-import { pickText, type LocalizableText, type OfferPermission } from "./consent";
+import { pickText, type LocalizableText, type OfferEntryGroup, type OfferPermission } from "./consent";
 import { httpUrlOrNull } from "./safeRedirect";
 
 // Permission vocabulary + display model live in `lib/consent.ts` (shared by
@@ -57,10 +57,17 @@ export interface OAuthOffer {
   randomAlias: boolean | null;
   /**
    * Display labels the server attached to the offer's entries, keyed by
-   * `permissionKey` (`s|<streamId>|<level>`, `f|<feature>|<setting>`), each a
-   * localized text map. Names streams that may not exist in the account yet.
+   * entry key (`s|<streamId>|<level>`, `f|<feature>|<setting>`, or the
+   * level-less `s|<streamId>`, `f|<feature>`), each a localized text map.
+   * Names streams that may not exist in the account yet.
    */
   entryLabels: Record<string, LocalizableText> | null;
+  /**
+   * Groups the screen shows the entries in, in display order (see
+   * `consentLayout`); null when the offer declares none. Display only: the
+   * grant stays the flat list of ticked entries.
+   */
+  entryGroups: OfferEntryGroup[] | null;
 }
 
 /** The locale key telling the user which id the app will see, or null. */
@@ -353,7 +360,33 @@ function parseOffer(v: unknown): OAuthOffer | null {
     consent: asTextMap(o.consent),
     randomAlias: typeof o.randomAlias === "boolean" ? o.randomAlias : null,
     entryLabels: asLabelMap(o.entryLabels),
+    entryGroups: asEntryGroups(o.entryGroups),
   };
+}
+
+/**
+ * The offer's entry groups, read tolerantly: a malformed group (no string
+ * `key`, `entries` not an array) is dropped, never fatal; non-string entry
+ * keys are dropped; a group repeating an earlier group's key is dropped; a
+ * label that is not a text map counts as none (the key is then shown).
+ */
+function asEntryGroups(v: unknown): OfferEntryGroup[] | null {
+  if (!Array.isArray(v)) return null;
+  const seen = new Set<string>();
+  const groups: OfferEntryGroup[] = [];
+  for (const g of v) {
+    if (typeof g !== "object" || g == null || Array.isArray(g)) continue;
+    const o = g as Record<string, unknown>;
+    if (typeof o.key !== "string" || o.key.length === 0 || seen.has(o.key)) continue;
+    if (!Array.isArray(o.entries)) continue;
+    seen.add(o.key);
+    groups.push({
+      key: o.key,
+      label: asTextMap(o.label),
+      entries: o.entries.filter((k): k is string => typeof k === "string" && k.length > 0),
+    });
+  }
+  return groups.length > 0 ? groups : null;
 }
 
 function asLabelMap(v: unknown): Record<string, LocalizableText> | null {

@@ -263,8 +263,25 @@ function safeLabel(get: () => string | null | undefined): string | null {
 }
 
 /**
+ * The level-less key of an entry (`s|<streamId>`, `f|<feature>`): it names
+ * the entry whatever level or setting the screen shows it at. Matched
+ * literally, like {@link permissionKey}.
+ */
+export function levellessKey(p: OfferPermission): string {
+  if ("streamId" in p && typeof p.streamId === "string") return `s|${p.streamId}`;
+  return `f|${(p as { feature: string }).feature}`;
+}
+
+/** The keys an offer may name an entry by, the exact one first. */
+function entryKeys(p: OfferPermission): [string, string] {
+  return [permissionKey(p), levellessKey(p)];
+}
+
+/**
  * The offer's own label for an entry, in the UI language: `labels` is keyed
- * by {@link permissionKey}, each value a localized text map.
+ * by entry key, each value a localized text map. The exact key
+ * ({@link permissionKey}) is looked up first, then the level-less one
+ * ({@link levellessKey}).
  */
 export function offerEntryLabel(
   labels: Record<string, LocalizableText> | null | undefined,
@@ -272,10 +289,164 @@ export function offerEntryLabel(
 ): (p: OfferPermission) => string | null {
   return (p) => {
     if (labels == null) return null;
-    const key = permissionKey(p);
-    if (!Object.hasOwn(labels, key)) return null;
-    return pickText(labels[key], lang) || null;
+    for (const key of entryKeys(p)) {
+      if (Object.hasOwn(labels, key)) return pickText(labels[key], lang) || null;
+    }
+    return null;
   };
+}
+
+/**
+ * A group of consent entries the offer declares (`entryGroups`), in display
+ * order. `entries` are entry keys (exact or level-less) and may name entries
+ * that are not on this screen. `label` is null when the offer gave none.
+ */
+export interface OfferEntryGroup {
+  key: string;
+  label: LocalizableText | null;
+  entries: string[];
+}
+
+/** One group as the consent screen renders it: indices into the flat entry list. */
+export interface ConsentGroupView {
+  key: string;
+  /** The group's label in the UI language, or its key when it has none. */
+  label: string;
+  indices: number[];
+}
+
+/**
+ * Where each entry of the flat list is rendered: entries no group names
+ * first (offer order), then the groups (the offer's order, each with its
+ * entries in offer order), then the feature restrictions no group names.
+ * Indices always point into the flat list, so ticks, element ids and the
+ * grant stay those of the flat list.
+ */
+export interface ConsentLayout {
+  ungrouped: number[];
+  groups: ConsentGroupView[];
+  restrictions: number[];
+}
+
+/**
+ * Lay out `entries` in the offer's groups. An entry joins the group naming
+ * its exact key, else the group naming its level-less key; the first group
+ * naming a key wins (a key in two groups is refused by the platform, this
+ * keeps the screen deterministic should one get through). A group with no
+ * entry on this screen is not rendered. Returns null when no group is
+ * rendered at all: the screen then shows the flat list.
+ */
+export function consentLayout(
+  entries: ConsentEntry[],
+  groups: readonly OfferEntryGroup[] | null | undefined,
+  lang: string,
+): ConsentLayout | null {
+  if (groups == null || groups.length === 0) return null;
+  const groupOf = new Map<string, number>();
+  groups.forEach((g, gi) => {
+    for (const key of g.entries) if (!groupOf.has(key)) groupOf.set(key, gi);
+  });
+  const members: number[][] = groups.map(() => []);
+  const ungrouped: number[] = [];
+  const restrictions: number[] = [];
+  entries.forEach((e, i) => {
+    const [exact, levelless] = entryKeys(e.permission);
+    const gi = groupOf.get(exact) ?? groupOf.get(levelless);
+    if (gi != null) members[gi].push(i);
+    else if (isFeatureRestriction(e.permission)) restrictions.push(i);
+    else ungrouped.push(i);
+  });
+  const views = groups
+    .map((g, gi) => ({ key: g.key, label: pickText(g.label, lang) || g.key, indices: members[gi] }))
+    .filter((g) => g.indices.length > 0);
+  if (views.length === 0) return null;
+  return { ungrouped, groups: views, restrictions };
+}
+
+/**
+ * What a group's legend states, so a collapsed group still says everything
+ * the decision needs: how many entries, at which levels, and (when the user
+ * has a choice) how many are required, already allowed, or new.
+ *
+ * `levels`: stream entries per access level, in order of first appearance;
+ * `restrictions`: feature restrictions; `otherFeatures`: other feature
+ * entries. `required` (locked entries: mandatory ones and restrictions) and
+ * `fresh` (unlocked entries the app does not hold yet, or that the user
+ * declined before) are null without a choice, where every entry is required.
+ */
+export interface ConsentGroupCounts {
+  total: number;
+  levels: Array<{ level: string; count: number }>;
+  restrictions: number;
+  otherFeatures: number;
+  required: number | null;
+  alreadyAllowed: number;
+  fresh: number | null;
+}
+
+export function consentGroupCounts(
+  entries: ConsentEntry[],
+  indices: readonly number[],
+  allowUserChoice: boolean,
+): ConsentGroupCounts {
+  const levels: Array<{ level: string; count: number }> = [];
+  let restrictions = 0;
+  let otherFeatures = 0;
+  let required = 0;
+  let alreadyAllowed = 0;
+  let fresh = 0;
+  for (const i of indices) {
+    const e = entries[i];
+    const p = e.permission;
+    if ("streamId" in p && typeof p.streamId === "string") {
+      const row = levels.find((l) => l.level === p.level);
+      if (row) row.count += 1;
+      else levels.push({ level: p.level, count: 1 });
+    } else if (isFeatureRestriction(p)) restrictions += 1;
+    else otherFeatures += 1;
+    if (e.locked) required += 1;
+    if (e.currentlyGranted) alreadyAllowed += 1;
+    if (!e.locked && !e.currentlyGranted) fresh += 1;
+  }
+  return {
+    total: indices.length,
+    levels,
+    restrictions,
+    otherFeatures,
+    required: allowUserChoice ? required : null,
+    alreadyAllowed,
+    fresh: allowUserChoice ? fresh : null,
+  };
+}
+
+/** The tick state of a group's box: over its unlocked entries only (null when it has none). */
+export function groupTickState(
+  entries: ConsentEntry[],
+  indices: readonly number[],
+  flags: readonly boolean[],
+): "checked" | "unchecked" | "mixed" | null {
+  const free = indices.filter((i) => !entries[i].locked);
+  if (free.length === 0) return null;
+  const ticked = free.filter((i) => flags[i] ?? entries[i].initiallyTicked).length;
+  if (ticked === 0) return "unchecked";
+  return ticked === free.length ? "checked" : "mixed";
+}
+
+/**
+ * The flags once a group's box is set to `checked`: every unlocked entry of
+ * the group follows it; locked entries and entries outside the group never
+ * change.
+ */
+export function setGroupTicks(
+  entries: ConsentEntry[],
+  flags: readonly boolean[],
+  indices: readonly number[],
+  checked: boolean,
+): boolean[] {
+  const inGroup = new Set(indices);
+  return entries.map((e, i) =>
+    inGroup.has(i) && !e.locked ? checked : (flags[i] ?? e.initiallyTicked),
+  );
 }
 
 /**
