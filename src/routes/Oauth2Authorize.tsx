@@ -7,6 +7,7 @@ import { Card, Alert, Button } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
+import { AppIcon } from "../components/AppIcon";
 import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
 import { ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
 import { storedSessionTokens } from "../lib/sessionStore";
@@ -20,6 +21,8 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  clientDisplayName,
+  clientDescription,
   endConsentSession,
   identityNoticeKey,
   isStaleConsentError,
@@ -168,19 +171,24 @@ export default function Oauth2Authorize() {
 
   // Only looked up once `pryvApi` passed the trust check (initError unset).
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
-  // The operator's catalog is the only source of a display name for the app;
-  // the client id is shown when the catalog does not know it.
+  const lang = i18nInstance.language || "en";
+  // The operator's catalog names the app first; a client with no catalog
+  // entry is named by its registration, as the core's /offer answers it
+  // (never by anything the authorization request or the URL carries). With
+  // neither, the client id is shown, marked as an identifier.
   const catalogApp = useRequestingApp(oauthState?.clientId, platformUrl);
-  // A client with no catalog entry is named by its own registration.
-  const requestingApp = catalogApp ?? (fetched?.client.name
+  const registeredName = fetched != null ? clientDisplayName(fetched.client, lang) : null;
+  const requestingApp = catalogApp ?? (fetched != null && registeredName != null
     ? {
-        name: fetched.client.name,
+        name: registeredName,
         icon: fetched.client.logoUri ? { type: "url" as const, value: fetched.client.logoUri } : undefined,
-        description: undefined,
+        description: clientDescription(fetched.client, lang),
       }
     : null);
+  // The signed-out /offer is still in flight: the app is not verified yet, so
+  // the sign-in names nobody and waits (a failure renders the error card).
+  const offerPending = needsFetch && fetched == null;
   const labelFor = useStreamLabels(platformUrl);
-  const lang = i18nInstance.language || "en";
 
   const entries = useMemo(
     () =>
@@ -379,11 +387,21 @@ export default function Oauth2Authorize() {
       <Card>
         <ConsentPanel
           app={{
-            name: requestingApp?.name ?? oauthState.clientId,
+            // No name: the id, marked as an identifier (never shown bare).
+            name: requestingApp?.name ?? t("oauth.appIdMarked", { id: oauthState.clientId }),
             icon: requestingApp?.icon,
             description: requestingApp?.description,
           }}
           appNameId="oauthClientIdText"
+          appNote={
+            // Under a name, the id in small print: two apps with similar
+            // names stay distinguishable.
+            requestingApp != null && (
+              <p id="oauthClientIdNote" className="mb-2 text-xs text-muted break-all">
+                {t("oauth.appIdMarked", { id: oauthState.clientId })}
+              </p>
+            )
+          }
           title={
             <>
               {title && <p className="mb-1 text-lg font-medium">{title}</p>}
@@ -461,12 +479,21 @@ export default function Oauth2Authorize() {
       appId={ACCOUNT_APP_CONSENT_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
-        <span id="oauthAppPrompt">
-          {tNodes("oauth.appPromptLine", {
-            app: <strong>{requestingApp?.name ?? oauthState.clientId}</strong>,
-          })}
+        // Before sign-in: the app's name only (its links come on the consent
+        // screen). While the core has not answered who the app is, nobody is
+        // named and Sign in waits; with no name, the id, marked as one.
+        <span id="oauthAppPrompt" className="flex items-center gap-2">
+          {requestingApp != null && <AppIcon icon={requestingApp.icon ?? null} />}
+          <span>
+            {requestingApp != null
+              ? tNodes("oauth.appPromptLine", { app: <strong>{requestingApp.name}</strong> })
+              : offerPending
+                ? t("oauth.appPromptPending")
+                : tNodes("oauth.appPromptLineId", { id: <code>{oauthState.clientId}</code> })}
+          </span>
         </span>
       }
+      disabled={offerPending}
       onSignedIn={({ username: u, personalToken: token, endpoint, connection }) => {
         sessionRef.current = token;
         setUsername(u);

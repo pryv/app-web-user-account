@@ -25,7 +25,8 @@
  * component) — the service-info URL is derived from `pryvApi` below.
  */
 
-import type { LocalizableText, OfferPermission } from "./consent";
+import { pickText, type LocalizableText, type OfferPermission } from "./consent";
+import { httpUrlOrNull } from "./safeRedirect";
 
 // Permission vocabulary + display model live in `lib/consent.ts` (shared by
 // every consent surface); re-exported here for the OAuth flow's callers.
@@ -147,14 +148,58 @@ function parseOfferRef(v: unknown): OAuthState["offerRef"] {
   return { kind: o.kind, digest: o.digest };
 }
 
-/** Display fields of a client registered without an app account. */
+/** A display text the core sends as one string for every language, or one per language code. */
+export type DisplayText = string | LocalizableText;
+
+/**
+ * Display fields of a client registered without an app account, as the
+ * operator registered them (never taken from the authorization request).
+ *
+ * `name`: the plain registered name (`clientName`). `localizedName` and
+ * `description`: a text or a map by language code, when the core sends them;
+ * see {@link clientDisplayName} and {@link clientDescription}. `logoUri` is
+ * kept only when it is an https URL.
+ */
 export interface OAuthClientDisplay {
   clientId: string;
   name: string | null;
+  localizedName: DisplayText | null;
+  description: DisplayText | null;
   logoUri: string | null;
   clientUri: string | null;
   policyUri: string | null;
   tosUri: string | null;
+}
+
+/** A display text in the UI language (`pickText` rules for a map), or null when empty. */
+function pickDisplayText(text: DisplayText | null, lang: string): string | null {
+  if (text == null) return null;
+  const picked = typeof text === "string" ? text : pickText(text, lang);
+  return picked !== "" ? picked : null;
+}
+
+/**
+ * The client's name in the UI language: its localized name when the core
+ * sends one, else the plain registered name, else null (the caller then shows
+ * the client id, marked as an identifier).
+ */
+export function clientDisplayName(client: OAuthClientDisplay, lang: string): string | null {
+  return pickDisplayText(client.localizedName, lang) ?? client.name;
+}
+
+/** The client's registered description in the UI language, or null. */
+export function clientDescription(client: OAuthClientDisplay, lang: string): string | null {
+  return pickDisplayText(client.description, lang);
+}
+
+function asDisplayText(v: unknown): DisplayText | null {
+  if (typeof v === "string") return v.length > 0 ? v : null;
+  return asTextMap(v);
+}
+
+/** An https URL, else null: a logo is never loaded over plain http or another scheme. */
+function httpsUrlOrNull(v: string | null): string | null {
+  return httpUrlOrNull(v)?.protocol === "https:" ? v : null;
 }
 
 /** How an app knows the user: by a pseudonym, or by the account itself. */
@@ -214,7 +259,9 @@ export async function oauth2FetchOffer(opts: {
     client: {
       clientId: str(c.clientId) ?? "",
       name: str(c.clientName),
-      logoUri: str(c.logoUri),
+      localizedName: asDisplayText(c.name),
+      description: asDisplayText(c.description),
+      logoUri: httpsUrlOrNull(str(c.logoUri)),
       clientUri: str(c.clientUri),
       policyUri: str(c.policyUri),
       tosUri: str(c.tosUri),

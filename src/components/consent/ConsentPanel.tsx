@@ -12,6 +12,8 @@ export interface ConsentPanelProps {
   app: { name: string; icon?: CatalogIcon | null; description?: string | null };
   /** Element id on the app name (for pages that expose it). */
   appNameId?: string;
+  /** Small print right under the app name (e.g. the app's identifier). */
+  appNote?: ReactNode;
   /** Extra heading under the app (e.g. an OAuth2 offer title and description). */
   title?: ReactNode;
   /** Line introducing the list (default: the catalog's "is requesting permission:"). */
@@ -54,6 +56,7 @@ export interface ConsentPanelProps {
 export function ConsentPanel({
   app,
   appNameId,
+  appNote,
   title,
   requesting,
   consentText,
@@ -82,6 +85,7 @@ export function ConsentPanel({
         <AppIcon icon={app.icon ?? null} />
         <strong id={appNameId}>{app.name}</strong>
       </h1>
+      {appNote}
       {app.description != null && <p className="mb-2 text-sm text-muted">{app.description}</p>}
       {title}
       <p className="mb-2 text-sm">{requesting ?? t("common.requestingPermission")}</p>

@@ -6,6 +6,8 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  clientDisplayName,
+  clientDescription,
   identityNoticeKey,
   endConsentSession,
   isStaleConsentError,
@@ -345,6 +347,34 @@ describe("[OAFR] offer by reference", () => {
     const err = (await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" }).catch((e) => e)) as OAuthFlowError;
     expect(err.message).toMatch(/changed/);
     expect(err.oauthError).toBe("invalid_request");
+  });
+
+  it("[OAFR5] reads the localized name and description, keeps the logo only over https", async () => {
+    mockFetchOnce(200, {
+      client: {
+        clientId: "reg-app",
+        clientName: "Plain",
+        name: { en: "Localized", "fr-CH": "Localisé", bad: 3 },
+        description: "One text for every language",
+        logoUri: "http://x.example/l.png",
+      },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.client.localizedName).toEqual({ en: "Localized", "fr-CH": "Localisé" });
+    expect(r.client.logoUri).toBeNull();
+    expect(clientDisplayName(r.client, "fr-CH")).toBe("Localisé");
+    expect(clientDisplayName(r.client, "de")).toBe("Localized");
+    expect(clientDescription(r.client, "de")).toBe("One text for every language");
+    expect(clientDisplayName({ ...r.client, localizedName: null }, "en")).toBe("Plain");
+    expect(clientDisplayName({ ...r.client, localizedName: "Text" }, "en")).toBe("Text");
+    expect(clientDisplayName({ ...r.client, localizedName: null, name: null }, "en")).toBeNull();
+    expect(clientDescription({ ...r.client, description: null }, "en")).toBeNull();
+    mockFetchOnce(200, {
+      client: { clientId: "reg-app", logoUri: "javascript:alert(1)" },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    expect((await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).client.logoUri).toBeNull();
   });
 
   it("[OAFR4] refuses an answer without a usable offer", async () => {

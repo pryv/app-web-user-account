@@ -50,6 +50,16 @@
 
 ### Fixed
 
+- **OAuth2 sign-in: the requesting app is named only once the platform has answered who it is.**
+  For a client registered without an app account, the sign-in showed the bare client id until
+  the platform's answer arrived, and Sign in could be used before it. While that answer is
+  pending, the prompt now names no app ("the requesting application is being verified") and
+  Sign in waits; once it lands, the app's registered name and logo are shown (the logo only
+  from an https address; an entry in the operator's app catalog still wins). A client with no
+  registered name is shown by its id, marked as such ("application id: …"), never as if it were
+  a name. A localized registered name is picked for the UI language, with the plain registered
+  name as the fallback; the registered description is shown on the consent screen (not on the
+  sign-in), where the client id now also stays visible in small print under the name.
 - **`/auth` consent: an untick right as the permissions appear is kept.** The choices were seeded
   in an effect, which left one frame where the boxes showed ticked while the choices were still
   empty: a click then was lost and the row ticked itself back. They are now seeded with the rows,
