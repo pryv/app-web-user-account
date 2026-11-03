@@ -377,6 +377,32 @@ describe("[OAFR] offer by reference", () => {
     expect((await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).client.logoUri).toBeNull();
   });
 
+  it("[OAFR6] blank names count as none; links are kept only over https", async () => {
+    mockFetchOnce(200, {
+      client: {
+        clientId: "reg-app",
+        clientName: "  Plain  ",
+        name: { fr: " ", en: "Name" },
+        clientUri: "https://app.example/",
+        policyUri: "http://app.example/privacy",
+        tosUri: "javascript:alert(1)",
+      },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.client.name).toBe("Plain");
+    // The blank French variant is dropped, so French falls back to English.
+    expect(clientDisplayName(r.client, "fr")).toBe("Name");
+    expect([r.client.clientUri, r.client.policyUri, r.client.tosUri]).toEqual(["https://app.example/", null, null]);
+    mockFetchOnce(200, {
+      client: { clientId: "reg-app", clientName: " ", name: "  ", description: { en: "" } },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const blank = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(clientDisplayName(blank.client, "en")).toBeNull();
+    expect(clientDescription(blank.client, "en")).toBeNull();
+  });
+
   it("[OAFR4] refuses an answer without a usable offer", async () => {
     mockFetchOnce(200, { offer: { permissions: [] } });
     await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);

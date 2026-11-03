@@ -365,14 +365,19 @@ export function consentLayout(
 
 /**
  * What a group's legend states, so a collapsed group still says everything
- * the decision needs: how many entries, at which levels, and (when the user
- * has a choice) how many are required, already allowed, or new.
+ * the decision needs: how many entries, at which levels, how many the app
+ * already holds as shown, holds at a lower level than shown, or does not hold
+ * yet, and (when the user has a choice) how many are required.
  *
  * `levels`: stream entries per access level, in order of first appearance;
  * `restrictions`: feature restrictions; `otherFeatures`: other feature
- * entries. `required` (locked entries: mandatory ones and restrictions) and
- * `fresh` (unlocked entries the app does not hold yet, or that the user
- * declined before) are null without a choice, where every entry is required.
+ * entries. The other entries split into `alreadyAllowed` (held at the level
+ * shown), `widened` (held, now asked at a higher level: `heldLevel` set) and
+ * `fresh` (not held: new, or declined before; mandatory ones included), so
+ * `alreadyAllowed + widened + fresh + restrictions === total`. A restriction
+ * only narrows what the app can do, so it is never "new" access.
+ * `required` (locked entries: mandatory ones and restrictions) overlays that
+ * split; it is null without a choice, where every entry is required.
  */
 export interface ConsentGroupCounts {
   total: number;
@@ -381,7 +386,8 @@ export interface ConsentGroupCounts {
   otherFeatures: number;
   required: number | null;
   alreadyAllowed: number;
-  fresh: number | null;
+  widened: number;
+  fresh: number;
 }
 
 export function consentGroupCounts(
@@ -394,19 +400,23 @@ export function consentGroupCounts(
   let otherFeatures = 0;
   let required = 0;
   let alreadyAllowed = 0;
+  let widened = 0;
   let fresh = 0;
   for (const i of indices) {
     const e = entries[i];
     const p = e.permission;
+    const restriction = isFeatureRestriction(p);
     if ("streamId" in p && typeof p.streamId === "string") {
       const row = levels.find((l) => l.level === p.level);
       if (row) row.count += 1;
       else levels.push({ level: p.level, count: 1 });
-    } else if (isFeatureRestriction(p)) restrictions += 1;
+    } else if (restriction) restrictions += 1;
     else otherFeatures += 1;
     if (e.locked) required += 1;
-    if (e.currentlyGranted) alreadyAllowed += 1;
-    if (!e.locked && !e.currentlyGranted) fresh += 1;
+    if (restriction) continue;
+    if (!e.currentlyGranted) fresh += 1;
+    else if (e.heldLevel != null) widened += 1;
+    else alreadyAllowed += 1;
   }
   return {
     total: indices.length,
@@ -415,7 +425,8 @@ export function consentGroupCounts(
     otherFeatures,
     required: allowUserChoice ? required : null,
     alreadyAllowed,
-    fresh: allowUserChoice ? fresh : null,
+    widened,
+    fresh,
   };
 }
 

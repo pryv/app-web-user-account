@@ -48,7 +48,7 @@ const REF_STATE = base64url(JSON.stringify({
 })) + ".fake-mac";
 
 const GROUPS = [
-  { key: "vitals", label: { en: "Vital signs" }, entries: ["s|bp", "s|hr", "s|weight", "s|not-on-screen"] },
+  { key: "vitals", label: { en: "Vital signs" }, entries: ["s|bp", "s|hr", "s|weight", "s|temp", "s|spo2", "s|not-on-screen"] },
   // An empty label map: the key is the legend text.
   { key: "journal", label: {}, entries: ["s|diary"] },
   // No entry on this screen: not rendered.
@@ -60,6 +60,8 @@ const LABELS = {
   "s|hr": { en: "Heart rate" },
   "s|weight": { en: "Weight" },
   "s|diary": { en: "Diary" },
+  "s|temp": { en: "Temperature" },
+  "s|spo2": { en: "Oxygen saturation" },
 };
 
 /** The screen once signed in: what the app holds joined with what it asks for. */
@@ -75,8 +77,15 @@ const COMPOSED = {
     { streamId: "hr", level: "contribute", optIn: true },                       // 3 vitals
     { streamId: "weight", level: "read", optIn: true },                         // 4 vitals
     { feature: "webhooks", setting: "forbidden", mandatory: true },             // 5 restriction
+    // 6 vitals: held at read, now asked at contribute (a widening).
+    { streamId: "temp", level: "contribute", currentlyGranted: true, currentLevel: "read" },
+    { streamId: "spo2", level: "read", mandatory: true },                       // 7 vitals: new and required
   ],
 };
+
+const VITALS_COUNTS =
+  "5 entries (Read: 3, Add and modify: 2); 2 required, 1 already allowed, " +
+  "1 asked at a higher level than allowed today, 3 new or previously declined";
 
 type Answer = { status: number; body: unknown };
 
@@ -120,12 +129,17 @@ async function signInToConsent() {
 }
 
 const box = (i: number) => document.getElementById("oauthScope-" + i) as HTMLInputElement;
-const groupBox = (gi: number) => document.getElementById(`oauthScope-group-${gi}-box`) as HTMLInputElement;
-const toggle = (gi: number) => document.getElementById(`oauthScope-group-${gi}-toggle`) as HTMLButtonElement;
-const rowIds = () =>
-  Array.from(document.querySelectorAll("input[id^='oauthScope-']"))
-    .map((el) => el.id)
-    .filter((id) => /^oauthScope-\d+$/.test(id));
+const groupBox = (gi: number) => document.getElementById(`oauthGroup-${gi}-box`) as HTMLInputElement;
+const toggle = (gi: number) => document.getElementById(`oauthGroup-${gi}-toggle`) as HTMLButtonElement;
+const legendText = (gi: number) => document.querySelector(`#oauthGroup-${gi} legend`)?.textContent ?? "";
+// No filter: every element whose id starts with the rows' prefix must be a row.
+const rowIds = () => Array.from(document.querySelectorAll("[id^='oauthScope-']")).map((el) => el.id);
+
+function acceptBody(fetchMock: ReturnType<typeof mockCore>): Record<string, unknown> {
+  return fetchMock.mock.calls
+    .filter(([u]) => String(u).endsWith("/oauth2/authorize/accept"))
+    .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>)[0];
+}
 
 beforeEach(() => {
   vi.stubEnv("VITE_OAUTH_TRUSTED_API_ORIGINS", "");
@@ -146,29 +160,35 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
   it("[OAGR1] ungrouped entries first, then groups in the offer's order, restrictions last; flat ids kept", async () => {
     mockCore();
     await signInToConsent();
-    expect(rowIds()).toEqual(["oauthScope-0", "oauthScope-1", "oauthScope-3", "oauthScope-4", "oauthScope-2", "oauthScope-5"]);
-    const fieldsets = Array.from(document.querySelectorAll("fieldset"));
-    expect(fieldsets.map((f) => f.querySelector("legend")?.textContent?.split(" ")[0])).toEqual(["Vital", "journal"]);
+    expect(rowIds()).toEqual([
+      "oauthScope-0",
+      "oauthScope-1", "oauthScope-3", "oauthScope-4", "oauthScope-6", "oauthScope-7",
+      "oauthScope-2",
+      "oauthScope-5",
+    ]);
+    const fieldsets = screen.getAllByRole("group").filter((g) => g.tagName === "FIELDSET");
+    expect(fieldsets).toEqual([
+      screen.getByRole("group", { name: /^\s*Vital signs/ }),
+      screen.getByRole("group", { name: /^\s*journal/ }),
+    ]);
     expect(screen.queryByText("Absent group")).toBeNull();
     // Level-less labels name the entries at the level the screen shows.
     expect(screen.getByText("Read “Blood pressure”")).toBeTruthy();
     expect(screen.getByText("Add and modify “Diary”")).toBeTruthy();
   });
 
-  it("[OAGR2] the legend states the count, the levels and the decision counts", async () => {
+  it("[OAGR2] the legend states the count, the levels and the decision counts, widened and new mandatory included", async () => {
     mockCore();
     await signInToConsent();
-    const vitals = document.querySelector("#oauthScope-group-0 legend")?.textContent ?? "";
-    expect(vitals).toContain("Vital signs");
-    expect(vitals).toContain("3 entries (Read: 2, Add and modify: 1); 1 required, 1 already allowed, 2 new or previously declined");
-    const journal = document.querySelector("#oauthScope-group-1 legend")?.textContent ?? "";
-    expect(journal).toContain("1 entry (Add and modify: 1); 1 already allowed");
+    expect(legendText(0)).toContain("Vital signs");
+    expect(legendText(0)).toContain(VITALS_COUNTS);
+    expect(legendText(1)).toContain("1 entry (Add and modify: 1); 1 already allowed");
   });
 
   it("[OAGR3] a group of several entries opens collapsed; the toggle keeps focus and reports its state", async () => {
     mockCore();
     await signInToConsent();
-    const list = document.getElementById("oauthScope-group-0-entries") as HTMLElement;
+    const list = document.getElementById("oauthGroup-0-entries") as HTMLElement;
     expect(toggle(0).getAttribute("aria-expanded")).toBe("false");
     expect(toggle(0).getAttribute("aria-controls")).toBe(list.id);
     expect(list.hidden).toBe(true);
@@ -176,7 +196,8 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
     expect(screen.queryByRole("checkbox", { name: /Heart rate/ })).toBeNull();
     // A single-entry group opens expanded.
     expect(toggle(1).getAttribute("aria-expanded")).toBe("true");
-    expect((document.getElementById("oauthScope-group-1-entries") as HTMLElement).hidden).toBe(false);
+    expect(toggle(1).textContent).toBe("Hide the entry");
+    expect((document.getElementById("oauthGroup-1-entries") as HTMLElement).hidden).toBe(false);
     toggle(0).focus();
     fireEvent.click(toggle(0));
     expect(toggle(0).getAttribute("aria-expanded")).toBe("true");
@@ -188,33 +209,34 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
     expect(document.activeElement).toBe(toggle(0));
   });
 
-  it("[OAGR4] the group box is tri-state: none, some, all; locked entries never change", async () => {
+  it("[OAGR4] the group box is tri-state: some, all, none, all again; locked entries never change", async () => {
     mockCore();
     await signInToConsent();
-    // optIn entries open unticked; the mandatory one is locked and not counted.
+    // New optIn entries open unticked, the held one ticked: the group opens mixed.
     expect(groupBox(0).checked).toBe(false);
-    expect(groupBox(0).getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(box(3));
     expect(groupBox(0).indeterminate).toBe(true);
-    expect(groupBox(0).getAttribute("aria-checked")).toBe("mixed");
     // Mixed: activating ticks every unlocked entry.
     fireEvent.click(groupBox(0));
-    expect([box(3).checked, box(4).checked]).toEqual([true, true]);
+    expect([box(3).checked, box(4).checked, box(6).checked]).toEqual([true, true, true]);
     expect(groupBox(0).checked).toBe(true);
     expect(groupBox(0).indeterminate).toBe(false);
-    expect(groupBox(0).getAttribute("aria-checked")).toBe("true");
-    // Checked: activating unticks them; the locked entry stays ticked.
+    // Checked: activating unticks them (the held one too); locked entries stay ticked.
     fireEvent.click(groupBox(0));
-    expect([box(3).checked, box(4).checked]).toEqual([false, false]);
-    expect(box(1).checked).toBe(true);
-    expect(box(1).disabled).toBe(true);
+    expect([box(3).checked, box(4).checked, box(6).checked]).toEqual([false, false, false]);
+    expect(groupBox(0).checked).toBe(false);
+    expect(groupBox(0).indeterminate).toBe(false);
+    expect([box(1).checked, box(1).disabled, box(7).checked, box(7).disabled]).toEqual([true, true, true, true]);
+    // Unchecked: activating ticks them all again.
+    fireEvent.click(groupBox(0));
+    expect([box(3).checked, box(4).checked, box(6).checked]).toEqual([true, true, true]);
+    expect(groupBox(0).checked).toBe(true);
     // Entries outside the group are untouched.
     expect(box(0).checked).toBe(true);
     expect(box(2).checked).toBe(true);
     // The group box is labelled by the group and described by its counts.
     const named = screen.getByRole("checkbox", { name: "Vital signs" });
     expect(named).toBe(groupBox(0));
-    expect(document.getElementById(named.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/3 entries/);
+    expect(document.getElementById(named.getAttribute("aria-describedby") ?? "")?.textContent).toMatch(/5 entries/);
   });
 
   it("[OAGR5] unticking a group takes held entries away; Accept posts the flat ticked set", async () => {
@@ -225,25 +247,48 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
     expect(box(2).checked).toBe(false);
     fireEvent.click(document.getElementById("oauthAccept")!);
     await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?code=1"));
-    const accept = fetchMock.mock.calls
-      .filter(([u]) => String(u).endsWith("/oauth2/authorize/accept"))
-      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>)[0];
+    const accept = acceptBody(fetchMock);
     expect(accept.shownDigest).toBe("digest-g");
     expect(accept.grantedPermissions).toEqual([
       { streamId: "notes", level: "read" },
       { streamId: "bp", level: "read" },
       { feature: "webhooks", setting: "forbidden" },
+      { streamId: "temp", level: "contribute" },
+      { streamId: "spo2", level: "read" },
     ]);
   });
 
-  it("[OAGR6] without a choice: collapsible read-only groups, no boxes at all", async () => {
+  it("[OAGR9] ticking a group grants its new entries; Accept posts the flat ticked set", async () => {
+    const fetchMock = mockCore();
+    await signInToConsent();
+    fireEvent.click(groupBox(0));
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?code=1"));
+    expect(acceptBody(fetchMock).grantedPermissions).toEqual([
+      { streamId: "notes", level: "read" },
+      { streamId: "bp", level: "read" },
+      { streamId: "diary", level: "contribute" },
+      { streamId: "hr", level: "contribute" },
+      { streamId: "weight", level: "read" },
+      { feature: "webhooks", setting: "forbidden" },
+      { streamId: "temp", level: "contribute" },
+      { streamId: "spo2", level: "read" },
+    ]);
+  });
+
+  it("[OAGR6] without a choice: rows as in the flat list (disabled, ticked, same ids), no group box", async () => {
     mockCore({ ...COMPOSED, allowUserChoice: false });
     await signInToConsent();
-    expect(document.querySelectorAll("input[type='checkbox']")).toHaveLength(0);
+    expect(document.querySelectorAll("[id^='oauthGroup-'][id$='-box']")).toHaveLength(0);
+    for (const i of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      expect([box(i).checked, box(i).disabled]).toEqual([true, true]);
+    }
     expect(document.querySelectorAll("fieldset")).toHaveLength(2);
-    const legend = document.querySelector("#oauthScope-group-0 legend")?.textContent ?? "";
-    expect(legend).toContain("3 entries (Read: 2, Add and modify: 1); 1 already allowed");
-    expect(legend).not.toMatch(/required|new or previously declined/);
+    // "New" and "higher level" are stated without a choice too; "required" is not.
+    expect(legendText(0)).toContain(
+      "5 entries (Read: 3, Add and modify: 2); 1 already allowed, 1 asked at a higher level than allowed today, 3 new or previously declined",
+    );
+    expect(legendText(0)).not.toMatch(/required/);
     expect(toggle(0).getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -251,7 +296,15 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
     mockCore({ ...COMPOSED, entryGroups: [{ key: "x", label: { en: "X" }, entries: ["s|elsewhere"] }] });
     await signInToConsent();
     expect(document.querySelectorAll("fieldset")).toHaveLength(0);
-    expect(rowIds()).toEqual(["oauthScope-0", "oauthScope-1", "oauthScope-2", "oauthScope-3", "oauthScope-4", "oauthScope-5"]);
+    expect(rowIds()).toEqual([0, 1, 2, 3, 4, 5, 6, 7].map((i) => "oauthScope-" + i));
+  });
+
+  it("[OAGR10] a group whose entries are all locked has no box, even with a choice", async () => {
+    mockCore({ ...COMPOSED, entryGroups: [{ key: "req", label: { en: "Required data" }, entries: ["s|bp", "s|spo2"] }] });
+    await signInToConsent();
+    expect(document.getElementById("oauthGroup-0")).not.toBeNull();
+    expect(groupBox(0)).toBeNull();
+    expect(legendText(0)).toContain("2 required");
   });
 
   it("[OAGR8] accessibility: each group is a named group whose name carries its counts", async () => {
@@ -259,9 +312,9 @@ describe("[OAGR] Oauth2Authorize grouped consent", () => {
     await signInToConsent();
     const vitals = screen.getByRole("group", { name: /Vital signs/ });
     expect(vitals.tagName).toBe("FIELDSET");
-    expect(within(vitals).getByRole("button", { name: /Show the 3 entries/ })).toBe(toggle(0));
+    expect(within(vitals).getByRole("button", { name: /Show the 5 entries/ })).toBe(toggle(0));
     const journal = screen.getByRole("group", { name: /journal/ });
-    expect(within(journal).getByRole("button", { name: /Hide the entries/ })).toBe(toggle(1));
+    expect(within(journal).getByRole("button", { name: /Hide the entry/ })).toBe(toggle(1));
     // No state lives in colour only: every count is text in the legend.
     expect(vitals.querySelector("legend")?.textContent).toMatch(/\d+ required/);
   });

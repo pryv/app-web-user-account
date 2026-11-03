@@ -52,33 +52,45 @@
   platform's checks) is shown as: the entries no group names first, in the offer's order, then
   one section per group in the offer's order, then the feature restrictions no group names. A
   group's heading states its name (its key when it has no label), how many entries it holds, at
-  which levels ("Read: 90, Add and modify: 2") and, when the user has a choice, how many are
-  required, already allowed, and new or previously declined. A group of more than one entry
-  opens collapsed behind a "Show the entries" button. With a choice, each group has a box that is
-  ticked when all of its optional entries are, unticked when none is, and partly ticked
-  otherwise; using it ticks or unticks the group's optional entries only (required entries and
-  restrictions never change; unticking entries the app already holds takes them away, as
-  unticking them one by one does). Inside a group the rows, their element ids
-  (`oauthScope-<i>`) and the per-entry choice are those of the flat list, and Accept still posts
-  the flat list of ticked entries. A group that names no entry of the screen is not shown; an
-  offer whose groups name none shows the flat list as before. Malformed groups are ignored.
+  which levels ("Read: 90, Add and modify: 2"), how many the app already holds as shown, how many
+  it holds today at a lower level than now asked, how many are new or previously declined
+  (required ones included), and, when the user has a choice, how many are required. A group of
+  more than one entry opens collapsed behind a "Show the N entries" button. With a choice, each
+  group has a box that is ticked when all of its optional entries are, unticked when none is,
+  and partly ticked otherwise; using it ticks or unticks the group's optional entries only
+  (required entries and restrictions never change; unticking entries the app already holds
+  takes them away, as unticking them one by one does). Inside a group the rows, their element
+  ids (`oauthScope-<i>`) and the per-entry choice are those of the flat list, with or without a
+  choice, and Accept still posts the flat list of ticked entries. The group elements have their
+  own ids (`oauthGroup-<n>`, with `-box`, `-toggle`, `-entries` and `-summary`). A group that
+  names no entry of the screen is not shown; an offer whose groups name none shows the flat list
+  as before. Malformed groups are ignored.
 - **OAuth2 consent: level-less entry keys.** The offer's `entryLabels` and `entryGroups` may name
   an entry as `s|<streamId>` or `f|<feature>`, whatever level or setting the screen shows it at;
   the exact key (`s|<streamId>|<level>`, `f|<feature>|<setting>`) is looked up first.
-- New catalog keys under `consent.group*`.
+- **OAuth2 consent: the client's links.** For a client registered without an app account, the
+  consent screen (not the sign-in) links its registered website, privacy policy and terms of use,
+  https addresses only, under fixed link texts ("Website", "Privacy policy", "Terms of use").
+- New catalog keys: `consent.group*`, `oauth.appPromptPending`, `oauth.appPromptLineId`,
+  `oauth.appIdMarked`, `oauth.appVerifying`, `oauth.clientWebsite`, `oauth.clientPolicy`,
+  `oauth.clientTerms`.
 
 ### Fixed
 
 - **OAuth2 sign-in: the requesting app is named only once the platform has answered who it is.**
   For a client registered without an app account, the sign-in showed the bare client id until
   the platform's answer arrived, and Sign in could be used before it. While that answer is
-  pending, the prompt now names no app ("the requesting application is being verified") and
-  Sign in waits; once it lands, the app's registered name and logo are shown (the logo only
-  from an https address; an entry in the operator's app catalog still wins). A client with no
-  registered name is shown by its id, marked as such ("application id: …"), never as if it were
-  a name. A localized registered name is picked for the UI language, with the plain registered
-  name as the fallback; the registered description is shown on the consent screen (not on the
-  sign-in), where the client id now also stays visible in small print under the name.
+  pending, Sign in waits (the button and the Enter key) and the prompt names no app ("the
+  requesting application is being verified"), unless the operator's app catalog names it, in
+  which case a line says the request is being verified. Once it lands, the app's registered
+  name and logo are shown (the logo only from an https address; an entry in the operator's app
+  catalog still wins). A client with no registered name (or a blank one) is shown by its id,
+  marked as such ("application id: …"), never as if it were a name, on the sign-in and on the
+  consent screen; `#oauthClientIdText` then carries "Application id: <id>" instead of the bare
+  id. A localized registered name is picked for the UI language (open-pryv.io 2.0.0-rc.71 or
+  later sends it), with the plain registered name as the fallback; the registered description
+  is shown on the consent screen (not on the sign-in), where the client id now also stays
+  visible in small print under the name.
 - **`/auth` consent: an untick right as the permissions appear is kept.** The choices were seeded
   in an effect, which left one frame where the boxes showed ticked while the choices were still
   empty: a click then was lost and the row ticked itself back. They are now seeded with the rows,

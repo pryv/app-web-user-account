@@ -9,7 +9,7 @@ import { ConsentActions } from "./ConsentActions";
 
 export interface ConsentPanelProps {
   /** The requesting app: name and icon from the operator's catalog when it knows the app. */
-  app: { name: string; icon?: CatalogIcon | null; description?: string | null };
+  app: { name: ReactNode; icon?: CatalogIcon | null; description?: string | null };
   /** Element id on the app name (for pages that expose it). */
   appNameId?: string;
   /** Small print right under the app name (e.g. the app's identifier). */

@@ -433,12 +433,27 @@ describe("[CGRP] entry groups: layout, legend counts, the group's box", () => {
       otherFeatures: 0,
       required: 1,
       alreadyAllowed: 1,
+      widened: 0,
       fresh: 2,
     });
     expect(consentGroupCounts(entries, [4, 6], true)).toMatchObject({ restrictions: 1, required: 1, alreadyAllowed: 1, fresh: 0 });
-    // Without a choice every entry is required: neither count is stated.
+    // Without a choice every entry is required: "required" is not stated, "new" still is.
     const locked = consentEntries(permissions, { allowUserChoice: false });
-    expect(consentGroupCounts(locked, [1, 3, 5], false)).toMatchObject({ required: null, fresh: null, alreadyAllowed: 1 });
+    expect(consentGroupCounts(locked, [1, 3, 5], false)).toMatchObject({ required: null, fresh: 2, alreadyAllowed: 1 });
+  });
+
+  it("[CGR8] a held entry asked at a higher level is counted apart; a new mandatory entry is new", () => {
+    const more = consentEntries([
+      { streamId: "temp", level: "contribute", currentlyGranted: true, currentLevel: "read" }, // widened
+      { streamId: "bp", level: "read", currentlyGranted: true, currentLevel: "read" },         // held as shown
+      { streamId: "spo2", level: "read", mandatory: true },                                    // new and required
+      { feature: "webhooks", setting: "forbidden" },                                           // restriction
+    ], { allowUserChoice: true });
+    const c = consentGroupCounts(more, [0, 1, 2, 3], true);
+    expect(c).toMatchObject({ total: 4, required: 2, alreadyAllowed: 1, widened: 1, fresh: 1, restrictions: 1 });
+    expect(c.alreadyAllowed + c.widened + c.fresh + c.restrictions).toBe(c.total);
+    const noChoice = consentEntries(more.map((e) => e.permission), { allowUserChoice: false });
+    expect(consentGroupCounts(noChoice, [0, 1, 2, 3], false)).toMatchObject({ required: null, alreadyAllowed: 1, widened: 1, fresh: 1 });
   });
 
   it("[CGR5] the group's box is tri-state over unlocked entries; setting it never changes locked ones", () => {

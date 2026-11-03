@@ -20,14 +20,17 @@ import { PermissionRow } from "./PermissionList";
  * so nothing lives only in a collapsed group. A group of more than one entry
  * opens collapsed; its toggle is a button with `aria-expanded` and
  * `aria-controls`, and the collapsed rows are `hidden` (out of the tab order).
- * Expanded, the rows are the flat list's own (`PermissionRow`, same element
- * ids on the flat index).
+ * Expanded, the rows are exactly the flat list's (`PermissionRow`, same
+ * element ids on the flat index), with or without a choice: without one,
+ * every row is locked, so it renders disabled and ticked, as in the flat list.
  *
  * With a choice (`allowUserChoice`), each group with an entry the user may
  * untick gets a tri-state box: checked when every such entry is ticked,
- * unchecked when none is, otherwise mixed (`indeterminate`,
- * `aria-checked="mixed"`). Setting it ticks or unticks those entries only;
- * locked entries never change. Without a choice there are no boxes at all.
+ * unchecked when none is, otherwise mixed (the native `indeterminate` state,
+ * which assistive technologies announce as mixed). Setting it ticks or
+ * unticks those entries only; locked entries never change. Without a choice
+ * there is no group box. Group elements use their own id prefix
+ * (`groupIdPrefix`), never the rows' one.
  */
 export function GroupedPermissionList({
   entries,
@@ -37,6 +40,7 @@ export function GroupedPermissionList({
   onToggle,
   onToggleGroup,
   idPrefix = "consentScope",
+  groupIdPrefix = "consentGroup",
 }: {
   entries: ConsentEntry[];
   flags: boolean[];
@@ -45,11 +49,11 @@ export function GroupedPermissionList({
   onToggle: (index: number, checked: boolean) => void;
   onToggleGroup: (indices: number[], checked: boolean) => void;
   idPrefix?: string;
+  groupIdPrefix?: string;
 }) {
-  const rowToggle = allowUserChoice ? onToggle : undefined;
   const rows = (indices: number[]) =>
     indices.map((i) => (
-      <PermissionRow key={i} entry={entries[i]} index={i} flags={flags} onToggle={rowToggle} idPrefix={idPrefix} />
+      <PermissionRow key={i} entry={entries[i]} index={i} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />
     ));
   return (
     <div className="mb-2 text-sm">
@@ -58,7 +62,7 @@ export function GroupedPermissionList({
         <EntryGroup
           key={g.key}
           group={g}
-          baseId={`${idPrefix}-group-${gi}`}
+          baseId={`${groupIdPrefix}-${gi}`}
           counts={consentGroupCounts(entries, g.indices, allowUserChoice)}
           tickState={allowUserChoice ? groupTickState(entries, g.indices, flags) : null}
           onToggleGroup={(checked) => onToggleGroup(g.indices, checked)}
@@ -99,7 +103,6 @@ function EntryGroup({
               id={`${baseId}-box`}
               type="checkbox"
               checked={tickState === "checked"}
-              aria-checked={tickState === "mixed" ? "mixed" : tickState === "checked"}
               aria-describedby={summaryId}
               ref={(el) => {
                 if (el) el.indeterminate = tickState === "mixed";
@@ -121,7 +124,7 @@ function EntryGroup({
         aria-controls={listId}
         onClick={() => setOpen(!open)}
       >
-        {open ? t("consent.groupHide") : t("consent.groupShow", { count: counts.total })}
+        {t(open ? "consent.groupHide" : "consent.groupShow", { count: counts.total })}
       </button>
       <ul id={listId} className="space-y-1" hidden={!open}>
         {children}
@@ -132,7 +135,10 @@ function EntryGroup({
 
 type T = (key: string, vars?: Record<string, unknown>) => string;
 
-/** The legend's counts, e.g. "12 entries (Read: 10, Add and modify: 2); 1 required, 9 already allowed". */
+/**
+ * The legend's counts, e.g. "12 entries (Read: 10, Add and modify: 2); 1 required,
+ * 8 already allowed, 1 asked at a higher level than allowed today, 3 new or previously declined".
+ */
 function groupSummary(t: T, c: ConsentGroupCounts): string {
   const breakdown = [
     ...c.levels.map((l) => t("consent.groupLevelCount", { level: levelLabel(l.level), count: l.count })),
@@ -142,7 +148,8 @@ function groupSummary(t: T, c: ConsentGroupCounts): string {
   const decision = [
     ...(c.required ? [t("consent.groupRequired", { count: c.required })] : []),
     ...(c.alreadyAllowed > 0 ? [t("consent.groupAlreadyAllowed", { count: c.alreadyAllowed })] : []),
-    ...(c.fresh ? [t("consent.groupFresh", { count: c.fresh })] : []),
+    ...(c.widened > 0 ? [t("consent.groupWidened", { count: c.widened })] : []),
+    ...(c.fresh > 0 ? [t("consent.groupFresh", { count: c.fresh })] : []),
   ];
   const line = t("consent.groupSummary", {
     entries: t("consent.groupEntries", { count: c.total }),

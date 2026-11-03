@@ -164,8 +164,9 @@ export type DisplayText = string | LocalizableText;
  *
  * `name`: the plain registered name (`clientName`). `localizedName` and
  * `description`: a text or a map by language code, when the core sends them;
- * see {@link clientDisplayName} and {@link clientDescription}. `logoUri` is
- * kept only when it is an https URL.
+ * see {@link clientDisplayName} and {@link clientDescription}. Blank texts
+ * count as absent. `logoUri`, `clientUri`, `policyUri` and `tosUri` are kept
+ * only when they are https URLs.
  */
 export interface OAuthClientDisplay {
   clientId: string;
@@ -199,12 +200,18 @@ export function clientDescription(client: OAuthClientDisplay, lang: string): str
   return pickDisplayText(client.description, lang);
 }
 
+/** A display text, trimmed; blank strings (and blank variants of a map) count as absent. */
 function asDisplayText(v: unknown): DisplayText | null {
-  if (typeof v === "string") return v.length > 0 ? v : null;
-  return asTextMap(v);
+  if (typeof v === "string") return v.trim() || null;
+  const map = asTextMap(v);
+  if (map == null) return null;
+  const kept = Object.entries(map)
+    .map(([k, s]) => [k, s.trim()] as const)
+    .filter(([, s]) => s !== "");
+  return kept.length > 0 ? Object.fromEntries(kept) : null;
 }
 
-/** An https URL, else null: a logo is never loaded over plain http or another scheme. */
+/** An https URL, else null: a logo or a link is never served over plain http or another scheme. */
 function httpsUrlOrNull(v: string | null): string | null {
   return httpUrlOrNull(v)?.protocol === "https:" ? v : null;
 }
@@ -265,13 +272,13 @@ export async function oauth2FetchOffer(opts: {
     offer,
     client: {
       clientId: str(c.clientId) ?? "",
-      name: str(c.clientName),
+      name: typeof c.clientName === "string" ? c.clientName.trim() || null : null,
       localizedName: asDisplayText(c.name),
       description: asDisplayText(c.description),
       logoUri: httpsUrlOrNull(str(c.logoUri)),
-      clientUri: str(c.clientUri),
-      policyUri: str(c.policyUri),
-      tosUri: str(c.tosUri),
+      clientUri: httpsUrlOrNull(str(c.clientUri)),
+      policyUri: httpsUrlOrNull(str(c.policyUri)),
+      tosUri: httpsUrlOrNull(str(c.tosUri)),
     },
     composed:
       shownDigest == null

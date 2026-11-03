@@ -140,17 +140,28 @@ export default function Oauth2Authorize() {
   const [busy, setBusy] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Offer by reference: fetched from the core with the signed state.
-  const [fetched, setFetched] = useState<{ offer: OAuthOffer; client: OAuthClientDisplay } | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  // Offer by reference: fetched from the core with the signed state. Each
+  // answer is kept with the state it answers, so a page reused for another
+  // state never shows the previous app while the new answer is pending.
+  const [fetchedFor, setFetched] = useState<
+    { state: string; offer: OAuthOffer; client: OAuthClientDisplay } | null
+  >(null);
+  const [fetchErrorFor, setFetchError] = useState<{ state: string; message: string } | null>(null);
+  const fetched = fetchedFor?.state === signedState ? fetchedFor : null;
+  const fetchError = fetchErrorFor?.state === signedState ? fetchErrorFor.message : null;
   const needsFetch = oauthState != null && oauthState.offer == null && oauthState.offerRef != null;
   useEffect(() => {
     if (!needsFetch) return;
     let cancelled = false;
     oauth2FetchOffer({ pryvApi, signedState })
-      .then((r) => { if (!cancelled) setFetched(r); })
+      .then((r) => { if (!cancelled) setFetched({ state: signedState, ...r }); })
       .catch((err: unknown) => {
-        if (!cancelled) setFetchError(err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"));
+        if (!cancelled) {
+          setFetchError({
+            state: signedState,
+            message: err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"),
+          });
+        }
       });
     return () => { cancelled = true; };
   }, [needsFetch, pryvApi, signedState]);
@@ -402,19 +413,22 @@ export default function Oauth2Authorize() {
         <ConsentPanel
           app={{
             // No name: the id, marked as an identifier (never shown bare).
-            name: requestingApp?.name ?? t("oauth.appIdMarked", { id: oauthState.clientId }),
+            name: requestingApp?.name ?? tNodes("oauth.appIdMarked", { id: <code>{oauthState.clientId}</code> }),
             icon: requestingApp?.icon,
             description: requestingApp?.description,
           }}
           appNameId="oauthClientIdText"
           appNote={
-            // Under a name, the id in small print: two apps with similar
-            // names stay distinguishable.
-            requestingApp != null && (
-              <p id="oauthClientIdNote" className="mb-2 text-xs text-muted break-all">
-                {t("oauth.appIdMarked", { id: oauthState.clientId })}
-              </p>
-            )
+            <>
+              {/* Under a name, the id in small print: two apps with similar
+                  names stay distinguishable. */}
+              {requestingApp != null && (
+                <p id="oauthClientIdNote" className="mb-2 text-xs text-muted break-all">
+                  {tNodes("oauth.appIdMarked", { id: <code>{oauthState.clientId}</code> })}
+                </p>
+              )}
+              {fetched != null && <ClientLinks client={fetched.client} />}
+            </>
           }
           title={
             <>
@@ -449,6 +463,7 @@ export default function Oauth2Authorize() {
                 layout={layout}
                 allowUserChoice={offer.allowUserChoice}
                 idPrefix="oauthScope"
+                groupIdPrefix="oauthGroup"
                 onToggle={(i, checked) =>
                   setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
                 }
@@ -512,9 +527,11 @@ export default function Oauth2Authorize() {
       appId={ACCOUNT_APP_CONSENT_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
-        // Before sign-in: the app's name only (its links come on the consent
-        // screen). While the core has not answered who the app is, nobody is
-        // named and Sign in waits; with no name, the id, marked as one.
+        // Before sign-in: the app's name and logo only (its website, privacy
+        // policy and terms are linked on the consent screen, after sign-in).
+        // While the core has not answered who the app is, Sign in waits and
+        // only the operator's catalog may name the app; with no name, the
+        // id, marked as one.
         <span id="oauthAppPrompt" className="flex items-center gap-2">
           {requestingApp != null && <AppIcon icon={requestingApp.icon ?? null} />}
           <span>
@@ -523,6 +540,9 @@ export default function Oauth2Authorize() {
               : offerPending
                 ? t("oauth.appPromptPending")
                 : tNodes("oauth.appPromptLineId", { id: <code>{oauthState.clientId}</code> })}
+            {requestingApp != null && offerPending && (
+              <span id="oauthAppVerifying" className="block text-xs">{t("oauth.appVerifying")}</span>
+            )}
           </span>
         </span>
       }
@@ -541,6 +561,30 @@ export default function Oauth2Authorize() {
       cancelDisabled={busy !== null}
       externalError={error}
     />
+  );
+}
+
+/**
+ * The client's registered website, privacy policy and terms, on the consent
+ * screen only. Https addresses only (filtered when the offer is read); the
+ * link texts are this app's own, never the address or a registered string.
+ */
+function ClientLinks({ client }: { client: OAuthClientDisplay }) {
+  const { t } = useTranslation();
+  const links = [
+    { id: "oauthClientUri", href: client.clientUri, text: t("oauth.clientWebsite") },
+    { id: "oauthClientPolicyUri", href: client.policyUri, text: t("oauth.clientPolicy") },
+    { id: "oauthClientTosUri", href: client.tosUri, text: t("oauth.clientTerms") },
+  ].filter((l): l is { id: string; href: string; text: string } => l.href != null);
+  if (links.length === 0) return null;
+  return (
+    <p id="oauthClientLinks" className="mb-2 flex flex-wrap gap-x-4 text-xs">
+      {links.map((l) => (
+        <a key={l.id} id={l.id} href={l.href} target="_blank" rel="noopener noreferrer" className="underline">
+          {l.text}
+        </a>
+      ))}
+    </p>
   );
 }
 

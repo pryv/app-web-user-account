@@ -208,4 +208,82 @@ describe("[OANM] the requesting app's name on the OAuth2 sign-in", () => {
     expect(document.getElementById("oauthClientIdNote")?.textContent).toBe(`Application id: ${CLIENT_ID}`);
     expect(screen.getByText("Keeps your diary.")).toBeTruthy();
   });
+
+  it("[OANM9] a catalog entry names the app while the offer is pending; Sign in still waits and says why", async () => {
+    catalog.getAppCatalog.mockResolvedValue(parseCatalog({
+      schemaVersion: 1, apps: [{ id: CLIENT_ID, name: "Curated name" }],
+    }));
+    let answer: (a: Answer) => void = () => {};
+    mockCore(() => new Promise<Answer>((resolve) => { answer = resolve; }));
+    renderPage();
+    await screen.findByText("Curated name");
+    expect(signInButton().disabled).toBe(true);
+    expect(document.getElementById("oauthAppVerifying")?.textContent).toMatch(/being verified/);
+    answer({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "Registry app" }, offer: OFFER } });
+    await waitFor(() => expect(signInButton().disabled).toBe(false));
+    expect(document.getElementById("oauthAppVerifying")).toBeNull();
+  });
+
+  it("[OANM10] pressing Enter in the form while the offer is pending does not sign in", async () => {
+    mockCore(() => new Promise<Answer>(() => {}));
+    renderPage();
+    fireEvent.change(screen.getByLabelText(/username or email/i), { target: { value: "alice" } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "pw" } });
+    fireEvent.submit(signInButton().closest("form") as HTMLFormElement);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(loginMock.login).not.toHaveBeenCalled();
+  });
+
+  it("[OANM11] a state-carried offer with no catalog entry shows the id marked, never bare", async () => {
+    const fetchMock = mockCore(() => ({ status: 404, body: {} }));
+    const state = base64url(JSON.stringify({
+      clientId: CLIENT_ID, redirectUri: "https://app.example/cb", state: "c", scope: ["x"],
+      iat: 1700000000, exp: 1700000300, offer: { offerName: "o", ...OFFER },
+    })) + ".fake-mac";
+    render(
+      <MemoryRouter initialEntries={[`/oauth2-authorize?state=${encodeURIComponent(state)}&pryvApi=${encodeURIComponent(CORE + "/")}`]}>
+        <Oauth2Authorize />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(catalog.getAppCatalog).toHaveBeenCalled());
+    expect(signInButton().disabled).toBe(false);
+    expect(prompt().textContent).toMatch(/^An application \(application id: reg-app\) wants to access your /);
+    await signIn();
+    expect(document.getElementById("oauthClientIdText")?.textContent).toBe(`Application id: ${CLIENT_ID}`);
+    expect(document.querySelector("#oauthClientIdText code")?.textContent).toBe(CLIENT_ID);
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith("/oauth2/authorize/offer"))).toBe(false);
+  });
+
+  it("[OANM12] the client's https links are on the consent screen only, as fixed link texts", async () => {
+    mockCore(() => ({
+      status: 200,
+      body: {
+        client: {
+          clientId: CLIENT_ID,
+          clientName: "Registry app",
+          clientUri: "https://app.example/",
+          policyUri: "http://app.example/privacy",
+          tosUri: "https://app.example/terms",
+        },
+        offer: OFFER,
+      },
+    }));
+    renderPage();
+    await screen.findByText("Registry app");
+    expect(document.getElementById("oauthClientLinks")).toBeNull();
+    await signIn();
+    const website = screen.getByRole("link", { name: "Website" });
+    expect(website.getAttribute("href")).toBe("https://app.example/");
+    expect(website.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.getByRole("link", { name: "Terms of use" }).getAttribute("href")).toBe("https://app.example/terms");
+    // Not over https: not linked.
+    expect(screen.queryByRole("link", { name: "Privacy policy" })).toBeNull();
+  });
+
+  it("[OANM13] a blank registered name counts as none: the id is shown marked", async () => {
+    mockCore(() => ({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "   ", name: { en: " " } }, offer: OFFER } }));
+    renderPage();
+    await waitFor(() => expect(signInButton().disabled).toBe(false));
+    expect(prompt().querySelector("code")?.textContent).toBe(CLIENT_ID);
+  });
 });
