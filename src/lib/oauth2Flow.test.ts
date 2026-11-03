@@ -6,6 +6,8 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  clientDisplayName,
+  clientDescription,
   identityNoticeKey,
   endConsentSession,
   isStaleConsentError,
@@ -347,6 +349,60 @@ describe("[OAFR] offer by reference", () => {
     expect(err.oauthError).toBe("invalid_request");
   });
 
+  it("[OAFR5] reads the localized name and description, keeps the logo only over https", async () => {
+    mockFetchOnce(200, {
+      client: {
+        clientId: "reg-app",
+        clientName: "Plain",
+        name: { en: "Localized", "fr-CH": "Localisé", bad: 3 },
+        description: "One text for every language",
+        logoUri: "http://x.example/l.png",
+      },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.client.localizedName).toEqual({ en: "Localized", "fr-CH": "Localisé" });
+    expect(r.client.logoUri).toBeNull();
+    expect(clientDisplayName(r.client, "fr-CH")).toBe("Localisé");
+    expect(clientDisplayName(r.client, "de")).toBe("Localized");
+    expect(clientDescription(r.client, "de")).toBe("One text for every language");
+    expect(clientDisplayName({ ...r.client, localizedName: null }, "en")).toBe("Plain");
+    expect(clientDisplayName({ ...r.client, localizedName: "Text" }, "en")).toBe("Text");
+    expect(clientDisplayName({ ...r.client, localizedName: null, name: null }, "en")).toBeNull();
+    expect(clientDescription({ ...r.client, description: null }, "en")).toBeNull();
+    mockFetchOnce(200, {
+      client: { clientId: "reg-app", logoUri: "javascript:alert(1)" },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    expect((await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).client.logoUri).toBeNull();
+  });
+
+  it("[OAFR6] blank names count as none; links are kept only over https", async () => {
+    mockFetchOnce(200, {
+      client: {
+        clientId: "reg-app",
+        clientName: "  Plain  ",
+        name: { fr: " ", en: "Name" },
+        clientUri: "https://app.example/",
+        policyUri: "http://app.example/privacy",
+        tosUri: "javascript:alert(1)",
+      },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.client.name).toBe("Plain");
+    // The blank French variant is dropped, so French falls back to English.
+    expect(clientDisplayName(r.client, "fr")).toBe("Name");
+    expect([r.client.clientUri, r.client.policyUri, r.client.tosUri]).toEqual(["https://app.example/", null, null]);
+    mockFetchOnce(200, {
+      client: { clientId: "reg-app", clientName: " ", name: "  ", description: { en: "" } },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const blank = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(clientDisplayName(blank.client, "en")).toBeNull();
+    expect(clientDescription(blank.client, "en")).toBeNull();
+  });
+
   it("[OAFR4] refuses an answer without a usable offer", async () => {
     mockFetchOnce(200, { offer: { permissions: [] } });
     await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);
@@ -375,6 +431,36 @@ describe("[OAEL] entry labels carried by a fetched offer", () => {
     });
     const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
     expect(r.offer.entryLabels).toEqual({ "s|a|read": { en: "Blood pressure", fr: "Tension" } });
+  });
+
+  it("[OAEL3] reads entry groups tolerantly: a malformed group is dropped, never fatal", async () => {
+    mockFetchOnce(200, {
+      offer: {
+        permissions: [{ streamId: "a", level: "read" }],
+        entryGroups: [
+          { key: "vitals", label: { en: "Vital signs", fr: 3 }, entries: ["s|a", 7, "", "s|b|read"], extra: true },
+          "not a group",
+          null,
+          { label: { en: "No key" }, entries: ["s|a"] },
+          { key: "", label: { en: "Empty key" }, entries: ["s|a"] },
+          { key: "bad-entries", label: { en: "Entries not a list" }, entries: "s|a" },
+          { key: "vitals", label: { en: "Same key again" }, entries: ["s|c"] },
+          { key: "no-label", entries: [] },
+          { key: "bad-label", label: "not a map", entries: ["s|d"] },
+        ],
+      },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.offer.entryGroups).toEqual([
+      { key: "vitals", label: { en: "Vital signs" }, entries: ["s|a", "s|b|read"] },
+      { key: "no-label", label: null, entries: [] },
+      { key: "bad-label", label: null, entries: ["s|d"] },
+    ]);
+    for (const entryGroups of [undefined, null, "x", {}, [], [null]]) {
+      mockFetchOnce(200, { offer: { permissions: [{ streamId: "a", level: "read" }], entryGroups } });
+      const o = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+      expect(o.offer.entryGroups).toBeNull();
+    }
   });
 
   it("[OAEL2] an offer without labels has none", async () => {

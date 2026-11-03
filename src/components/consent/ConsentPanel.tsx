@@ -9,9 +9,11 @@ import { ConsentActions } from "./ConsentActions";
 
 export interface ConsentPanelProps {
   /** The requesting app: name and icon from the operator's catalog when it knows the app. */
-  app: { name: string; icon?: CatalogIcon | null; description?: string | null };
+  app: { name: ReactNode; icon?: CatalogIcon | null; description?: string | null };
   /** Element id on the app name (for pages that expose it). */
   appNameId?: string;
+  /** Small print right under the app name (e.g. the app's identifier). */
+  appNote?: ReactNode;
   /** Extra heading under the app (e.g. an OAuth2 offer title and description). */
   title?: ReactNode;
   /** Line introducing the list (default: the catalog's "is requesting permission:"). */
@@ -23,6 +25,8 @@ export interface ConsentPanelProps {
   flags?: boolean[];
   onToggle?: (index: number, checked: boolean) => void;
   idPrefix?: string;
+  /** Replaces the flat permission rows (e.g. the offer's groups, see GroupedPermissionList). */
+  permissionList?: ReactNode;
   /** Rendered right after the permission rows. */
   afterList?: ReactNode;
   /** Explanation of what ticking means, under the list. */
@@ -54,6 +58,7 @@ export interface ConsentPanelProps {
 export function ConsentPanel({
   app,
   appNameId,
+  appNote,
   title,
   requesting,
   consentText,
@@ -61,6 +66,7 @@ export function ConsentPanel({
   flags,
   onToggle,
   idPrefix,
+  permissionList,
   afterList,
   choiceHint,
   expireAfterSeconds,
@@ -82,11 +88,12 @@ export function ConsentPanel({
         <AppIcon icon={app.icon ?? null} />
         <strong id={appNameId}>{app.name}</strong>
       </h1>
+      {appNote}
       {app.description != null && <p className="mb-2 text-sm text-muted">{app.description}</p>}
       {title}
       <p className="mb-2 text-sm">{requesting ?? t("common.requestingPermission")}</p>
       {consentText}
-      <PermissionList entries={entries} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />
+      {permissionList ?? <PermissionList entries={entries} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />}
       {afterList}
       {choiceHint}
       {expireAfterSeconds != null && (

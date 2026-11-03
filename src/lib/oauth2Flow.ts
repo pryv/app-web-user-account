@@ -25,7 +25,8 @@
  * component) — the service-info URL is derived from `pryvApi` below.
  */
 
-import type { LocalizableText, OfferPermission } from "./consent";
+import { pickText, type LocalizableText, type OfferEntryGroup, type OfferPermission } from "./consent";
+import { httpUrlOrNull } from "./safeRedirect";
 
 // Permission vocabulary + display model live in `lib/consent.ts` (shared by
 // every consent surface); re-exported here for the OAuth flow's callers.
@@ -56,10 +57,17 @@ export interface OAuthOffer {
   randomAlias: boolean | null;
   /**
    * Display labels the server attached to the offer's entries, keyed by
-   * `permissionKey` (`s|<streamId>|<level>`, `f|<feature>|<setting>`), each a
-   * localized text map. Names streams that may not exist in the account yet.
+   * entry key (`s|<streamId>|<level>`, `f|<feature>|<setting>`, or the
+   * level-less `s|<streamId>`, `f|<feature>`), each a localized text map.
+   * Names streams that may not exist in the account yet.
    */
   entryLabels: Record<string, LocalizableText> | null;
+  /**
+   * Groups the screen shows the entries in, in display order (see
+   * `consentLayout`); null when the offer declares none. Display only: the
+   * grant stays the flat list of ticked entries.
+   */
+  entryGroups: OfferEntryGroup[] | null;
 }
 
 /** The locale key telling the user which id the app will see, or null. */
@@ -147,14 +155,65 @@ function parseOfferRef(v: unknown): OAuthState["offerRef"] {
   return { kind: o.kind, digest: o.digest };
 }
 
-/** Display fields of a client registered without an app account. */
+/** A display text the core sends as one string for every language, or one per language code. */
+export type DisplayText = string | LocalizableText;
+
+/**
+ * Display fields of a client registered without an app account, as the
+ * operator registered them (never taken from the authorization request).
+ *
+ * `name`: the plain registered name (`clientName`). `localizedName` and
+ * `description`: a text or a map by language code, when the core sends them;
+ * see {@link clientDisplayName} and {@link clientDescription}. Blank texts
+ * count as absent. `logoUri`, `clientUri`, `policyUri` and `tosUri` are kept
+ * only when they are https URLs.
+ */
 export interface OAuthClientDisplay {
   clientId: string;
   name: string | null;
+  localizedName: DisplayText | null;
+  description: DisplayText | null;
   logoUri: string | null;
   clientUri: string | null;
   policyUri: string | null;
   tosUri: string | null;
+}
+
+/** A display text in the UI language (`pickText` rules for a map), or null when empty. */
+function pickDisplayText(text: DisplayText | null, lang: string): string | null {
+  if (text == null) return null;
+  const picked = typeof text === "string" ? text : pickText(text, lang);
+  return picked !== "" ? picked : null;
+}
+
+/**
+ * The client's name in the UI language: its localized name when the core
+ * sends one, else the plain registered name, else null (the caller then shows
+ * the client id, marked as an identifier).
+ */
+export function clientDisplayName(client: OAuthClientDisplay, lang: string): string | null {
+  return pickDisplayText(client.localizedName, lang) ?? client.name;
+}
+
+/** The client's registered description in the UI language, or null. */
+export function clientDescription(client: OAuthClientDisplay, lang: string): string | null {
+  return pickDisplayText(client.description, lang);
+}
+
+/** A display text, trimmed; blank strings (and blank variants of a map) count as absent. */
+function asDisplayText(v: unknown): DisplayText | null {
+  if (typeof v === "string") return v.trim() || null;
+  const map = asTextMap(v);
+  if (map == null) return null;
+  const kept = Object.entries(map)
+    .map(([k, s]) => [k, s.trim()] as const)
+    .filter(([, s]) => s !== "");
+  return kept.length > 0 ? Object.fromEntries(kept) : null;
+}
+
+/** An https URL, else null: a logo or a link is never served over plain http or another scheme. */
+function httpsUrlOrNull(v: string | null): string | null {
+  return httpUrlOrNull(v)?.protocol === "https:" ? v : null;
 }
 
 /** How an app knows the user: by a pseudonym, or by the account itself. */
@@ -213,11 +272,13 @@ export async function oauth2FetchOffer(opts: {
     offer,
     client: {
       clientId: str(c.clientId) ?? "",
-      name: str(c.clientName),
-      logoUri: str(c.logoUri),
-      clientUri: str(c.clientUri),
-      policyUri: str(c.policyUri),
-      tosUri: str(c.tosUri),
+      name: typeof c.clientName === "string" ? c.clientName.trim() || null : null,
+      localizedName: asDisplayText(c.name),
+      description: asDisplayText(c.description),
+      logoUri: httpsUrlOrNull(str(c.logoUri)),
+      clientUri: httpsUrlOrNull(str(c.clientUri)),
+      policyUri: httpsUrlOrNull(str(c.policyUri)),
+      tosUri: httpsUrlOrNull(str(c.tosUri)),
     },
     composed:
       shownDigest == null
@@ -306,7 +367,33 @@ function parseOffer(v: unknown): OAuthOffer | null {
     consent: asTextMap(o.consent),
     randomAlias: typeof o.randomAlias === "boolean" ? o.randomAlias : null,
     entryLabels: asLabelMap(o.entryLabels),
+    entryGroups: asEntryGroups(o.entryGroups),
   };
+}
+
+/**
+ * The offer's entry groups, read tolerantly: a malformed group (no string
+ * `key`, `entries` not an array) is dropped, never fatal; non-string entry
+ * keys are dropped; a group repeating an earlier group's key is dropped; a
+ * label that is not a text map counts as none (the key is then shown).
+ */
+function asEntryGroups(v: unknown): OfferEntryGroup[] | null {
+  if (!Array.isArray(v)) return null;
+  const seen = new Set<string>();
+  const groups: OfferEntryGroup[] = [];
+  for (const g of v) {
+    if (typeof g !== "object" || g == null || Array.isArray(g)) continue;
+    const o = g as Record<string, unknown>;
+    if (typeof o.key !== "string" || o.key.length === 0 || seen.has(o.key)) continue;
+    if (!Array.isArray(o.entries)) continue;
+    seen.add(o.key);
+    groups.push({
+      key: o.key,
+      label: asTextMap(o.label),
+      entries: o.entries.filter((k): k is string => typeof k === "string" && k.length > 0),
+    });
+  }
+  return groups.length > 0 ? groups : null;
 }
 
 function asLabelMap(v: unknown): Record<string, LocalizableText> | null {

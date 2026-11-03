@@ -7,7 +7,17 @@ import { Card, Alert, Button } from "../components/ui";
 import { ConsentSignIn } from "../components/consent/ConsentSignIn";
 import { ConsentPanel } from "../components/consent/ConsentPanel";
 import { tNodes } from "../components/consent/tNodes";
-import { consentEntries, grantedPermissions, initialFlags, offerEntryLabel, pickText } from "../lib/consent";
+import { AppIcon } from "../components/AppIcon";
+import {
+  consentEntries,
+  consentLayout,
+  grantedPermissions,
+  initialFlags,
+  offerEntryLabel,
+  pickText,
+  setGroupTicks,
+} from "../lib/consent";
+import { GroupedPermissionList } from "../components/consent/GroupedPermissionList";
 import { ACCOUNT_APP_CONSENT_ID } from "../lib/accountApp";
 import { storedSessionTokens } from "../lib/sessionStore";
 import { streamNamesResolver, NO_STREAM_LABELS, type StreamLabelResolver } from "../lib/streamLabels";
@@ -20,6 +30,8 @@ import {
   oauth2Accept,
   oauth2Refuse,
   oauth2FetchOffer,
+  clientDisplayName,
+  clientDescription,
   endConsentSession,
   identityNoticeKey,
   isStaleConsentError,
@@ -128,17 +140,28 @@ export default function Oauth2Authorize() {
   const [busy, setBusy] = useState<"accept" | "refuse" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Offer by reference: fetched from the core with the signed state.
-  const [fetched, setFetched] = useState<{ offer: OAuthOffer; client: OAuthClientDisplay } | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  // Offer by reference: fetched from the core with the signed state. Each
+  // answer is kept with the state it answers, so a page reused for another
+  // state never shows the previous app while the new answer is pending.
+  const [fetchedFor, setFetched] = useState<
+    { state: string; offer: OAuthOffer; client: OAuthClientDisplay } | null
+  >(null);
+  const [fetchErrorFor, setFetchError] = useState<{ state: string; message: string } | null>(null);
+  const fetched = fetchedFor?.state === signedState ? fetchedFor : null;
+  const fetchError = fetchErrorFor?.state === signedState ? fetchErrorFor.message : null;
   const needsFetch = oauthState != null && oauthState.offer == null && oauthState.offerRef != null;
   useEffect(() => {
     if (!needsFetch) return;
     let cancelled = false;
     oauth2FetchOffer({ pryvApi, signedState })
-      .then((r) => { if (!cancelled) setFetched(r); })
+      .then((r) => { if (!cancelled) setFetched({ state: signedState, ...r }); })
       .catch((err: unknown) => {
-        if (!cancelled) setFetchError(err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"));
+        if (!cancelled) {
+          setFetchError({
+            state: signedState,
+            message: err instanceof Error ? err.message : i18n.t("cmc.errorReadOffer"),
+          });
+        }
       });
     return () => { cancelled = true; };
   }, [needsFetch, pryvApi, signedState]);
@@ -168,19 +191,24 @@ export default function Oauth2Authorize() {
 
   // Only looked up once `pryvApi` passed the trust check (initError unset).
   const platformUrl = oauthState != null ? serviceInfoUrlFromPryvApi(pryvApi) : null;
-  // The operator's catalog is the only source of a display name for the app;
-  // the client id is shown when the catalog does not know it.
+  const lang = i18nInstance.language || "en";
+  // The operator's catalog names the app first; a client with no catalog
+  // entry is named by its registration, as the core's /offer answers it
+  // (never by anything the authorization request or the URL carries). With
+  // neither, the client id is shown, marked as an identifier.
   const catalogApp = useRequestingApp(oauthState?.clientId, platformUrl);
-  // A client with no catalog entry is named by its own registration.
-  const requestingApp = catalogApp ?? (fetched?.client.name
+  const registeredName = fetched != null ? clientDisplayName(fetched.client, lang) : null;
+  const requestingApp = catalogApp ?? (fetched != null && registeredName != null
     ? {
-        name: fetched.client.name,
+        name: registeredName,
         icon: fetched.client.logoUri ? { type: "url" as const, value: fetched.client.logoUri } : undefined,
-        description: undefined,
+        description: clientDescription(fetched.client, lang),
       }
     : null);
+  // The signed-out /offer is still in flight: the app is not verified yet, so
+  // the sign-in names nobody and waits (a failure renders the error card).
+  const offerPending = needsFetch && fetched == null;
   const labelFor = useStreamLabels(platformUrl);
-  const lang = i18nInstance.language || "en";
 
   const entries = useMemo(
     () =>
@@ -193,6 +221,11 @@ export default function Oauth2Authorize() {
           })
         : [],
     [offer, labelFor, accountName, lang],
+  );
+  // The offer's groups, when it declares any that has an entry on this screen.
+  const layout = useMemo(
+    () => (offer ? consentLayout(entries, offer.entryGroups, lang) : null),
+    [offer, entries, lang],
   );
   // Ticked to begin with, EXCEPT entries the offer marked `optIn`, which
   // the user has to choose deliberately. Reset when a fetched offer arrives.
@@ -379,11 +412,24 @@ export default function Oauth2Authorize() {
       <Card>
         <ConsentPanel
           app={{
-            name: requestingApp?.name ?? oauthState.clientId,
+            // No name: the id, marked as an identifier (never shown bare).
+            name: requestingApp?.name ?? tNodes("oauth.appIdMarked", { id: <code>{oauthState.clientId}</code> }),
             icon: requestingApp?.icon,
             description: requestingApp?.description,
           }}
           appNameId="oauthClientIdText"
+          appNote={
+            <>
+              {/* Under a name, the id in small print: two apps with similar
+                  names stay distinguishable. */}
+              {requestingApp != null && (
+                <p id="oauthClientIdNote" className="mb-2 text-xs text-muted break-all">
+                  {tNodes("oauth.appIdMarked", { id: <code>{oauthState.clientId}</code> })}
+                </p>
+              )}
+              {fetched != null && <ClientLinks client={fetched.client} />}
+            </>
+          }
           title={
             <>
               {title && <p className="mb-1 text-lg font-medium">{title}</p>}
@@ -406,6 +452,26 @@ export default function Oauth2Authorize() {
           idPrefix="oauthScope"
           onToggle={(i, checked) =>
             setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+          }
+          permissionList={
+            // Grouped or flat, the ticks stay those of the flat list, and so
+            // does the grant posted at Accept.
+            layout == null ? undefined : (
+              <GroupedPermissionList
+                entries={entries}
+                flags={grantedFlags}
+                layout={layout}
+                allowUserChoice={offer.allowUserChoice}
+                idPrefix="oauthScope"
+                groupIdPrefix="oauthGroup"
+                onToggle={(i, checked) =>
+                  setGrantedFlags(grantedFlags.map((f, j) => (j === i ? checked : f)))
+                }
+                onToggleGroup={(indices, checked) =>
+                  setGrantedFlags(setGroupTicks(entries, grantedFlags, indices, checked))
+                }
+              />
+            )
           }
           afterList={
             consentText && (
@@ -461,12 +527,26 @@ export default function Oauth2Authorize() {
       appId={ACCOUNT_APP_CONSENT_ID}
       usernameHint={oauthState.userIdHint ?? ""}
       prompt={
-        <span id="oauthAppPrompt">
-          {tNodes("oauth.appPromptLine", {
-            app: <strong>{requestingApp?.name ?? oauthState.clientId}</strong>,
-          })}
+        // Before sign-in: the app's name and logo only (its website, privacy
+        // policy and terms are linked on the consent screen, after sign-in).
+        // While the core has not answered who the app is, Sign in waits and
+        // only the operator's catalog may name the app; with no name, the
+        // id, marked as one.
+        <span id="oauthAppPrompt" className="flex items-center gap-2">
+          {requestingApp != null && <AppIcon icon={requestingApp.icon ?? null} />}
+          <span>
+            {requestingApp != null
+              ? tNodes("oauth.appPromptLine", { app: <strong>{requestingApp.name}</strong> })
+              : offerPending
+                ? t("oauth.appPromptPending")
+                : tNodes("oauth.appPromptLineId", { id: <code>{oauthState.clientId}</code> })}
+            {requestingApp != null && offerPending && (
+              <span id="oauthAppVerifying" className="block text-xs">{t("oauth.appVerifying")}</span>
+            )}
+          </span>
         </span>
       }
+      disabled={offerPending}
       onSignedIn={({ username: u, personalToken: token, endpoint, connection }) => {
         sessionRef.current = token;
         setUsername(u);
@@ -481,6 +561,30 @@ export default function Oauth2Authorize() {
       cancelDisabled={busy !== null}
       externalError={error}
     />
+  );
+}
+
+/**
+ * The client's registered website, privacy policy and terms, on the consent
+ * screen only. Https addresses only (filtered when the offer is read); the
+ * link texts are this app's own, never the address or a registered string.
+ */
+function ClientLinks({ client }: { client: OAuthClientDisplay }) {
+  const { t } = useTranslation();
+  const links = [
+    { id: "oauthClientUri", href: client.clientUri, text: t("oauth.clientWebsite") },
+    { id: "oauthClientPolicyUri", href: client.policyUri, text: t("oauth.clientPolicy") },
+    { id: "oauthClientTosUri", href: client.tosUri, text: t("oauth.clientTerms") },
+  ].filter((l): l is { id: string; href: string; text: string } => l.href != null);
+  if (links.length === 0) return null;
+  return (
+    <p id="oauthClientLinks" className="mb-2 flex flex-wrap gap-x-4 text-xs">
+      {links.map((l) => (
+        <a key={l.id} id={l.id} href={l.href} target="_blank" rel="noopener noreferrer" className="underline">
+          {l.text}
+        </a>
+      ))}
+    </p>
   );
 }
 

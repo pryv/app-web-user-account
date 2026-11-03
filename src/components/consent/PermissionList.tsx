@@ -37,38 +37,60 @@ export function PermissionList({
   onToggle?: (index: number, checked: boolean) => void;
   idPrefix?: string;
 }) {
-  const { t } = useTranslation();
   return (
     <ul className="mb-2 space-y-1 text-sm">
       {entries.map((e, i) => (
-        <li key={i} className="rounded bg-body px-3 py-2 break-all">
-          {onToggle ? (
-            <label className="flex items-center gap-2">
-              <input
-                id={idPrefix + "-" + i}
-                type="checkbox"
-                checked={e.locked || (flags?.[i] ?? e.initiallyTicked)}
-                disabled={e.locked}
-                onChange={(ev) => onToggle(i, ev.target.checked)}
-              />
-              <span>{e.label}</span>
-              {e.showRequiredHint && (
-                <span className="text-xs text-muted">{t("consent.requiredByApp")}</span>
-              )}
-              {e.currentlyGranted && (
-                <span className="text-xs text-muted">{heldHint(e)}</span>
-              )}
-            </label>
-          ) : (
-            <>
-              <span>{e.label}</span>
-              {e.currentlyGranted && (
-                <span className="ml-2 text-xs text-muted">{heldHint(e)}</span>
-              )}
-            </>
-          )}
-        </li>
+        <PermissionRow key={i} entry={e} index={i} flags={flags} onToggle={onToggle} idPrefix={idPrefix} />
       ))}
     </ul>
+  );
+}
+
+/**
+ * One permission row, `index` being its place in the FLAT entry list (the
+ * checkbox id is `${idPrefix}-${index}` wherever the row is rendered).
+ */
+export function PermissionRow({
+  entry: e,
+  index: i,
+  flags,
+  onToggle,
+  idPrefix = "consentScope",
+}: {
+  entry: ConsentEntry;
+  index: number;
+  flags?: boolean[];
+  onToggle?: (index: number, checked: boolean) => void;
+  idPrefix?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <li className="rounded bg-body px-3 py-2 break-all">
+      {onToggle ? (
+        <label className="flex items-center gap-2">
+          <input
+            id={idPrefix + "-" + i}
+            type="checkbox"
+            checked={e.locked || (flags?.[i] ?? e.initiallyTicked)}
+            disabled={e.locked}
+            onChange={(ev) => onToggle(i, ev.target.checked)}
+          />
+          <span>{e.label}</span>
+          {e.showRequiredHint && (
+            <span className="text-xs text-muted">{t("consent.requiredByApp")}</span>
+          )}
+          {e.currentlyGranted && (
+            <span className="text-xs text-muted">{heldHint(e)}</span>
+          )}
+        </label>
+      ) : (
+        <>
+          <span>{e.label}</span>
+          {e.currentlyGranted && (
+            <span className="ml-2 text-xs text-muted">{heldHint(e)}</span>
+          )}
+        </>
+      )}
+    </li>
   );
 }
