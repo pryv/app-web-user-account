@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+The account transfer below is in the code since 0.28.0, but it is shown only when the platform
+lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv.io does yet.
+
 ### Added
 
 - **Account transfer in the automatic deletion card.** When the platform lists `transfer` in
@@ -42,11 +45,17 @@
   owner's username leave the address bar, the Decline button calls
   `POST account/auto-deletion/transfer-decline` on the owner's core, no sign-in needed. Once
   the account was taken over, the page says it can no longer be declined.
-- **Referrer policy.** `index.html` sets `<meta name="referrer" content="same-origin">`, so the
-  address of a page opened from a mailed link (with its token) is never sent to another origin,
-  whatever the browser's default.
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
+
+## 0.28.0 - 2026-11-03
+
+Grouped consent entries, level-less entry keys and the localized client name and description need
+open-pryv.io 2.0.0-rc.71 or later; with an earlier core the consent pages behave as in 0.27.0, with
+the sign-in fix below.
+
+### Added
+
 - **OAuth2 consent: entries shown in the groups the offer declares.** An offer with
   `entryGroups` (`[{ key, label, entries }]`, needs open-pryv.io 2.0.0-rc.71 or later for the
   platform's checks) is shown as: the entries no group names first, in the offer's order, then
@@ -74,6 +83,9 @@
 - New catalog keys: `consent.group*`, `oauth.appPromptPending`, `oauth.appPromptLineId`,
   `oauth.appIdMarked`, `oauth.appVerifying`, `oauth.clientWebsite`, `oauth.clientPolicy`,
   `oauth.clientTerms`.
+- **Referrer policy.** `index.html` sets `<meta name="referrer" content="same-origin">`, so the
+  address of a page opened from a mailed link (with its token) is never sent to another origin,
+  whatever the browser's default.
 
 ### Fixed
 
