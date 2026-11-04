@@ -121,9 +121,9 @@ export default function Security() {
     setEnrollError(null);
   }
 
-  // POST mfa/activate. The route answers 302 with a JSON body and no Location
-  // header, so a default (follow) fetch returns the body; parse it regardless
-  // of the 3xx status. Over an active enrolment the server asks for a step-up:
+  // POST mfa/activate. The route answers 200 with a JSON body (cores before the
+  // release after 2.0.0-rc.71 answer 302 with the same body and no Location
+  // header); any status below 400 is read as the answer. Over an active enrolment the server asks for a step-up:
   // the password is then asked and the call made again with it. Resolves null
   // when that prompt is cancelled.
   async function activate(
