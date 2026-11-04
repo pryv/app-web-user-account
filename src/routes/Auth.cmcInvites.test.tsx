@@ -213,7 +213,11 @@ describe("[ACI] /auth: consent invites in the access request", () => {
     );
     (await screen.findByText("sign-in-stub")).click();
     await screen.findByText(/is requesting permission/);
-    // Not read before the consent step.
+    // Not read before the consent step. The offers are read after the page shows, so wait for both calls.
+    await waitFor(() => {
+      expect(flow.checkAppAccess).toHaveBeenCalled();
+      expect(cmcMock.readOffer).toHaveBeenCalled();
+    });
     expect(flow.checkAppAccess.mock.invocationCallOrder[0]).toBeLessThan(cmcMock.readOffer.mock.invocationCallOrder[0]);
     const blocks = await inviteBlocks(2);
     expect(within(blocks[0]).getByTestId("cmc-requester").textContent).toBe("doctor@requester.test");

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui";
 import { PermissionList } from "../consent/PermissionList";
@@ -46,8 +46,10 @@ export function DetachReviewDialog({
     return () => previous?.focus?.();
   }, []);
 
-  // Escape cancels (not while removing); Tab stays inside the dialog.
-  useEffect(() => {
+  // Escape cancels (not while removing); Tab stays inside the dialog. A layout
+  // effect, so the keys work as soon as the dialog is on screen (it opens after
+  // a network answer, where a passive effect runs later).
+  useLayoutEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();

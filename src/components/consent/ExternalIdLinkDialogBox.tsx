@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button } from "../ui";
 import { tNodes } from "./tNodes";
@@ -38,7 +38,10 @@ export function ExternalIdLinkDialog({
     stateRef.current = { linking, failure };
   }, [linking, failure]);
 
-  useEffect(() => {
+  // A layout effect: the keys are handled as soon as the dialog is on screen.
+  // The dialog is opened after a network answer, and a passive effect for such
+  // an update can run after the dialog was painted, losing an early Escape.
+  useLayoutEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
