@@ -52,8 +52,8 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
 
 - **`/auth`: Escape on the "Link this record to your account?" dialog works as soon as it is
   shown.** The dialog opens after a network answer, and its key handler was attached in an effect
-  that can run after the dialog is painted: an Escape (or Tab) pressed in that window was lost,
-  and the question stayed open. The handler is now attached when the dialog is put on screen (the
+  that can run after the dialog is painted: an Escape pressed in that window was lost (and a Tab
+  was not kept inside the dialog), and the question stayed open. The handler is now attached when the dialog is put on screen (the
   cause of an intermittent `[AXI4d]` test failure). The password prompt, the confirmation dialog
   and the delegate removal review, which can also open after a network answer, attach theirs the
   same way.
