@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { RefreshCw, UserPlus, LogIn, X, Trash2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -563,7 +563,7 @@ function AccountsIManage({
   );
 }
 
-function AcceptDialog({
+export function AcceptDialog({
   username,
   busy,
   onConfirm,
@@ -575,10 +575,53 @@ function AcceptDialog({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const titleId = useId();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  // Focus moves into the dialog and comes back where it was on close.
+  useLayoutEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    titleRef.current?.focus();
+    return () => previous?.focus?.();
+  }, []);
+
+  // Escape cancels (not while accepting); Tab stays inside the dialog.
+  useLayoutEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (!busy) onCancel();
+        return;
+      }
+      if (e.key !== "Tab" || !boxRef.current) return;
+      const focusable = Array.from(boxRef.current.querySelectorAll<HTMLElement>("button:not([disabled])"));
+      if (focusable.length === 0) {
+        e.preventDefault();
+        titleRef.current?.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !boxRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !boxRef.current.contains(active))) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [busy, onCancel]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-lg rounded-lg border border-divider bg-card p-6 shadow-lg">
-        <h3 className="mb-2 text-lg">{t("delegation.acceptDialogTitle", { username })}</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={boxRef} className="w-full max-w-lg rounded-lg border border-divider bg-card p-6 shadow-lg">
+        <h3 id={titleId} ref={titleRef} tabIndex={-1} className="mb-2 text-lg focus:outline-none">
+          {t("delegation.acceptDialogTitle", { username })}
+        </h3>
         <p className="mb-3 text-sm text-muted">
           {tNodes("delegation.acceptDialogBody", { username: <strong>{username}</strong> })}
         </p>
