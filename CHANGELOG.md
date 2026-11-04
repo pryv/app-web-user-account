@@ -53,10 +53,15 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
 - **`/auth`: Escape on the "Link this record to your account?" dialog works as soon as it is
   shown.** The dialog opens after a network answer, and its key handler was attached in an effect
   that can run after the dialog is painted: an Escape pressed in that window was lost (and a Tab
-  was not kept inside the dialog), and the question stayed open. The handler is now attached when the dialog is put on screen (the
-  cause of an intermittent `[AXI4d]` test failure). The password prompt, the confirmation dialog
-  and the delegate removal review, which can also open after a network answer, attach theirs the
-  same way.
+  was not kept inside the dialog), and the question stayed open. The handler is now attached when
+  the dialog is put on screen (the cause of an intermittent `[AXI4d]` test failure). The password
+  prompt, the confirmation dialog and the delegate removal review, which can also open after a
+  network answer, attach theirs the same way.
+- **Delegation: the dialog that accepts an invite can be used from the keyboard.** It had no key
+  handling: focus stayed on the page behind it, Escape did nothing and Tab left it. Focus now moves
+  into it and comes back on close, Escape cancels (not while accepting, when Cancel is disabled too),
+  and Tab stays inside, as in the other dialogs. In it and in the delegate removal review,
+  Shift+Tab from the title no longer leaves the dialog.
 
 ## 0.28.0 - 2026-11-03
 
