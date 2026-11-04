@@ -59,8 +59,9 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
   network answer, attach theirs the same way.
 - **Delegation: the dialog that accepts an invite can be used from the keyboard.** It had no key
   handling: focus stayed on the page behind it, Escape did nothing and Tab left it. Focus now moves
-  into it and comes back on close, Escape cancels (not while accepting), and Tab stays inside, as in
-  the other dialogs.
+  into it and comes back on close, Escape cancels (not while accepting, when Cancel is disabled too),
+  and Tab stays inside, as in the other dialogs. In it and in the delegate removal review,
+  Shift+Tab from the title no longer leaves the dialog.
 
 ## 0.28.0 - 2026-11-03
 

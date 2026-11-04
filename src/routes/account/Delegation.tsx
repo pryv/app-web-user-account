@@ -603,11 +603,13 @@ export function AcceptDialog({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || !boxRef.current.contains(active))) {
+      // The title takes the focus on open but is not in the list: Tab from it goes on as from outside.
+      const active = document.activeElement as HTMLElement | null;
+      const inList = active != null && focusable.includes(active);
+      if (e.shiftKey && (active === first || !inList)) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && (active === last || !boxRef.current.contains(active))) {
+      } else if (!e.shiftKey && (active === last || !inList)) {
         e.preventDefault();
         first.focus();
       }
@@ -627,7 +629,7 @@ export function AcceptDialog({
         </p>
         <DelegateWarning />
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" type="button" onClick={onCancel} className="w-auto">
+          <Button variant="ghost" type="button" onClick={onCancel} disabled={busy} className="w-auto">
             {t("common.cancel")}
           </Button>
           <Button type="button" onClick={onConfirm} disabled={busy} className="w-auto">

@@ -68,11 +68,13 @@ export function DetachReviewDialog({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || !boxRef.current.contains(active))) {
+      // The title takes the focus on open but is not in the list: Tab from it goes on as from outside.
+      const active = document.activeElement as HTMLElement | null;
+      const inList = active != null && focusable.includes(active);
+      if (e.shiftKey && (active === first || !inList)) {
         e.preventDefault();
         last.focus();
-      } else if (!e.shiftKey && (active === last || !boxRef.current.contains(active))) {
+      } else if (!e.shiftKey && (active === last || !inList)) {
         e.preventDefault();
         first.focus();
       }
