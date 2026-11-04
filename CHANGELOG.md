@@ -48,6 +48,11 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
 
+## 0.28.1 - 2026-11-04
+
+Keyboard fixes in dialogs; works with the same cores as 0.28.0. From the open-pryv.io release after
+2.0.0-rc.71, `mfa/activate` answers `200` instead of `302`; this app reads either.
+
 ### Fixed
 
 - **`/auth`: Escape on the "Link this record to your account?" dialog works as soon as it is
