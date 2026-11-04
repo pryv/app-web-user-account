@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./ui";
 
@@ -20,7 +20,9 @@ export function ConfirmDialog({
   // Whether the current press started on the overlay itself.
   const pressedOutside = useRef(false);
 
-  useEffect(() => {
+  // A layout effect, so the keys work as soon as the dialog is on screen (it
+  // can open after a network answer, where a passive effect runs later).
+  useLayoutEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     confirmRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
