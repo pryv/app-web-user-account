@@ -516,6 +516,11 @@ Every route accepts these query parameters:
   sends the browser to your `redirect_uri` with the authorization code or
   `error=access_denied`. The core must be configured with `oauth:consentUrl`
   pointing at this route (e.g. `https://<your-deploy>/oauth2-authorize`).
+  On a multi-core platform, an account served by another core than the one
+  that issued the authorization (your app used another region's address) is
+  told so; its only way on is "Back to the app", which returns
+  `error=access_denied`. Start the authorization again on the account's own
+  core.
 
   **Security — trusted `pryvApi`:** the page sends the user's password (sign-in)
   and personal token (Accept) to the `pryvApi` origin, so it must be a core you

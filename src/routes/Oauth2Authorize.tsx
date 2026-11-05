@@ -37,6 +37,7 @@ import {
   isStaleConsentError,
   consentRefusalKey,
   subjectChangeKey,
+  wrongCoreOf,
   type ComposedConsent,
   type OAuthClientDisplay,
   type OAuthFlowError,
@@ -185,6 +186,9 @@ export default function Oauth2Authorize() {
   const [acknowledged, setAcknowledged] = useState(false);
   // Accept was refused because the screen no longer matches the app's access.
   const [stale, setStale] = useState(false);
+  // The account is served by another core (region): this authorization
+  // cannot finish here, whatever the user does on this page.
+  const [otherCore, setOtherCore] = useState<{ host: string | null } | null>(null);
 
   const offer: OAuthOffer | null = composed?.offer ?? oauthState?.offer ?? fetched?.offer ?? null;
   const subjectChange = composed?.consent.subjectChange ?? null;
@@ -270,6 +274,11 @@ export default function Oauth2Authorize() {
       })
       .catch((err: unknown) => {
         if (sessionRef.current !== token) return;
+        const elsewhere = wrongCoreOf(err);
+        if (elsewhere != null) {
+          setOtherCore(elsewhere);
+          return;
+        }
         setComposeError(err instanceof Error ? err.message : t("cmc.errorReadOffer"));
       });
   }
@@ -321,7 +330,13 @@ export default function Oauth2Authorize() {
       assertHttpUrl(redirectTo);
       navigateTo(redirectTo);
     } catch (err: unknown) {
-      if ((err as OAuthFlowError)?.status === 401) {
+      const elsewhere = wrongCoreOf(err);
+      if (elsewhere != null) {
+        // Not a session problem: the account lives on another core, so a
+        // new sign-in would end here again. Keep the session (ended at
+        // "Back to the app") and say where the account is.
+        setOtherCore(elsewhere);
+      } else if ((err as OAuthFlowError)?.status === 401) {
         // The session no longer authenticates: most likely a consent on
         // another device shared it and ended it when it finished. Back to
         // the sign-in, which opens a fresh one.
@@ -361,6 +376,33 @@ export default function Oauth2Authorize() {
         <div id="oauthInitError">
           <Alert>{initError ?? fetchError ?? t("oauth.invalidRequest")}</Alert>
         </div>
+      </Card>
+    );
+  }
+
+  if (personalToken && otherCore) {
+    // Terminal: the account is served by another region. The only way on is
+    // back to the app, to start again with the address of that region.
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("oauth.otherCoreTitle")}</h1>
+        <div id="oauthOtherCore">
+          <Alert>
+            {otherCore.host != null
+              ? tNodes("oauth.errorOtherCoreHost", { host: <strong>{otherCore.host}</strong> })
+              : t("oauth.errorOtherCore")}
+          </Alert>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <Button
+          id="oauthRefuse"
+          type="button"
+          variant="ghost"
+          disabled={busy !== null}
+          onClick={() => void refuse()}
+        >
+          {t("oauth.backToApp")}
+        </Button>
       </Card>
     );
   }
