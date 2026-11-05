@@ -202,6 +202,56 @@ describe("[OASS] Oauth2Authorize personal session", () => {
     expect(loginMock.login).toHaveBeenCalledTimes(2);
   });
 
+  it("[OAS8] an Accept refused because the account is served by another core ends the flow with a message naming it; no new sign-in", async () => {
+    const fetchMock = mockFetch((url) =>
+      url.endsWith("/oauth2/authorize/accept")
+        ? { status: 421, body: { error: "wrong_core", error_description: "this account is served by another core", coreUrl: "https://core-b.example.com/" } }
+        : coreRoutes(url),
+    );
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await waitFor(() => expect(document.getElementById("oauthOtherCore")).not.toBeNull());
+    expect(document.getElementById("oauthOtherCore")!.textContent).toContain("core-b.example.com");
+    expect(screen.queryByText(/sign-in for this authorization has ended/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^sign in$/i })).toBeNull();
+    expect(document.getElementById("oauthAccept")).toBeNull();
+    expect(logoutCalls(fetchMock)).toHaveLength(0);
+    // Back to the app: refused, the page's session ended, redirected.
+    fireEvent.click(document.getElementById("oauthRefuse")!);
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledWith("https://app.example/cb?error=access_denied"));
+    expect(logoutCalls(fetchMock)).toHaveLength(1);
+    expect(loginMock.login).toHaveBeenCalledTimes(1);
+  });
+
+  it("[OAS9] a signed-in offer refused because the account is served by another core shows the same terminal message", async () => {
+    mockFetch((url) => {
+      if (url.endsWith("/oauth2/authorize/offer")) {
+        // Signed out: the offer; signed in: the account is on another core.
+        return { status: 200, body: { client: { clientName: "Registry app" }, offer: { permissions: [{ streamId: "diary", level: "read" }] } } };
+      }
+      return coreRoutes(url);
+    });
+    renderState(stateWith({ offerRef: { kind: "synthesised", digest: "d" } }));
+    await screen.findByText("Registry app");
+    const offers = vi.fn((url: string, init?: RequestInit) => {
+      const signedIn = typeof init?.body === "string" && init.body.includes("userToken");
+      const r = url.endsWith("/oauth2/authorize/offer") && signedIn
+        ? { status: 421, body: { error: "wrong_core", error_description: "this account is served by another core", coreUrl: "not a url" } }
+        : coreRoutes(url) ?? { status: 404, body: {} };
+      return Promise.resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, json: () => Promise.resolve(r.body) });
+    });
+    vi.stubGlobal("fetch", offers);
+    fireEvent.change(screen.getByLabelText(/username or email/i), { target: { value: "alice" } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: "pw" } });
+    fireEvent.click(screen.getByRole("button", { name: /^sign in$/i }));
+    await waitFor(() => expect(document.getElementById("oauthOtherCore")).not.toBeNull());
+    expect(document.getElementById("oauthOtherCore")!.textContent).toMatch(/another region/);
+    expect(document.getElementById("oauthComposeError")).toBeNull();
+    expect(document.getElementById("oauthAccept")).toBeNull();
+    expect(document.getElementById("oauthRefuse")).not.toBeNull();
+  });
+
   it("[OAS6] Cancel before sign-in has no session to end", async () => {
     const fetchMock = mockFetch(coreRoutes);
     renderState(CARRIED_STATE);

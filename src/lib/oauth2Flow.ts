@@ -95,6 +95,8 @@ export interface OAuthFlowError extends Error {
   status?: number;
   /** Stable marker some refusals carry next to `error` (e.g. `consent-out-of-date`). */
   reason?: string;
+  /** With `wrong_core`: the URL of the core that serves the account. */
+  coreUrl?: string;
 }
 
 /**
@@ -344,6 +346,27 @@ export function consentRefusalKey(err: unknown): string | null {
     ? e.reason === "consent-widens-offer"
     : /widen the offer under the stream hierarchy/i.test(e.message ?? "");
   return widens ? "oauth.errorWidensOffer" : null;
+}
+
+/**
+ * Set when the core answered that the signed-in account is served by another
+ * core of the platform (`421 wrong_core`, at the signed-in offer or at
+ * Accept): the authorization was started for another region, so it cannot
+ * finish here, and signing in again would not help. `host` names that core
+ * when the core gave a usable http(s) URL, for display only (the user starts
+ * again from the app; the page never sends anything there).
+ */
+export function wrongCoreOf(err: unknown): { host: string | null } | null {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 421 || e.oauthError !== "wrong_core") return null;
+  let host: string | null = null;
+  try {
+    const u = new URL(e.coreUrl ?? "");
+    if (u.protocol === "https:" || u.protocol === "http:") host = u.host;
+  } catch {
+    // No usable URL: the message names no host.
+  }
+  return { host };
 }
 
 function parseOffer(v: unknown): OAuthOffer | null {
@@ -633,6 +656,7 @@ async function postOAuthJson(
     err.oauthError = json.error;
     err.status = res.status;
     if (typeof json.reason === "string" && json.reason.length > 0) err.reason = json.reason;
+    if (typeof json.coreUrl === "string" && json.coreUrl.length > 0) err.coreUrl = json.coreUrl;
     throw err;
   }
   return json;

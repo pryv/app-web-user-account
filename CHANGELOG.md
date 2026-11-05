@@ -48,6 +48,18 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
 - New catalog keys under `data.autoDeletion.transfer`, `data.autoDeletion.errors.transferInvalid`
   and `transfer`.
 
+### Fixed
+
+- **An account of another region no longer loops back to the sign-in.** When the consent page's
+  core answers that the signed-in account is served by another core (`421 wrong_core`, on the
+  signed-in offer or at Accept), the page ends the flow with a message saying the account is in
+  another region (naming that core's host when the core gives a usable address) and offers only
+  "Back to the app" (which refuses the authorization and ends the page's own session). Before, it
+  showed "Your sign-in for this authorization has ended" or the core's raw message, and signing in
+  again ended the same way. Needs an open-pryv.io that answers `wrong_core` there; with an older
+  core the behaviour is unchanged. New catalog keys `oauth.otherCoreTitle`,
+  `oauth.errorOtherCoreHost`, `oauth.errorOtherCore`.
+
 ## 0.28.1 - 2026-11-04
 
 Keyboard fixes in dialogs; works with the same cores as 0.28.0. From the open-pryv.io release after

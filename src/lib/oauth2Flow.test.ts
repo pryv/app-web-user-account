@@ -13,6 +13,7 @@ import {
   isStaleConsentError,
   consentRefusalKey,
   subjectChangeKey,
+  wrongCoreOf,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -608,5 +609,38 @@ describe("[OACP] composed offer once signed in", () => {
     expect(subjectChangeKey({ from: "pseudonym", to: "account" })).toBe("oauth.subjectChangeToAccount");
     expect(subjectChangeKey({ from: "account", to: "pseudonym" })).toBe("oauth.subjectChangeToPseudonym");
     expect(subjectChangeKey(null)).toBeNull();
+  });
+});
+
+describe("[OAWC] an account served by another core", () => {
+  const WRONG_CORE = {
+    error: "wrong_core",
+    error_description: "this account is served by another core",
+    coreUrl: "https://core-b.example.com/",
+  };
+
+  it("[OAWC1] Accept and the signed-in offer keep the core's URL on the error, mapped to its host", async () => {
+    mockFetchOnce(421, WRONG_CORE);
+    const base = { pryvApi: "https://reg.test", signedState: makeSignedState(), username: "alice", personalToken: "t", grantedPermissions: [] };
+    const onAccept = (await oauth2Accept(base).catch((e) => e)) as OAuthFlowError;
+    expect(onAccept.status).toBe(421);
+    expect(onAccept.coreUrl).toBe("https://core-b.example.com/");
+    expect(wrongCoreOf(onAccept)).toEqual({ host: "core-b.example.com" });
+    mockFetchOnce(421, WRONG_CORE);
+    const onOffer = (await oauth2FetchOffer({ pryvApi: "https://reg.test", signedState: "s.t", username: "alice", userToken: "t" })
+      .catch((e) => e)) as OAuthFlowError;
+    expect(wrongCoreOf(onOffer)).toEqual({ host: "core-b.example.com" });
+  });
+
+  it("[OAWC2] only a 421 wrong_core maps; an unusable URL maps without a host", () => {
+    const mk = (status: number, oauthError: string, coreUrl?: string) =>
+      Object.assign(new Error("x"), { status, oauthError, coreUrl }) as OAuthFlowError;
+    expect(wrongCoreOf(mk(421, "wrong_core", "javascript:alert(1)"))).toEqual({ host: null });
+    expect(wrongCoreOf(mk(421, "wrong_core"))).toEqual({ host: null });
+    expect(wrongCoreOf(mk(421, "wrong_core", "https://user:pw@core-b.example.com:8443/x"))).toEqual({ host: "core-b.example.com:8443" });
+    expect(wrongCoreOf(mk(401, "wrong_core", "https://core-b.example.com/"))).toBeNull();
+    expect(wrongCoreOf(mk(421, "invalid_request", "https://core-b.example.com/"))).toBeNull();
+    expect(wrongCoreOf(mk(401, "invalid_request"))).toBeNull();
+    expect(wrongCoreOf(null)).toBeNull();
   });
 });
