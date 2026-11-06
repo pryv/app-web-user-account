@@ -226,10 +226,20 @@ export function hintForAccess(
   access: { clientData?: Record<string, unknown> | null } | null | undefined,
   controlledUsername: string,
 ): DelegationHint | undefined {
-  if (!isDelegatedChild(access)) return undefined;
+  const delegate = childDelegateUsername(access);
+  return delegate == null ? undefined : delegationHint(controlledUsername, { username: delegate });
+}
+
+/**
+ * The delegate named by an access's lineage marker (who granted it through
+ * the delegation), or null when the access was not granted through one.
+ */
+export function childDelegateUsername(
+  access: { clientData?: Record<string, unknown> | null } | null | undefined,
+): string | null {
+  if (!isDelegatedChild(access)) return null;
   const marker = access?.clientData?.delegation as { delegate?: { username?: unknown } };
-  if (typeof marker.delegate?.username !== "string") return undefined;
-  return delegationHint(controlledUsername, { username: marker.delegate.username });
+  return typeof marker.delegate?.username === "string" ? marker.delegate.username : null;
 }
 
 /** Working credentials on the controlled account: its API endpoint and a delegate token. */

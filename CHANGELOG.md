@@ -59,6 +59,19 @@ lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv
   again ended the same way. Needs an open-pryv.io that answers `wrong_core` there; with an older
   core the behaviour is unchanged. New catalog keys `oauth.otherCoreTitle`,
   `oauth.errorOtherCoreHost`, `oauth.errorOtherCore`.
+- **Re-approving an app whose scope grew now creates the new streams.** The access update
+  (`PUT /accesses/:id`, when the app's access already exists and differs) keeps each permission's
+  `defaultName`, from which the core creates a stream that does not exist yet, as it does on
+  create (open-pryv.io 2.0.0-rc.63 and later). Before, the update dropped it: the access covered
+  a stream that was never created, and the app could not create it. A core that refuses
+  `defaultName` on update (`400 invalid-parameters-format`) gets the old update, sent once
+  more without it (issue #32).
+- **Re-granting an app on an account you manage keeps its access.** When the access was granted
+  through the same delegation, by the same delegate, it is now updated in place: it keeps its id,
+  its token and the accesses the app created with it (deleting it deleted those too). Any other
+  case (an access the owner granted, one granted by another delegate, the owner re-granting one a
+  delegate granted) is still replaced, since the core records who granted an access only when it
+  is created.
 
 ## 0.28.1 - 2026-11-04
 

@@ -82,6 +82,7 @@ import {
   unavailableActAs,
   delegationHint,
   isDelegatedChild,
+  childDelegateUsername,
   hintForAccess,
   openDelegatedWorkspace,
   markRequestDone,
@@ -120,24 +121,31 @@ const EXTERNAL_ID_CHECK_UNAVAILABLE = "external-id-check-unavailable";
  * whoever holds it keeps a working credential) rather than replaced by
  * delete + create. Replaced when an update could not make it match:
  * - the app proposed its own token, and asked for THAT token;
- * - a delegation is involved on either side: the core stamps the delegation
- *   lineage only when an access is created, so an update would leave it
- *   wrong (unmarked, or still marked when the owner re-grants);
+ * - the delegation lineage would change: the core stamps it only when an
+ *   access is created, and keeps it as it is across updates. So an access
+ *   granted through a delegation is updated only by a grant through the
+ *   same delegate (`delegate`, the delegate of the current grant), and only
+ *   when check-app handed over its token (the core shows it to the delegate
+ *   token that created it, and the update answers with it on the same rule).
+ *   Every other case is replaced: an unmarked access granted for through a
+ *   delegation, a marked one the owner re-grants or another delegate
+ *   re-grants, any grant from a session acting for another account
+ *   (`acting`) that is not through a delegation;
  * - its clientData differs: the core merges clientData on update, so stale
  *   keys would stay and the access would never match again.
  */
 function updatesInPlace(
   mismatching: AppAccess | null | undefined,
   state: AccessState,
-  delegationInvolved: boolean,
+  delegate: string | null,
+  acting: boolean,
 ): boolean {
-  return (
-    mismatching != null &&
-    state.token == null &&
-    !delegationInvolved &&
-    !isDelegatedChild(mismatching) &&
-    sameClientData(mismatching.clientData, state.clientData)
-  );
+  if (mismatching == null || state.token != null) return false;
+  const lineageKept =
+    delegate != null
+      ? childDelegateUsername(mismatching)?.toLowerCase() === delegate.toLowerCase() && mismatching.token != null
+      : !acting && !isDelegatedChild(mismatching);
+  return lineageKept && sameClientData(mismatching.clientData, state.clientData);
 }
 
 interface AuthQuery {
@@ -1442,7 +1450,7 @@ function AuthFlow({
         return;
       }
       const mismatching = check.mismatchingAccess;
-      const updateInPlace = updatesInPlace(mismatching, accessState, grantFor != null || actingAs != null);
+      const updateInPlace = updatesInPlace(mismatching, accessState, grantFor?.delegate.username ?? null, actingAs != null);
       let access: AppAccess;
       if (mismatching != null && updateInPlace) {
         access = await updateAppAccess(apiEndpoint, personalToken, mismatching.id, {
@@ -1868,7 +1876,7 @@ function AuthFlow({
           expireAfterSeconds={reuse != null ? null : accessState.expireAfter ?? null}
           mismatchWarning={
             reuse != null ? t("consent.alreadyGranted") : check.mismatchingAccess ? (
-              updatesInPlace(check.mismatchingAccess, accessState, grantFor != null || actingAs != null)
+              updatesInPlace(check.mismatchingAccess, accessState, grantFor?.delegate.username ?? null, actingAs != null)
                 ? t("consent.mismatchWillUpdate")
                 : t("consent.mismatchWillReplace")
             ) : undefined

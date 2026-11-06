@@ -18,6 +18,7 @@ const flow = vi.hoisted(() => ({
   checkAppAccess: vi.fn(),
   createAppAccess: vi.fn(),
   deleteAppAccess: vi.fn(),
+  updateAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
 }));
@@ -345,6 +346,72 @@ describe("[AGF] /auth: grant for a controlled account", () => {
     expect(screen.queryByText("sign-in-stub")).toBeNull();
     expect(await screen.findByRole("button", { name: /continue as parent/i })).toBeTruthy();
     expect(flow.closeOrRedirect).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A re-grant on the controlled account of an app whose access diverged.
+   * The core keeps an access's delegation lineage across updates and stamps
+   * it only on create, so the access is updated in place (same id, token and
+   * the accesses it created) only when the lineage stays right: granted
+   * through the same delegate, which check-app showed its token to.
+   */
+  describe("[AGFU] a diverged access on the controlled account", () => {
+    const childOf = (delegate: string) => ({ delegation: { kind: "delegated-child", relId: "r1", delegate: { username: delegate, hostSlug: "core-a" }, viaAccessId: "pat1" } });
+    async function regrant(existing: Record<string, unknown>, target = "kid-a") {
+      flow.checkAppAccess.mockResolvedValue({
+        checkedPermissions: PERMS,
+        mismatchingAccess: { id: "acc-old", token: "old-token", type: "app", permissions: [], ...existing },
+      });
+      flow.updateAppAccess.mockResolvedValue({ id: "acc-old", token: "old-token", type: "app", permissions: PERMS, clientData: childOf("parent") });
+      await signIn(needSignin());
+      await screen.findByText(/access to:/);
+      (screen.getByDisplayValue(target) as HTMLInputElement).click();
+      screen.getByRole("button", { name: new RegExp("continue for " + target, "i") }).click();
+      await screen.findByText(/is requesting permission/);
+    }
+
+    it("[AGFU1] granted through the same delegate: updated in place with the delegate token, token kept", async () => {
+      await regrant({ clientData: childOf("parent") });
+      expect(screen.getByText(/Approving will update it/)).toBeTruthy();
+      screen.getByRole("button", { name: /accept/i }).click();
+      await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+      expect(flow.updateAppAccess).toHaveBeenCalledTimes(1);
+      expect(flow.updateAppAccess.mock.calls[0].slice(0, 3)).toEqual(["https://kid-a.core.test/", PAT, "acc-old"]);
+      expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+      expect(flow.createAppAccess).not.toHaveBeenCalled();
+      const posted = flow.updateAccessState.mock.calls[0][1];
+      expect(posted.token).toBe("old-token");
+      expect(posted.delegation).toEqual({ isDelegatedAccess: true, controlledUsername: "kid-a", delegate: { username: "parent" } });
+    });
+
+    it("[AGFU2] granted through another delegate, or by the owner (unmarked), or with its token withheld: replaced", async () => {
+      for (const existing of [
+        { clientData: childOf("other-delegate") },
+        { clientData: null },
+        { clientData: childOf("parent"), token: undefined },
+      ]) {
+        flow.deleteAppAccess.mockClear();
+        flow.createAppAccess.mockClear();
+        flow.updateAppAccess.mockClear();
+        await regrant(existing);
+        expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+        screen.getByRole("button", { name: /accept/i }).click();
+        await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+        expect(flow.updateAppAccess).not.toHaveBeenCalled();
+        expect(flow.deleteAppAccess.mock.calls[0]).toEqual(["https://kid-a.core.test/", PAT, "acc-old"]);
+        expect(flow.createAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://kid-a.core.test/", PAT]);
+        cleanup();
+      }
+    });
+
+    it("[AGFU3] the owner re-granting an access a delegate granted: replaced", async () => {
+      await regrant({ clientData: childOf("parent") }, "parent");
+      expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+      screen.getByRole("button", { name: /accept/i }).click();
+      await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+      expect(flow.updateAppAccess).not.toHaveBeenCalled();
+      expect(flow.deleteAppAccess.mock.calls[0]).toEqual(["https://parent.core.test/", "parent-token", "acc-old"]);
+    });
   });
 
   // Cancel and completion hand `closeOrRedirect` the page's way back to the app

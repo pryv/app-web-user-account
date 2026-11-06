@@ -8,6 +8,7 @@ import {
   unavailableActAs,
   delegationHint,
   isDelegatedChild,
+  childDelegateUsername,
   openDelegatedWorkspace,
   endpointWithoutToken,
   markRequestDone,
@@ -74,6 +75,13 @@ describe("[GFT] who is this access for", () => {
     expect(isDelegatedChild({ clientData: { app: 1 } })).toBe(false);
     expect(isDelegatedChild({ clientData: null })).toBe(false);
     expect(isDelegatedChild(null)).toBe(false);
+  });
+
+  it("[GFT5b] reads the delegate of an access granted through a delegation, from its marker only", () => {
+    expect(childDelegateUsername({ clientData: { delegation: { kind: "delegated-child", delegate: { username: "parent" } } } })).toBe("parent");
+    expect(childDelegateUsername({ clientData: { delegation: { kind: "delegate-pat", delegate: { username: "parent" } } } })).toBeNull();
+    expect(childDelegateUsername({ clientData: { delegation: { kind: "delegated-child" } } })).toBeNull();
+    expect(childDelegateUsername({ clientData: null })).toBeNull();
   });
 
   it("[GFT6] opens a workspace on the controlled account with the endpoint stripped of any token", async () => {
