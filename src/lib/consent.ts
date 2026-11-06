@@ -276,17 +276,33 @@ function safeLabel(get: () => string | null | undefined): string | null {
 
 /**
  * The level-less key of an entry (`s|<streamId>`, `f|<feature>`): it names
- * the entry whatever level or setting the screen shows it at. Matched
- * literally, like {@link permissionKey}.
+ * the entry whatever level or setting the screen shows it at. Stream ids are
+ * read as the core stores them, like {@link permissionKey}.
  */
 export function levellessKey(p: OfferPermission): string {
-  if ("streamId" in p && typeof p.streamId === "string") return `s|${p.streamId}`;
+  if ("streamId" in p && typeof p.streamId === "string") return `s|${withoutLocalPrefix(p.streamId)}`;
   return `f|${(p as { feature: string }).feature}`;
 }
 
 /** The keys an offer may name an entry by, the exact one first. */
 function entryKeys(p: OfferPermission): [string, string] {
   return [permissionKey(p), levellessKey(p)];
+}
+
+const LEVELS = new Set(["read", "contribute", "manage", "create-only", "none"]);
+
+/**
+ * An entry key as an offer wrote it, with its stream id read as the core
+ * stores it, so `s|:local:diary|read` names the same entry as `s|diary|read`.
+ */
+function canonicalOfferKey(key: string): string {
+  if (!key.startsWith("s|")) return key;
+  const rest = key.slice(2);
+  const bar = rest.lastIndexOf("|");
+  if (bar >= 0 && LEVELS.has(rest.slice(bar + 1))) {
+    return `s|${withoutLocalPrefix(rest.slice(0, bar))}|${rest.slice(bar + 1)}`;
+  }
+  return `s|${withoutLocalPrefix(rest)}`;
 }
 
 /**
@@ -299,10 +315,17 @@ export function offerEntryLabel(
   labels: Record<string, LocalizableText> | null | undefined,
   lang: string,
 ): (p: OfferPermission) => string | null {
+  if (labels == null) return () => null;
+  const byKey = new Map<string, LocalizableText>();
+  for (const [key, text] of Object.entries(labels)) {
+    const canonical = canonicalOfferKey(key);
+    // The key as written wins over another spelling of it.
+    if (key === canonical || !Object.hasOwn(labels, canonical)) byKey.set(canonical, text);
+  }
   return (p) => {
-    if (labels == null) return null;
     for (const key of entryKeys(p)) {
-      if (Object.hasOwn(labels, key)) return pickText(labels[key], lang) || null;
+      const text = byKey.get(key);
+      if (text !== undefined) return pickText(text, lang) || null;
     }
     return null;
   };
@@ -356,7 +379,10 @@ export function consentLayout(
   if (groups == null || groups.length === 0) return null;
   const groupOf = new Map<string, number>();
   groups.forEach((g, gi) => {
-    for (const key of g.entries) if (!groupOf.has(key)) groupOf.set(key, gi);
+    for (const key of g.entries) {
+      const canonical = canonicalOfferKey(key);
+      if (!groupOf.has(canonical)) groupOf.set(canonical, gi);
+    }
   });
   const members: number[][] = groups.map(() => []);
   const ungrouped: number[] = [];
