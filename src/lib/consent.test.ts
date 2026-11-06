@@ -320,6 +320,25 @@ describe("[CSRN] withRequestedNames: an access read back gets the request's stre
     expect(withRequestedNames([{ streamId: "diary", level: "read" }], null)).toEqual([{ streamId: "diary", level: "read" }]);
   });
 
+  it("[CSLP1] permissionKey reads a local-store stream id as the core stores it", () => {
+    expect(permissionKey({ streamId: ":local:diary", level: "read" })).toBe(permissionKey({ streamId: "diary", level: "read" }));
+    expect(permissionKey({ streamId: ":local::local:diary", level: "read" })).toBe("s|diary|read");
+    expect(permissionKey({ streamId: ":local:", level: "read" })).toBe("s|*|read");
+    expect(permissionKey({ streamId: ":_cmc:apps:x", level: "manage" })).toBe("s|:_cmc:apps:x|manage");
+    expect(permissionKey({ streamId: ":local:diary", level: "read" })).not.toBe(permissionKey({ streamId: "diary", level: "contribute" }));
+  });
+
+  it("[CSLP2] offer labels and groups match an entry keyed with or without `:local:`", () => {
+    const local = { streamId: ":local:diary", level: "read" } as OfferPermission;
+    const bare = { streamId: "diary", level: "read" } as OfferPermission;
+    for (const key of ["s|:local:diary|read", "s|diary|read", "s|:local:diary", "s|diary"]) {
+      const label = offerEntryLabel({ [key]: { en: "Diary" } }, "en");
+      expect([key, label(local), label(bare)]).toEqual([key, "Diary", "Diary"]);
+      const layout = consentLayout(consentEntries([local, bare], { allowUserChoice: true }), [{ key: "g", label: null, entries: [key] }], "en");
+      expect([key, layout?.groups[0].indices]).toEqual([key, [0, 1]]);
+    }
+  });
+
   it("[CSRN3] a stream-label resolver still wins", () => {
     const [e] = consentEntries(withRequestedNames([{ streamId: "diary", level: "read" }], requested), {
       labelFor: (id) => (id === "diary" ? "Daily diary" : null),
@@ -374,8 +393,9 @@ describe("[CLBP] stream name precedence", () => {
     expect(permissionLabel({ streamId: "body-bp", level: "manage" }, { entryLabel: labels })).toBe("Fully manage “Blood pressure (all of it)”");
     expect(permissionLabel({ feature: "custom", setting: "on" }, { entryLabel: labels })).toBe("Custom feature");
     expect(permissionLabel({ feature: "custom", setting: "off" }, { entryLabel: labels })).toBe("Custom feature");
-    // Literal match: another spelling of the stream id gets none.
-    expect(permissionLabel({ streamId: ":local:body-bp", level: "read" }, { entryLabel: labels })).toBe("Read “:local:body-bp”");
+    // The local store prefix is not part of the stream id, as the core reads it.
+    expect(permissionLabel({ streamId: ":local:body-bp", level: "read" }, { entryLabel: labels })).toBe("Read “Blood pressure”");
+    expect(permissionLabel({ streamId: "other", level: "read" }, { entryLabel: labels })).toBe("Read “other”");
   });
 });
 

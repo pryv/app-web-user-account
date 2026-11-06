@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- **`/auth` with a consent form: an entry requested as `:local:<id>` keeps its resolved name and
+  its "already granted" mark.** The consent form's entries were matched to check-app's answer by
+  their stream id as written, and a core that reads `:local:<id>` as `<id>` in check-app answers
+  the canonical id, so such an entry fell back to the raw request. Stream ids are now compared as
+  the core stores them (`:local:<id>` is `<id>`, the store root `:local:` is `*`), also in an OAuth2
+  offer's `entryLabels` and `entryGroups` keys: `s|:local:diary|read` and `s|diary|read` name the
+  same entry (the key as written wins when an offer gives both).
+
 ## 0.29.0 - 2026-11-06
 
 Re-approving an app whose scope grew now creates the new streams and keeps the access (issue #32),
