@@ -165,11 +165,23 @@ export function initialFlags(entries: ConsentEntry[]): boolean[] {
  * what it grants, not what it is called. Display names are deliberately
  * excluded so an entry from the consent form matches its twin from
  * check-app, which resolved the names against the account's real streams.
+ * Stream ids are compared as the core stores them: check-app answers
+ * `:local:diary` as `diary` (the store root `:local:` as `*`).
  */
 export function permissionKey(p: OfferPermission): string {
-  if ("streamId" in p && typeof p.streamId === "string") return `s|${p.streamId}|${p.level}`;
+  if ("streamId" in p && typeof p.streamId === "string") return `s|${withoutLocalPrefix(p.streamId)}|${p.level}`;
   const f = p as { feature: string; setting: string };
   return `f|${f.feature}|${f.setting}`;
+}
+
+function withoutLocalPrefix(streamId: string): string {
+  const prefix = ":local:";
+  let id = streamId;
+  for (let i = 0; i < 8 && id.startsWith(prefix); i++) {
+    id = id.slice(prefix.length);
+    if (id === "") return "*";
+  }
+  return id;
 }
 
 /**

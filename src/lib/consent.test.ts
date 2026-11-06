@@ -320,6 +320,14 @@ describe("[CSRN] withRequestedNames: an access read back gets the request's stre
     expect(withRequestedNames([{ streamId: "diary", level: "read" }], null)).toEqual([{ streamId: "diary", level: "read" }]);
   });
 
+  it("[CSLP1] permissionKey reads a local-store stream id as the core stores it", () => {
+    expect(permissionKey({ streamId: ":local:diary", level: "read" })).toBe(permissionKey({ streamId: "diary", level: "read" }));
+    expect(permissionKey({ streamId: ":local::local:diary", level: "read" })).toBe("s|diary|read");
+    expect(permissionKey({ streamId: ":local:", level: "read" })).toBe("s|*|read");
+    expect(permissionKey({ streamId: ":_cmc:apps:x", level: "manage" })).toBe("s|:_cmc:apps:x|manage");
+    expect(permissionKey({ streamId: ":local:diary", level: "read" })).not.toBe(permissionKey({ streamId: "diary", level: "contribute" }));
+  });
+
   it("[CSRN3] a stream-label resolver still wins", () => {
     const [e] = consentEntries(withRequestedNames([{ streamId: "diary", level: "read" }], requested), {
       labelFor: (id) => (id === "diary" ? "Daily diary" : null),
