@@ -445,7 +445,7 @@ describe("[AFH] credential hand-off accept shapes", () => {
 describe("[AFUP] updateAppAccess", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("[AFU1] PUTs the update to the access by id with the personal token, without display extras", async () => {
+  it("[AFU1] PUTs the update to the access by id with the personal token, defaultName and name kept", async () => {
     let captured: { url: string; options: RequestInit } | null = null;
     vi.stubGlobal(
       "fetch",
@@ -467,9 +467,10 @@ describe("[AFUP] updateAppAccess", () => {
     expect(captured!.url).toBe("https://alice.pryv.me/accesses/a%2F1");
     expect(captured!.options.method).toBe("PUT");
     expect((captured!.options.headers as Record<string, string>).Authorization).toBe("personal-tok");
+    // The core creates a missing stream from `defaultName` on update, so it must reach it.
     expect(JSON.parse(captured!.options.body as string)).toEqual({
       permissions: [
-        { streamId: "diary", level: "read" },
+        { streamId: "diary", level: "read", defaultName: "Journal", name: "Journal" },
         { streamId: "weight", level: "contribute" },
       ],
       clientData: { k: "v" },
@@ -483,6 +484,71 @@ describe("[AFUP] updateAppAccess", () => {
     await expect(
       updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", { permissions: [] }),
     ).rejects.toThrow(/update access failed \(403\)/);
+  });
+
+  const WIDENED = [
+    { streamId: "diary", level: "read" as const, name: "Diary" },
+    { streamId: "sleep", level: "contribute" as const, defaultName: "Sleep" },
+  ];
+  const refused = (id: string, status = 400) => ({
+    ok: false,
+    status,
+    text: async () => JSON.stringify({ error: { id, message: "refused" } }),
+  });
+  const updated = { ok: true, status: 200, json: async () => ({ access: { id: "a1", token: "kept-token", type: "app", permissions: [] } }) };
+
+  it("[AFU3] a core refusing the extras (400 invalid-parameters-format) gets one retry without them", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(refused("invalid-parameters-format"))
+      .mockResolvedValueOnce(updated);
+    vi.stubGlobal("fetch", fetchMock);
+    const access = await updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", {
+      permissions: WIDENED,
+      deviceName: "phone",
+    });
+    expect(access.token).toBe("kept-token");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).permissions).toEqual(WIDENED);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://alice.pryv.me/accesses/a1");
+    expect(fetchMock.mock.calls[1][1].method).toBe("PUT");
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+      permissions: [
+        { streamId: "diary", level: "read" },
+        { streamId: "sleep", level: "contribute" },
+      ],
+      deviceName: "phone",
+    });
+  });
+
+  it("[AFU4] retries at most once: a second refusal is thrown", async () => {
+    const fetchMock = vi.fn(async () => refused("invalid-parameters-format"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", { permissions: WIDENED }),
+    ).rejects.toThrow(/update access failed \(400\)/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("[AFU5] any other refusal is not retried", async () => {
+    for (const res of [refused("forbidden", 403), refused("unknown-referenced-resource"), { ok: false, status: 400, text: async () => "not json" }]) {
+      const fetchMock = vi.fn(async () => res);
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(
+        updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", { permissions: WIDENED }),
+      ).rejects.toThrow(/update access failed/);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("[AFU6] an invalid-parameters-format refusal is not retried when there was nothing to strip", async () => {
+    const fetchMock = vi.fn(async () => refused("invalid-parameters-format"));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      updateAppAccess("https://alice.pryv.me/", "personal-tok", "a1", {
+        permissions: [{ streamId: "diary", level: "read" }],
+      }),
+    ).rejects.toThrow(/update access failed \(400\)/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
