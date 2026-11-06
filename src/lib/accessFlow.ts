@@ -25,6 +25,7 @@
 import { httpUrlOrNull } from "./safeRedirect";
 import { inPopupOrFrame } from "./backTo";
 import { returnDecision } from "./returnTarget";
+import { apiErrorIds } from "./apiError";
 import type { CmcInvite, CmcInviteOutcome } from "./cmcInvites";
 
 export interface Permission {
@@ -303,9 +304,18 @@ export function sameClientData(
  * delete + create, the access keeps its id and its token, so whoever
  * already holds that token keeps a working credential.
  *
- * `name` / `defaultName` are display extras that check-app folds into each
- * permission; they are stripped before sending (older cores reject them on
- * update, and they are never stored anyway).
+ * The permissions are sent as check-app folded them, `name` / `defaultName`
+ * included: check-app leaves a `defaultName` only on a permission whose stream
+ * does not exist yet, and the core creates that stream from it on update, as
+ * it does on create (an app whose scope grew gets its new streams). The core
+ * strips both extras before saving the access.
+ *
+ * A core that refuses them on update (400 `invalid-parameters-format`) gets
+ * one retry with both stripped, so the access is still updated there; the
+ * new streams are then left for the app to create. The retry does not try to
+ * tell why the parameters were refused (error messages differ between
+ * cores): any `invalid-parameters-format` while extras were sent costs one
+ * stripped retry, and the retry's error is the one thrown.
  */
 export async function updateAppAccess(
   apiEndpoint: string,
@@ -320,13 +330,8 @@ export async function updateAppAccess(
     expires?: null;
   },
 ): Promise<AppAccess> {
-  const permissions = update.permissions.map((p) => {
-    const { name: _name, defaultName: _defaultName, ...rest } = p;
-    return rest;
-  });
-  const res = await fetch(
-    apiEndpoint.replace(/\/$/, "") + "/accesses/" + encodeURIComponent(accessId),
-    {
+  const put = (permissions: Permission[]) =>
+    fetch(apiEndpoint.replace(/\/$/, "") + "/accesses/" + encodeURIComponent(accessId), {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -334,11 +339,21 @@ export async function updateAppAccess(
         Authorization: personalToken,
       },
       body: JSON.stringify({ ...update, permissions }),
-    },
-  );
+    });
+  let res = await put(update.permissions);
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error("update access failed (" + res.status + "): " + body.slice(0, 200));
+    let body = await res.text();
+    const hasExtras = update.permissions.some((p) => p.name != null || p.defaultName != null);
+    if (res.status === 400 && hasExtras && apiErrorIds(body).includes("invalid-parameters-format")) {
+      res = await put(
+        update.permissions.map((p) => {
+          const { name: _name, defaultName: _defaultName, ...rest } = p;
+          return rest;
+        }),
+      );
+      if (!res.ok) body = await res.text();
+    }
+    if (!res.ok) throw new Error("update access failed (" + res.status + "): " + body.slice(0, 200));
   }
   const body = (await res.json()) as { access?: AppAccess };
   if (!body.access) throw new Error("update access: server returned no access");
