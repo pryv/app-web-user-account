@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.29.0 - 2026-11-06
+
+Re-approving an app whose scope grew now creates the new streams and keeps the access (issue #32),
+including a re-grant by the same delegate on an account they control.
+
 The account transfer below is in the code since 0.28.0, but it is shown only when the platform
 lists `transfer` in `features.autoDeletion.actions`, which no released open-pryv.io does yet.
 
