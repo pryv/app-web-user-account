@@ -312,7 +312,10 @@ export function sameClientData(
  *
  * A core that refuses them on update (400 `invalid-parameters-format`) gets
  * one retry with both stripped, so the access is still updated there; the
- * new streams are then left for the app to create.
+ * new streams are then left for the app to create. The retry does not try to
+ * tell why the parameters were refused (error messages differ between
+ * cores): any `invalid-parameters-format` while extras were sent costs one
+ * stripped retry, and the retry's error is the one thrown.
  */
 export async function updateAppAccess(
   apiEndpoint: string,

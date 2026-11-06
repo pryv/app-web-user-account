@@ -18,6 +18,7 @@ const flow = vi.hoisted(() => ({
   checkAppAccess: vi.fn(),
   createAppAccess: vi.fn(),
   deleteAppAccess: vi.fn(),
+  updateAppAccess: vi.fn(),
   closeOrRedirect: vi.fn(),
   deriveServiceInfoUrlFromPollUrl: vi.fn(() => "https://core.test/service/info"),
 }));
@@ -169,5 +170,42 @@ describe("[AAS] /auth while the account pages act for a controlled account", () 
       localStorage.clear();
       sessionStorage.clear();
     }
+  });
+
+  /** Acting for kid-a, re-granting the app on the acting account's own account (no delegation involved). */
+  async function regrantOnOwnAccount(existing: Record<string, unknown>) {
+    flow.checkAppAccess.mockResolvedValue({
+      checkedPermissions: PERMS,
+      mismatchingAccess: { id: "acc-own", token: "own-token", type: "app", permissions: [], clientData: null, ...existing },
+    });
+    flow.updateAppAccess.mockResolvedValue({ id: "acc-own", token: "own-token", type: "app", permissions: PERMS });
+    storeSession(true);
+    await openAuth();
+    (await screen.findByRole("button", { name: /continue as parent/i })).click();
+    await screen.findByText(/access to:/);
+    (screen.getByDisplayValue("parent") as HTMLInputElement).click();
+    screen.getByRole("button", { name: /continue for parent/i }).click();
+    await screen.findByText(/is requesting permission/);
+    expect(flow.checkAppAccess.mock.calls[0].slice(0, 2)).toEqual(["https://parent.core.test/", "parent-token"]);
+  }
+
+  it("[AAS6] re-granting on the acting account's own account updates its access in place", async () => {
+    await regrantOnOwnAccount({});
+    expect(screen.getByText(/Approving will update it/)).toBeTruthy();
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.updateAccessState).toHaveBeenCalled());
+    expect(flow.updateAppAccess.mock.calls[0].slice(0, 3)).toEqual(["https://parent.core.test/", "parent-token", "acc-own"]);
+    expect(flow.deleteAppAccess).not.toHaveBeenCalled();
+    expect(flow.createAppAccess).not.toHaveBeenCalled();
+    expect(flow.updateAccessState.mock.calls[0][1].token).toBe("own-token");
+  });
+
+  it("[AAS7] (guard) an access whose token check-app withheld is replaced, not updated", async () => {
+    await regrantOnOwnAccount({ token: undefined });
+    expect(screen.getByText(/Approving will replace it/)).toBeTruthy();
+    screen.getByRole("button", { name: /accept/i }).click();
+    await waitFor(() => expect(flow.createAppAccess).toHaveBeenCalled());
+    expect(flow.updateAppAccess).not.toHaveBeenCalled();
+    expect(flow.deleteAppAccess.mock.calls[0]).toEqual(["https://parent.core.test/", "parent-token", "acc-own"]);
   });
 });

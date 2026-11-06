@@ -117,20 +117,22 @@ const EXTERNAL_ID_MISMATCH = "external-id-mismatch";
 const EXTERNAL_ID_CHECK_UNAVAILABLE = "external-id-check-unavailable";
 
 /**
- * Whether a diverged access is updated in place (keeping its token, so
- * whoever holds it keeps a working credential) rather than replaced by
+ * Whether a diverged access is updated in place (keeping its id, its token
+ * and the accesses the app created with it) rather than replaced by
  * delete + create. Replaced when an update could not make it match:
  * - the app proposed its own token, and asked for THAT token;
+ * - check-app did not hand over its token: the update would answer without
+ *   it too (a delegate token is shown only the accesses it created), so the
+ *   app would receive nothing;
  * - the delegation lineage would change: the core stamps it only when an
  *   access is created, and keeps it as it is across updates. So an access
  *   granted through a delegation is updated only by a grant through the
- *   same delegate (`delegate`, the delegate of the current grant), and only
- *   when check-app handed over its token (the core shows it to the delegate
- *   token that created it, and the update answers with it on the same rule).
- *   Every other case is replaced: an unmarked access granted for through a
- *   delegation, a marked one the owner re-grants or another delegate
- *   re-grants, any grant from a session acting for another account
- *   (`acting`) that is not through a delegation;
+ *   same delegate (`delegate`, the delegate of the current grant), and an
+ *   unmarked one only by a grant that is not through a delegation (the
+ *   account's own token, a session acting for a controlled account granting
+ *   on its own account included). Replaced: an unmarked access granted for
+ *   through a delegation, a marked one the owner or another delegate
+ *   re-grants;
  * - its clientData differs: the core merges clientData on update, so stale
  *   keys would stay and the access would never match again.
  */
@@ -138,13 +140,12 @@ function updatesInPlace(
   mismatching: AppAccess | null | undefined,
   state: AccessState,
   delegate: string | null,
-  acting: boolean,
 ): boolean {
-  if (mismatching == null || state.token != null) return false;
+  if (mismatching == null || state.token != null || mismatching.token == null) return false;
   const lineageKept =
     delegate != null
-      ? childDelegateUsername(mismatching)?.toLowerCase() === delegate.toLowerCase() && mismatching.token != null
-      : !acting && !isDelegatedChild(mismatching);
+      ? childDelegateUsername(mismatching)?.toLowerCase() === delegate.toLowerCase()
+      : !isDelegatedChild(mismatching);
   return lineageKept && sameClientData(mismatching.clientData, state.clientData);
 }
 
@@ -1450,7 +1451,7 @@ function AuthFlow({
         return;
       }
       const mismatching = check.mismatchingAccess;
-      const updateInPlace = updatesInPlace(mismatching, accessState, grantFor?.delegate.username ?? null, actingAs != null);
+      const updateInPlace = updatesInPlace(mismatching, accessState, grantFor?.delegate.username ?? null);
       let access: AppAccess;
       if (mismatching != null && updateInPlace) {
         access = await updateAppAccess(apiEndpoint, personalToken, mismatching.id, {
@@ -1876,7 +1877,7 @@ function AuthFlow({
           expireAfterSeconds={reuse != null ? null : accessState.expireAfter ?? null}
           mismatchWarning={
             reuse != null ? t("consent.alreadyGranted") : check.mismatchingAccess ? (
-              updatesInPlace(check.mismatchingAccess, accessState, grantFor?.delegate.username ?? null, actingAs != null)
+              updatesInPlace(check.mismatchingAccess, accessState, grantFor?.delegate.username ?? null)
                 ? t("consent.mismatchWillUpdate")
                 : t("consent.mismatchWillReplace")
             ) : undefined
