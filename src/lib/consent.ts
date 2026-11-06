@@ -294,6 +294,8 @@ const LEVELS = new Set(["read", "contribute", "manage", "create-only", "none"]);
 /**
  * An entry key as an offer wrote it, with its stream id read as the core
  * stores it, so `s|:local:diary|read` names the same entry as `s|diary|read`.
+ * A trailing `|<level>` is read as the level (the key grammar cannot tell a
+ * stream id that ends in `|read` from a level, here as in `permissionKey`).
  */
 function canonicalOfferKey(key: string): string {
   if (!key.startsWith("s|")) return key;
