@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **Reset password: the "Back to sign in" links no longer carry `resetToken`** (#33). Both links of
+  the reset page were built from the page's whole query string, so the reset token reached the
+  sign-in URL and the browser history: still valid before the new password is set, spent after.
+  They now keep the other parameters (`backUrl`, `backLabel`, `pryvServiceInfoUrl`, …) and drop
+  `resetToken`.
+
 - **`/auth` with a consent form: an entry requested as `:local:<id>` keeps its resolved name and
   its "already granted" mark.** The consent form's entries were matched to check-app's answer by
   their stream id as written, and a core that reads `:local:<id>` as `<id>` in check-app answers

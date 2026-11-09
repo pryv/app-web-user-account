@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, resolveUserId } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
+import { signInSearch } from "../lib/signInSearch";
 
 /**
  * Two modes:
@@ -50,7 +51,7 @@ export default function ResetPassword() {
             ? t("reset.passwordChangedBody")
             : t("reset.linkSentBody")}
         </Alert>
-        <Link to={`/signin${search}`} className="text-primary hover:underline">
+        <Link to={`/signin${signInSearch(search)}`} className="text-primary hover:underline">
           {t("reset.backToSignIn")}
         </Link>
       </Card>
@@ -78,7 +79,7 @@ export default function ResetPassword() {
         </Button>
       </form>
       <div className="mt-4 text-sm">
-        <Link to={`/signin${search}`} className="text-primary hover:underline">
+        <Link to={`/signin${signInSearch(search)}`} className="text-primary hover:underline">
           {t("reset.backToSignIn")}
         </Link>
       </div>
