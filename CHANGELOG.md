@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.29.1 - 2026-11-09
+
+The reset page no longer carries the reset token to the sign-in page (issue #33), and a consent
+entry requested as `:local:<id>` keeps its resolved name.
+
 ### Fixed
 
 - **Reset password: the "Back to sign in" links no longer carry `resetToken`** (#33). Both links of
