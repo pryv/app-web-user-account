@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.29.2 - 2026-11-10
+
+The OAuth2 consent page acknowledges a change of identifier within one mode, so a re-consent that
+replaces the app's pseudonym by another is no longer refused.
+
 ### Fixed
 
 - **OAuth2 consent: a change of identifier within one mode can be acknowledged.** The core reports
