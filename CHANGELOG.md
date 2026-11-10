@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **OAuth2 consent: the owner's address used by another app reads as such, with an extension
+  slot.** From open-pryv.io 2.0.0-rc.79 the core refuses a consent at one of the signed-in
+  account's own address aliases that another app's grant holds with `403` `reason:
+  "address-alias-held"`, at the signed-in offer or at Accept. The page shows its own wording for it
+  (`oauth.errorAddressAliasHeld`) instead of the core's message, and renders the new
+  `src/extensions/AddressAliasHelp.tsx` slot under it (nothing by default; a deployment can point to
+  where it lists the account's addresses). An older core's `audience-account-mismatch` keeps the
+  core's message, without the slot.
+
 ## 0.29.2 - 2026-11-10
 
 The OAuth2 consent page acknowledges a change of identifier within one mode, so a re-consent that

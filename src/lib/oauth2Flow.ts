@@ -337,13 +337,27 @@ export function isStaleConsentError(err: unknown): boolean {
 }
 
 /**
- * The page's own wording for a refusal the user can fix on the screen, or
- * null to show the core's message (which already names what went wrong, e.g.
+ * True when the core refused the consent because the address the app was
+ * given is one of the signed-in account's own address aliases, already used
+ * by another app (`403`, `reason: "address-alias-held"`, at the signed-in
+ * offer or at Accept). An older core answers `audience-account-mismatch`
+ * there, shown with the core's message.
+ */
+export function isAddressAliasHeldError(err: unknown): boolean {
+  const e = err as OAuthFlowError | null;
+  return e != null && e.status === 403 && e.reason === "address-alias-held";
+}
+
+/**
+ * The page's own wording for a refusal the user can act on, or null to show
+ * the core's message (which already names what went wrong, e.g.
  * `permission-level-conflict`, `keep-one-stream`). `consent-widens-offer`: an
  * unticked entry sits under one kept, so it would be reached anyway; a core
- * that sends no `reason` is recognised by its wording.
+ * that sends no `reason` is recognised by its wording. `address-alias-held`:
+ * the address is the account's own, used by another app.
  */
 export function consentRefusalKey(err: unknown): string | null {
+  if (isAddressAliasHeldError(err)) return "oauth.errorAddressAliasHeld";
   const e = err as OAuthFlowError | null;
   if (e == null || e.status !== 400) return null;
   const widens = e.reason != null

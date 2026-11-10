@@ -36,6 +36,11 @@ vi.mock("../lib/returnTarget", async (importOriginal) => ({
   navigateTo: nav.navigateTo,
 }));
 
+// The address-alias help slot, filled the way a fork fills it.
+vi.mock("../extensions/AddressAliasHelp", () => ({
+  default: () => <p id="forkAddressAliasHelp">fork help</p>,
+}));
+
 import Oauth2Authorize from "./Oauth2Authorize";
 import { _setDeployedSettingsForTest } from "../lib/deployedSettings";
 
@@ -346,6 +351,41 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     await screen.findByText(/Untick the containing entry too, or keep this one ticked/);
     expect(screen.queryByText(/widen the offer/)).toBeNull();
     expect(acceptButton().disabled).toBe(false);
+  });
+
+  it("[OACS16] the owner's address used by another app, at Accept: the page's own copy and the fork's help slot", async () => {
+    mockFetch(composingCore({}, () => ({
+      status: 403,
+      body: { error: "access_denied", error_description: "core text", reason: "address-alias-held" },
+    })));
+    renderPage();
+    await signInToConsent();
+    expect(document.getElementById("forkAddressAliasHelp")).toBeNull();
+    fireEvent.click(acceptButton());
+    await screen.findByText(/already used by another app/);
+    expect(screen.queryByText("core text")).toBeNull();
+    expect(document.getElementById("forkAddressAliasHelp")).not.toBeNull();
+  });
+
+  it("[OACS17] the same refusal at the signed-in offer, and the shared mismatch shows no help slot", async () => {
+    const held = composingCore();
+    mockFetch((url, body) => (url.endsWith("/oauth2/authorize/offer") && body.userToken != null
+      ? { status: 403, body: { error: "access_denied", error_description: "core text", reason: "address-alias-held" } }
+      : held(url, body)));
+    renderPage();
+    await signIn();
+    await screen.findByText(/already used by another app/);
+    expect(document.getElementById("oauthComposeError")?.querySelector("#forkAddressAliasHelp")).not.toBeNull();
+    cleanup();
+
+    const shared = composingCore();
+    mockFetch((url, body) => (url.endsWith("/oauth2/authorize/offer") && body.userToken != null
+      ? { status: 403, body: { error: "access_denied", error_description: "the requested resource names another account's address", reason: "audience-account-mismatch" } }
+      : shared(url, body)));
+    renderPage();
+    await signIn();
+    await screen.findByText(/names another account's address/);
+    expect(document.getElementById("forkAddressAliasHelp")).toBeNull();
   });
 
   it("[OACS14] level-conflict and keep-one-stream refusals show the core's message", async () => {

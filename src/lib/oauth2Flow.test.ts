@@ -12,6 +12,7 @@ import {
   endConsentSession,
   isStaleConsentError,
   consentRefusalKey,
+  isAddressAliasHeldError,
   subjectChangeKey,
   wrongCoreOf,
   type OAuthFlowError,
@@ -592,6 +593,17 @@ describe("[OACP] composed offer once signed in", () => {
     expect(consentRefusalKey(mk(400, "keep at least one stream", "keep-one-stream"))).toBeNull();
     expect(consentRefusalKey(mk(500, "x", "consent-widens-offer"))).toBeNull();
     expect(consentRefusalKey(null)).toBeNull();
+  });
+
+  it("[OACP11] the owner's address used by another app gets the page's own copy; the shared mismatch keeps the core's message", () => {
+    const mk = (status: number, reason?: string) =>
+      Object.assign(new Error("core message"), { status, oauthError: "access_denied", reason }) as OAuthFlowError;
+    expect(consentRefusalKey(mk(403, "address-alias-held"))).toBe("oauth.errorAddressAliasHeld");
+    expect(isAddressAliasHeldError(mk(403, "address-alias-held"))).toBe(true);
+    expect(consentRefusalKey(mk(403, "audience-account-mismatch"))).toBeNull();
+    expect(isAddressAliasHeldError(mk(403, "audience-account-mismatch"))).toBe(false);
+    expect(isAddressAliasHeldError(mk(400, "address-alias-held"))).toBe(false);
+    expect(isAddressAliasHeldError(null)).toBe(false);
   });
 
   it("[OACP8] reads the core's reason marker first, the wording only when there is none", async () => {
