@@ -553,6 +553,9 @@ export default function Oauth2Authorize() {
               className="mb-4 rounded border border-info/40 bg-info/10 px-3 py-2 text-sm"
             >
               <p className="mb-1 font-medium">{t(changeKey)}</p>
+              {subjectChange?.from === "pseudonym" && (
+                <p id="oauthSubjectChangeOldIdentifier" className="mb-1">{t("oauth.subjectChangeOldIdentifierEnds")}</p>
+              )}
               <p className="mb-2">{t("oauth.subjectChangeReplaces")}</p>
               <label className="flex items-center gap-2">
                 <input

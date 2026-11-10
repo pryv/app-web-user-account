@@ -649,6 +649,7 @@
     "reconsentNoticeChoice": "You have already allowed this app. The list shows what it holds today (marked as already allowed) together with what it asks for now. Untick an entry to take it away from the app.",
     "subjectChangeToAccount": "Until now this app has known you by a pseudonym. If you accept, it will see your account identity and can link it to what it already holds about you.",
     "subjectChangeToPseudonym": "This app already knows your account. Switching it to a pseudonym will not hide you from it.",
+    "subjectChangeOldIdentifierEnds": "The pseudonym this app knows you by today then stops reaching your account. If it is one of your app addresses, it is removed from your account.",
     "subjectChangeNewIdentifier": "If you accept, this app will know you by a new identifier from now on, replacing the one it knows you by today.",
     "subjectChangeReplaces": "Accepting ends the app's current access on every device and replaces it with the new one.",
     "subjectChangeAcknowledge": "I understand",

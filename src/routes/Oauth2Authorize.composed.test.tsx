@@ -254,6 +254,7 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     const warning = document.getElementById("oauthSubjectChange");
     expect(warning?.textContent).toMatch(/known you by a pseudonym/);
     expect(warning?.textContent).toMatch(/link it to what it already holds/);
+    expect(document.getElementById("oauthSubjectChangeOldIdentifier")?.textContent).toMatch(/stops reaching your account/);
     expect(acceptButton().disabled).toBe(true);
     const ack = document.getElementById("oauthAcknowledgeSubjectChange") as HTMLInputElement;
     expect(ack.checked).toBe(false);
@@ -278,6 +279,7 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     renderPage();
     await signInToConsent();
     expect(document.getElementById("oauthSubjectChange")?.textContent).toMatch(/new identifier/);
+    expect(document.getElementById("oauthSubjectChangeOldIdentifier")?.textContent).toMatch(/stops reaching your account.*removed from your account/);
     expect(acceptButton().disabled).toBe(true);
     fireEvent.click(document.getElementById("oauthAcknowledgeSubjectChange") as HTMLInputElement);
     fireEvent.click(acceptButton());
@@ -294,6 +296,7 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     renderPage();
     await signInToConsent();
     expect(document.getElementById("oauthSubjectChange")?.textContent).toMatch(/already knows your account/);
+    expect(document.getElementById("oauthSubjectChangeOldIdentifier")).toBeNull();
     expect(document.getElementById("oauthIdentityNotice")?.textContent).toMatch(/pseudonym/);
     expect(document.getElementById("oauthLinkabilityNotice")?.textContent).toMatch(/can still be enough to tell who you are/);
   });

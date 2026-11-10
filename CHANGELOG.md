@@ -13,6 +13,14 @@
   where it lists the account's addresses). An older core's `audience-account-mismatch` keeps the
   core's message, without the slot.
 
+### Changed
+
+- **OAuth2 consent: a change of subject away from a pseudonym says the old one stops working.**
+  When the app knows the account by a pseudonym today (`subjectChange.from: "pseudonym"`), the core
+  releases that pseudonym with the replaced grant: it no longer reaches the account, and an address
+  alias the owner minted for the app is removed from the account. The warning now says so
+  (`oauth.subjectChangeOldIdentifierEnds`).
+
 ## 0.29.2 - 2026-11-10
 
 The OAuth2 consent page acknowledges a change of identifier within one mode, so a re-consent that
