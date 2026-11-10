@@ -652,6 +652,7 @@
     "subjectChangeNewIdentifier": "If you accept, this app will know you by a new identifier from now on, replacing the one it knows you by today.",
     "subjectChangeReplaces": "Accepting ends the app's current access on every device and replaces it with the new one.",
     "subjectChangeAcknowledge": "I understand",
+    "errorAddressAliasHeld": "This address is already used by another app. Give this app another of your addresses, or free this one in your account.",
     "errorConsentOutOfDate": "This consent screen is out of date: the app's access changed since it was shown. Go back to the app and start the authorization again.",
     "backToApp": "Back to the app",
     "errorWidensOffer": "One of the entries you unticked sits inside an entry you kept, so the app would still reach it through that one. Untick the containing entry too, or keep this one ticked."

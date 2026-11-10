@@ -36,6 +36,7 @@ import {
   identityNoticeKey,
   isStaleConsentError,
   consentRefusalKey,
+  isAddressAliasHeldError,
   subjectChangeKey,
   wrongCoreOf,
   type ComposedConsent,
@@ -46,6 +47,7 @@ import {
 } from "../lib/oauth2Flow";
 import { trustedApiOrigins } from "../lib/trustedOrigins";
 import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
+import AddressAliasHelp from "../extensions/AddressAliasHelp";
 
 interface InitResult {
   oauthState: OAuthState | null;
@@ -180,6 +182,9 @@ export default function Oauth2Authorize() {
   const [composed, setComposed] = useState<{ offer: OAuthOffer; consent: ComposedConsent } | null>(null);
   const [composeDone, setComposeDone] = useState(false);
   const [composeError, setComposeError] = useState<string | null>(null);
+  // The refusal shown is "this address of yours is used by another app": the
+  // address-alias help slot renders under it.
+  const [aliasHeld, setAliasHeld] = useState(false);
   // Replies for a session that is no longer the page's are dropped.
   const sessionRef = useRef<string | null>(null);
   // The user's explicit agreement to a change of identity mode.
@@ -262,6 +267,7 @@ export default function Oauth2Authorize() {
     setComposed(null);
     setComposeDone(false);
     setComposeError(null);
+    setAliasHeld(false);
     oauth2FetchOffer({ pryvApi, signedState, username: u, userToken: token })
       .then((r) => {
         if (sessionRef.current !== token) return;
@@ -279,7 +285,9 @@ export default function Oauth2Authorize() {
           setOtherCore(elsewhere);
           return;
         }
-        setComposeError(err instanceof Error ? err.message : t("cmc.errorReadOffer"));
+        const key = consentRefusalKey(err);
+        setAliasHeld(isAddressAliasHeldError(err));
+        setComposeError(key != null ? t(key) : err instanceof Error ? err.message : t("cmc.errorReadOffer"));
       });
   }
 
@@ -299,6 +307,7 @@ export default function Oauth2Authorize() {
     if (!offer || !personalToken) return;
     setBusy("accept");
     setError(null);
+    setAliasHeld(false);
     try {
       // Locked entries (all-or-nothing offers, mandatory entries) are
       // always granted; ticked optional entries follow the checkboxes.
@@ -347,6 +356,7 @@ export default function Oauth2Authorize() {
         setStale(true);
         setError(t("oauth.errorConsentOutOfDate"));
       } else if (consentRefusalKey(err) != null) {
+        setAliasHeld(isAddressAliasHeldError(err));
         setError(t(consentRefusalKey(err) as string));
       } else {
         setError(err instanceof Error ? err.message : t("oauth.errorAcceptFailed"));
@@ -414,6 +424,7 @@ export default function Oauth2Authorize() {
       <Card>
         <div id="oauthComposeError">
           <Alert>{composeError}</Alert>
+          {aliasHeld && <AddressAliasHelp />}
         </div>
         {error && <Alert>{error}</Alert>}
         <Button
@@ -556,6 +567,7 @@ export default function Oauth2Authorize() {
             </div>
           )}
           {error && <Alert>{error}</Alert>}
+          {error && aliasHeld && <AddressAliasHelp />}
         </ConsentPanel>
       </Card>
     );
