@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- **OAuth2 consent: a change of identifier within one mode can be acknowledged.** The core reports
+  `subjectChange: { "from": "pseudonym", "to": "pseudonym" }` when a consent replaces the app's
+  pseudonym by another, for example at an account's address alias over a grant that carries a
+  minted alias, or at the username's address over a grant that adopted an address alias. It
+  requires `acknowledgeSubjectChange` for it. The page dropped such a change as malformed, so it
+  never asked for the acknowledgement and the core refused every such consent
+  (`subject-change-unacknowledged`). The page now shows it with its own wording
+  (`oauth.subjectChangeNewIdentifier`) and the "I understand" box, as for a change of mode.
+
 ## 0.29.1 - 2026-11-09
 
 The reset page no longer carries the reset token to the sign-in page (issue #33), and a consent

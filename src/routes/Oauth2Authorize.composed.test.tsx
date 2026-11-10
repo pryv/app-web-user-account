@@ -264,6 +264,23 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     expect(accept.acknowledgeSubjectChange).toBe(true);
   });
 
+  it("[OACS15] a pseudonym replaced by another (a per-user address) is acknowledged too", async () => {
+    const fetchMock = mockFetch(composingCore({
+      offer: { ...COMPOSED, randomAlias: true },
+      currentGrant: { subjectMode: "pseudonym" },
+      subjectChange: { from: "pseudonym", to: "pseudonym" },
+    }));
+    renderPage();
+    await signInToConsent();
+    expect(document.getElementById("oauthSubjectChange")?.textContent).toMatch(/new identifier/);
+    expect(acceptButton().disabled).toBe(true);
+    fireEvent.click(document.getElementById("oauthAcknowledgeSubjectChange") as HTMLInputElement);
+    fireEvent.click(acceptButton());
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledTimes(1));
+    const [accept] = bodiesOf(fetchMock, "/oauth2/authorize/accept");
+    expect(accept.acknowledgeSubjectChange).toBe(true);
+  });
+
   it("[OACS4] the other direction has its own copy, and a pseudonym offer says what an alias does not hide", async () => {
     mockFetch(composingCore({
       offer: { ...COMPOSED, randomAlias: true },
