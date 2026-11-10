@@ -540,10 +540,21 @@ describe("[OACP] composed offer once signed in", () => {
       offer: OFFER,
       shownDigest: "dig-2",
       currentGrant: { subjectMode: "other" },
-      subjectChange: { from: "account", to: "account" },
+      subjectChange: { from: "account", to: "other" },
     });
     const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "tok" });
     expect(r.composed).toEqual({ shownDigest: "dig-2", currentGrant: null, subjectChange: null });
+  });
+
+  it("[OACP10] keeps a change within one mode (a pseudonym replaced by another)", async () => {
+    mockFetchOnce(200, {
+      offer: OFFER,
+      shownDigest: "dig-3",
+      currentGrant: { subjectMode: "pseudonym" },
+      subjectChange: { from: "pseudonym", to: "pseudonym" },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t", username: "alice", userToken: "tok" });
+    expect(r.composed?.subjectChange).toEqual({ from: "pseudonym", to: "pseudonym" });
   });
 
   it("[OACP5] Accept posts shownDigest and the acknowledgement only when given", async () => {
@@ -608,6 +619,7 @@ describe("[OACP] composed offer once signed in", () => {
   it("[OACP7] picks the subject-change copy by direction", () => {
     expect(subjectChangeKey({ from: "pseudonym", to: "account" })).toBe("oauth.subjectChangeToAccount");
     expect(subjectChangeKey({ from: "account", to: "pseudonym" })).toBe("oauth.subjectChangeToPseudonym");
+    expect(subjectChangeKey({ from: "pseudonym", to: "pseudonym" })).toBe("oauth.subjectChangeNewIdentifier");
     expect(subjectChangeKey(null)).toBeNull();
   });
 });

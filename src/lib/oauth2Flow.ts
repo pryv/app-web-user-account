@@ -309,12 +309,16 @@ function parseSubjectChange(v: unknown): ComposedConsent["subjectChange"] {
   const o = v as Record<string, unknown>;
   const from = asSubjectMode(o.from);
   const to = asSubjectMode(o.to);
-  return from == null || to == null || from === to ? null : { from, to };
+  // A change within one mode is a real change too (the app's pseudonym is
+  // replaced by another, e.g. a per-user address): the core still requires
+  // its acknowledgement, so it is never dropped.
+  return from == null || to == null ? null : { from, to };
 }
 
-/** The locale key of the warning shown for a change of identity mode. */
+/** The locale key of the warning shown for a change of identity. */
 export function subjectChangeKey(change: ComposedConsent["subjectChange"]): string | null {
   if (change == null) return null;
+  if (change.from === change.to) return "oauth.subjectChangeNewIdentifier";
   return change.to === "account" ? "oauth.subjectChangeToAccount" : "oauth.subjectChangeToPseudonym";
 }
 

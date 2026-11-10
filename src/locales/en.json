@@ -649,6 +649,7 @@
     "reconsentNoticeChoice": "You have already allowed this app. The list shows what it holds today (marked as already allowed) together with what it asks for now. Untick an entry to take it away from the app.",
     "subjectChangeToAccount": "Until now this app has known you by a pseudonym. If you accept, it will see your account identity and can link it to what it already holds about you.",
     "subjectChangeToPseudonym": "This app already knows your account. Switching it to a pseudonym will not hide you from it.",
+    "subjectChangeNewIdentifier": "If you accept, this app will know you by a new identifier from now on, replacing the one it knows you by today.",
     "subjectChangeReplaces": "Accepting ends the app's current access on every device and replaces it with the new one.",
     "subjectChangeAcknowledge": "I understand",
     "errorConsentOutOfDate": "This consent screen is out of date: the app's access changed since it was shown. Go back to the app and start the authorization again.",
