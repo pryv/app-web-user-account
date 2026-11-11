@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`trustedApiOrigins` accepts a one-label wildcard, `https://*.example.com[:port]`**
+  (`settings.json` and `VITE_OAUTH_TRUSTED_API_ORIGINS`), for a platform whose accounts are reached
+  at their own host (`https://{username}.example.com/`, e.g. an open-pryv.io core with
+  `oauth.perUserIssuer` on), where the consent page's `pryvApi` is a different origin per account.
+  It matches every host exactly one label under `example.com` on that scheme and port: never
+  `example.com` itself, never two labels down, https only, at least two labels after `*.` (never a
+  top-level domain), no IP address. There is no public-suffix list: list only a domain you control
+  (`*.co.uk` or `*.github.io` would trust every site under it). It applies to the consent page's
+  `pryvApi` check and to
+  access-request poll URLs. Before, such an entry was kept as a literal and matched nothing. `*`
+  anywhere else still makes the entry invalid. `returnPolicy.trustedOrigins` stays exact.
+  Helpers: `src/lib/originMatch.ts` (`trustedOriginEntry`, `originTrusted`).
+
 ## 0.31.1 - 2026-11-11
 
 The reset password page drops the reset token from the URL once read, and takes a `?username=`

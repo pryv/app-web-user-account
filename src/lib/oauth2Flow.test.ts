@@ -170,6 +170,14 @@ describe("assertTrustedPryvApi", () => {
     ).toThrow(/allowlist/);
   });
 
+  it("[OTW1] a one-label wildcard admits an account's own host, never the apex or two labels down", () => {
+    const trustedOrigins = ["https://*.example.com"];
+    expect(() => assertTrustedPryvApi("https://alice.example.com/", { trustedOrigins, selfOrigin: self })).not.toThrow();
+    for (const bad of ["https://example.com/", "https://a.b.example.com/", "https://alice.example.com.evil.net/", "https://alice.example.com:8443/"]) {
+      expect(() => assertTrustedPryvApi(bad, { trustedOrigins, selfOrigin: self }), bad).toThrow(/allowlist/);
+    }
+  });
+
   it("falls back to same registrable-domain when no allowlist is set", () => {
     expect(() =>
       assertTrustedPryvApi("https://core.example.com/", { selfOrigin: self }),

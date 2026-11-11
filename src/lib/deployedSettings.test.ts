@@ -152,6 +152,14 @@ describe("[DSET] deployed settings", () => {
     expect(parseDeployedSettings([])).toEqual({});
     expect(parseDeployedSettings(null)).toEqual({});
   });
+
+  it("[DSE5] trustedApiOrigins keeps a one-label wildcard and drops a wide or insecure one", () => {
+    expect(
+      parseDeployedSettings({
+        trustedApiOrigins: ["https://*.Example.com/", "https://*.com", "http://*.example.com", "https://*.*.example.com", "https://core.example.net"],
+      }),
+    ).toEqual({ trustedApiOrigins: ["https://*.example.com", "https://core.example.net"] });
+  });
 });
 
 describe("[THMS] theme settings", () => {

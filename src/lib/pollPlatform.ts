@@ -14,6 +14,7 @@
 
 import { BOOT_FETCH_TIMEOUT_MS, getAllowedPlatforms, sameUrl } from "./deployedSettings";
 import { trustedApiOrigins } from "./trustedOrigins";
+import { originTrusted } from "./originMatch";
 
 /** The service-info fields that name a platform's origins. */
 export interface PlatformServiceInfo {
@@ -45,7 +46,7 @@ function parse(raw: unknown): URL | null {
 /**
  * Whether `pollUrl` is an access-request URL served from an origin the
  * platform's service info declares, or from one of `extraOrigins` (the
- * operator's `trustedApiOrigins`).
+ * operator's `trustedApiOrigins`, exact origins or one-label wildcards).
  */
 export function pollUrlOnPlatform(
   pollUrl: string,
@@ -57,7 +58,8 @@ export function pollUrlOnPlatform(
   if (poll.username || poll.password || poll.search || poll.hash) return false;
   if (!POLL_PATH.test(poll.pathname)) return false;
 
-  const origins = new Set(extraOrigins);
+  if (originTrusted(poll.origin, extraOrigins)) return true;
+  const origins = new Set<string>();
   for (const field of [info.register, info.access]) {
     const u = parse(field);
     if (u && httpsOrLoopback(u)) origins.add(u.origin);

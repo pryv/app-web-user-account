@@ -196,4 +196,19 @@ describe("[PORE] resolvePollPlatform", () => {
     const got = await resolvePollPlatform("https://core2.example.com/reg/access/k1", null, fetchImpl);
     expect(got?.serviceInfoUrl).toBe(URL_);
   });
+
+  it("[PR09] a one-label wildcard in trustedApiOrigins admits one label down only", async () => {
+    const URL_ = "https://reg.example.com/service/info";
+    _setDeployedSettingsForTest({
+      allowedServiceInfoUrls: [URL_],
+      trustedApiOrigins: ["https://*.cores.example.net"],
+    });
+    const fetchImpl = serving({
+      [URL_]: { register: "https://reg.example.com/", api: "https://core.example.com/{username}/" },
+    });
+    const ok = await resolvePollPlatform("https://c1.cores.example.net/reg/access/k1", null, fetchImpl);
+    expect(ok?.serviceInfoUrl).toBe(URL_);
+    expect(await resolvePollPlatform("https://cores.example.net/reg/access/k1", null, fetchImpl)).toBeNull();
+    expect(await resolvePollPlatform("https://a.c1.cores.example.net/reg/access/k1", null, fetchImpl)).toBeNull();
+  });
 });
