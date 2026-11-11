@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.32.0 - 2026-11-11
+
+`trustedApiOrigins` accepts a one-label wildcard, for platforms whose accounts have their own host.
 
 ### Added
 
