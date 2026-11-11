@@ -4,7 +4,7 @@
  * with `clientData.oauth.client`, server-owned:
  *
  * - `{ name?, host, url, origin? }`: a client known by its metadata document
- *   (`origin: "metadata-document"` from open-pryv.io 2.0.0-rc.79). The name
+ *   (`origin: "metadata-document"` from open-pryv.io 2.0.0-rc.80). The name
  *   is the document's own claim; only the host is checked, so a screen shows
  *   the host next to the name, never the name alone.
  * - `{ name?, origin: "operator" }`: a client the operator registered; the

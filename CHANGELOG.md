@@ -1,13 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.31.0 - 2026-11-11
+
+Connected apps lists each OAuth app once, by the name the core stamps on its accesses, with its
+sessions folded under its consent.
 
 ### Changed
 
 - **Connected apps: an OAuth app is listed by its name, once.** A row was named by the raw access
   name (`oauth-grant:<clientId>`, `oauth:<clientId>`), and each session of the app was a row of its
   own. A row now reads the name the core stamps on the access (`clientData.oauth.client`): the name
-  the operator registered for a registry client (open-pryv.io 2.0.0-rc.79), or a metadata-document
+  the operator registered for a registry client (open-pryv.io 2.0.0-rc.80), or a metadata-document
   client's name with its host beside it, never the name alone (its host alone when it has none).
   An access without a stamp (made before the core stamped it) shows its client id, or its access
   name for a metadata-document client (whose row key `url~…` is no name). Each session of the app
