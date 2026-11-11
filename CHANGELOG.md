@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.32.1 - 2026-11-11
+
+The OAuth2 consent page ends its own session when the core refuses the authorization's signed state.
 
 ### Fixed
 
