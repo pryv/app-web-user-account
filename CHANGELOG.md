@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.31.1 - 2026-11-11
+
+The reset password page drops the reset token from the URL once read, and takes a `?username=`
+hint.
 
 ### Fixed
 
