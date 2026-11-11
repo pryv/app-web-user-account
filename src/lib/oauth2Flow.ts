@@ -338,6 +338,18 @@ export function isStaleConsentError(err: unknown): boolean {
 }
 
 /**
+ * True when the core refused the signed state itself: `400 invalid_request`,
+ * `signed state <reason>` (`malformed`, `bad_signature`, `expired`,
+ * `not_yet_valid`), at the offer, Accept or Refuse. Nothing on the page can
+ * succeed with that state any more.
+ */
+export function isInvalidStateError(err: unknown): boolean {
+  const e = err as OAuthFlowError | null;
+  if (e == null || e.status !== 400 || e.oauthError !== "invalid_request") return false;
+  return /^signed state [a-z_]+$/.test(e.message ?? "");
+}
+
+/**
  * True when the core refused the consent because the address the app was
  * given is one of the signed-in account's own address aliases, already used
  * by another app (`403`, `reason: "address-alias-held"`, at the signed-in

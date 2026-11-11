@@ -35,6 +35,7 @@ import {
   endConsentSession,
   identityNoticeKey,
   isStaleConsentError,
+  isInvalidStateError,
   consentRefusalKey,
   isAddressAliasHeldError,
   subjectChangeKey,
@@ -303,6 +304,20 @@ export default function Oauth2Authorize() {
     await endConsentSession({ endpoint: sessionEndpoint, token: personalToken });
   }
 
+  /**
+   * The core refused the signed state itself (forged, malformed or expired):
+   * nothing on this page can succeed with it. End the session the page opened,
+   * so the dead end leaves nothing behind in the tab, and show the error card
+   * a by-reference offer gets for the same state before sign-in.
+   */
+  async function endOnInvalidState(err: unknown) {
+    await endOwnSession();
+    sessionRef.current = null;
+    setPersonalToken(null);
+    setSessionEndpoint(null);
+    setFetchError({ state: signedState, message: err instanceof Error ? err.message : t("oauth.invalidRequest") });
+  }
+
   async function accept() {
     if (!offer || !personalToken) return;
     setBusy("accept");
@@ -345,6 +360,8 @@ export default function Oauth2Authorize() {
         // new sign-in would end here again. Keep the session (ended at
         // "Back to the app") and say where the account is.
         setOtherCore(elsewhere);
+      } else if (isInvalidStateError(err)) {
+        await endOnInvalidState(err);
       } else if ((err as OAuthFlowError)?.status === 401) {
         // The session no longer authenticates: most likely a consent on
         // another device shared it and ended it when it finished. Back to
@@ -374,7 +391,8 @@ export default function Oauth2Authorize() {
       assertHttpUrl(redirectTo);
       navigateTo(redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : t("oauth.errorRefuseFailed"));
+      if (isInvalidStateError(err)) await endOnInvalidState(err);
+      else setError(err instanceof Error ? err.message : t("oauth.errorRefuseFailed"));
       setBusy(null);
     }
   }

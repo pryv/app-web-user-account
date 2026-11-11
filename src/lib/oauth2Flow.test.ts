@@ -11,6 +11,7 @@ import {
   identityNoticeKey,
   endConsentSession,
   isStaleConsentError,
+  isInvalidStateError,
   consentRefusalKey,
   isAddressAliasHeldError,
   subjectChangeKey,
@@ -273,6 +274,18 @@ describe("oauth2Accept", () => {
       userToken: "tok-1",
       grantedPermissions: granted,
     });
+  });
+
+  it("[OISE] isInvalidStateError: the core's signed-state refusals only", async () => {
+    for (const reason of ["bad_signature", "malformed", "expired", "not_yet_valid"]) {
+      mockFetchOnce(400, { error: "invalid_request", error_description: `signed state ${reason}` });
+      expect(isInvalidStateError(await oauth2Accept(opts).catch((e) => e)), reason).toBe(true);
+    }
+    mockFetchOnce(400, { error: "invalid_request", error_description: "userToken is required" });
+    expect(isInvalidStateError(await oauth2Accept(opts).catch((e) => e))).toBe(false);
+    mockFetchOnce(400, { error: "invalid_scope", error_description: "signed state bad_signature" });
+    expect(isInvalidStateError(await oauth2Accept(opts).catch((e) => e))).toBe(false);
+    expect(isInvalidStateError(null)).toBe(false);
   });
 
   it("propagates RFC-shaped errors with oauthError + status", async () => {

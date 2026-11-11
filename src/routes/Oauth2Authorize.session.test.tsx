@@ -252,6 +252,62 @@ describe("[OASS] Oauth2Authorize personal session", () => {
     expect(document.getElementById("oauthRefuse")).not.toBeNull();
   });
 
+  function refusingState(endpoint: "accept" | "refuse", reason: string): Route {
+    return (url) =>
+      url.endsWith(`/oauth2/authorize/${endpoint}`)
+        ? { status: 400, body: { error: "invalid_request", error_description: `signed state ${reason}` } }
+        : coreRoutes(url);
+  }
+
+  it("[OAS10] an Accept refused for a forged state ends the page's session and shows the error card", async () => {
+    const fetchMock = mockFetch(refusingState("accept", "bad_signature"));
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await waitFor(() => expect(document.getElementById("oauthInitError")).not.toBeNull());
+    expect(document.getElementById("oauthInitError")!.textContent).toContain("signed state bad_signature");
+    expect(logoutCalls(fetchMock)).toHaveLength(1);
+    expect(document.getElementById("oauthAccept")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^sign in$/i })).toBeNull();
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+  });
+
+  it("[OAS11] a Reject refused for an expired state does the same", async () => {
+    const fetchMock = mockFetch(refusingState("refuse", "expired"));
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthRefuse")!);
+    await waitFor(() => expect(document.getElementById("oauthInitError")).not.toBeNull());
+    expect(logoutCalls(fetchMock)).toHaveLength(1);
+    expect(nav.navigateTo).not.toHaveBeenCalled();
+  });
+
+  it("[OAS12] a session this app keeps open in this browser is left alone on a refused state too", async () => {
+    localStorage.setItem("pryv.session.apiEndpoint", `https://${TOKEN}@core.other-tld.net/alice/`);
+    localStorage.setItem("pryv.session.serviceInfoUrl", CORE + "/reg/service/info");
+    const fetchMock = mockFetch(refusingState("accept", "bad_signature"));
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await waitFor(() => expect(document.getElementById("oauthInitError")).not.toBeNull());
+    expect(logoutCalls(fetchMock)).toHaveLength(0);
+  });
+
+  it("[OAS13] other 400 answers keep the session and the screen", async () => {
+    const fetchMock = mockFetch((url) =>
+      url.endsWith("/oauth2/authorize/accept")
+        ? { status: 400, body: { error: "invalid_request", error_description: "userToken is required" } }
+        : coreRoutes(url),
+    );
+    renderState(CARRIED_STATE);
+    await signIn();
+    fireEvent.click(document.getElementById("oauthAccept")!);
+    await screen.findByText(/userToken is required/);
+    expect(document.getElementById("oauthInitError")).toBeNull();
+    expect(document.getElementById("oauthAccept")).not.toBeNull();
+    expect(logoutCalls(fetchMock)).toHaveLength(0);
+  });
+
   it("[OAS6] Cancel before sign-in has no session to end", async () => {
     const fetchMock = mockFetch(coreRoutes);
     renderState(CARRIED_STATE);
