@@ -125,6 +125,53 @@ describe("[CAPD] connected apps: delegation plumbing", () => {
   });
 });
 
+describe("[CAON] connected apps: OAuth apps by name, one entry per app", () => {
+  const META = { name: "Agent", host: "client.example", url: "https://client.example/c.json" };
+  const OAUTH = [
+    { id: "g1:2", name: "oauth-grant:clinic", type: "app", permissions: [], clientData: { oauth: { client: { name: "Clinic app", origin: "operator" } } } },
+    { id: "s1", name: "oauth:clinic", type: "app", permissions: [], clientData: { oauth: { dataGrantId: "g1", client: { name: "Clinic app", origin: "operator" } } } },
+    { id: "s2", name: "oauth:clinic", type: "app", permissions: [], clientData: { oauth: { dataGrantId: "g1" } } },
+    { id: "g2", name: "oauth-grant:url~abc", type: "app", permissions: [], clientData: { oauth: { client: META } } },
+    { id: "g3", name: "oauth-grant:legacy", type: "app", permissions: [] },
+  ];
+
+  it("[CAON1] names each OAuth app by its stamp, the host beside a metadata-document client's, the client id when unstamped; sessions fold under their grant", async () => {
+    conn.accesses = OAUTH;
+    render(
+      <MemoryRouter>
+        <ConnectedApps />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Clinic app")).toBeTruthy();
+    expect(screen.getAllByText("Clinic app")).toHaveLength(1);
+    expect(screen.getByText("2 active sessions", { exact: false })).toBeTruthy();
+    const agent = screen.getByText("Agent").closest("div")!;
+    expect(within(agent).getByText("client.example")).toBeTruthy();
+    expect(screen.getByText("legacy")).toBeTruthy();
+    expect(screen.queryByText("oauth-grant:clinic")).toBeNull();
+    expect(screen.queryByText("oauth:clinic")).toBeNull();
+    // One Details link per entry, the grant's.
+    const hrefs = screen.getAllByRole("link", { name: /details/i }).map((l) => l.getAttribute("href"));
+    expect(hrefs).toEqual(["/account/audit-access/g1%3A2", "/account/audit-access/g2", "/account/audit-access/g3"]);
+  });
+
+  it("[CAON2] the current session folded under its grant marks the app's entry", async () => {
+    conn.accesses = OAUTH;
+    conn.selfId = "s1";
+    try {
+      render(
+        <MemoryRouter>
+          <ConnectedApps />
+        </MemoryRouter>,
+      );
+      const entry = (await screen.findByText("Clinic app")).closest("div")!;
+      expect(await within(entry).findByText("this session")).toBeTruthy();
+    } finally {
+      conn.selfId = "pat-1";
+    }
+  });
+});
+
 describe("[CAQS] connected apps: links keep the platform query", () => {
   const Q = "?pryvServiceInfoUrl=" + encodeURIComponent("https://core.test/service/info");
 

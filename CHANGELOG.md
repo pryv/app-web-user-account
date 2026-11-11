@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Changed
+
+- **Connected apps: an OAuth app is listed by its name, once.** A row was named by the raw access
+  name (`oauth-grant:<clientId>`, `oauth:<clientId>`), and each session of the app was a row of its
+  own. A row now reads the name the core stamps on the access (`clientData.oauth.client`): the name
+  the operator registered for a registry client (open-pryv.io 2.0.0-rc.79), or a metadata-document
+  client's name with its host beside it, never the name alone (its host alone when it has none).
+  An access without a stamp (made before the core stamped it) shows its client id, or its access
+  name for a metadata-document client (whose row key `url~…` is no name). Each session of the app
+  is folded under its consent grant, whose row counts the active sessions and carries "this
+  session" when the current one is among them; revoking the grant ends its sessions. An access the
+  app created and a resource server's derived session stay rows of their own. The helpers
+  are in `src/lib/oauthClient.ts` (`oauthClientOf`, `accessNaming`, `entryNaming`,
+  `foldOAuthSessions`), for a deployment that names apps from its own catalogue.
+
 ## 0.30.0 - 2026-11-11
 
 The OAuth2 consent page names the case where the owner's own address is already used by another
