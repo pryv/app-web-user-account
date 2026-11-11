@@ -530,9 +530,16 @@ Every route accepts these query parameters:
   `https://core.example.com`), at deploy time in `settings.json` as
   `"trustedApiOrigins": ["https://core.example.com"]`, or both: the page trusts
   the union of the two lists and rejects any other `pryvApi`. Entries are exact
-  origins (no wildcards; invalid entries are ignored; in `settings.json`, plain
-  `http` is accepted for loopback only), and the list is never
-  read from the URL. A production build with both lists empty refuses every
+  origins, or a one-label wildcard `https://*.example.com[:port]` for a platform
+  whose accounts have their own host (`https://{username}.example.com/`, e.g. a
+  core with `oauth.perUserIssuer` on): it matches every host exactly one label
+  under `example.com` on that scheme and port, never `example.com` itself nor
+  two labels down; https only, at least two labels after `*.`. List only a
+  domain you control: there is no public-suffix list, so `*.co.uk`,
+  `*.github.io` or any other public suffix passes and would trust every site
+  under it with the user's password. Invalid entries
+  are ignored (in `settings.json`, plain `http` is accepted for loopback only),
+  and the list is never read from the URL. A production build with both lists empty refuses every
   `pryvApi`. In development, with no list, the page falls back to accepting only a `pryvApi` on the same
   registrable domain as this deploy (so `https://attacker.com` is refused, but a
   multi-label public suffix such as `*.co.uk` or a cross-domain core needs the
@@ -587,7 +594,7 @@ app without rebuilding. Every key is optional; the shipped file is `{}`.
 |---|---|
 | `serviceInfoUrl` | The platform this deployment serves, used when a link carries no `pryvServiceInfoUrl`. Sessions opened this way are stored against it. |
 | `allowedServiceInfoUrls` | Restrict the deployment to these platforms (plus `serviceInfoUrl`). A link naming any other platform, through `pryvServiceInfoUrl` / `serviceInfo`, or an access request whose poll URL is on another platform, is refused before the user can type a password, so a crafted link on your account domain can neither collect passwords nor receive a granted token for someone else's server. `[]` (or a list with no valid entry) means `serviceInfoUrl` only; the key absent means any platform (needed only to serve several platforms from one deployment). An access request's poll URL belongs to a platform when it is served from an origin that platform's service info declares: its `register` or `access` host, its `api` host, or, for an `https://{username}.example.com/` api, any host one label under `example.com` (so the cores of a DNS-based platform need no listing). Cores that service info cannot name (several cores behind a path-style api) go in `trustedApiOrigins`. **Recommended for every single-platform deployment.** |
-| `trustedApiOrigins` | Core origins the OAuth2 consent page and CMC result delivery may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`. With `allowedServiceInfoUrls`, access-request poll URLs on these origins (from either list) are accepted too; on a deployment serving several platforms, links to such a core must name their platform with `pryvServiceInfoUrl` / `serviceInfo`, or sign-in goes to the first allowed platform. |
+| `trustedApiOrigins` | Core origins the OAuth2 consent page may talk to, added to `VITE_OAUTH_TRUSTED_API_ORIGINS`: exact origins, or a one-label wildcard `https://*.example.com` (per-user hosts; one label down only, never the apex; list only a domain you control, never a public suffix such as `*.co.uk` or `*.github.io`). With `allowedServiceInfoUrls`, access-request poll URLs on these origins (from either list) are accepted too; on a deployment serving several platforms, links to such a core must name their platform with `pryvServiceInfoUrl` / `serviceInfo`, or sign-in goes to the first allowed platform. |
 | `returnPolicy.trustedOrigins`, `returnPolicy.otherOrigins` | Your rule for the addresses a link asks the pages to send the browser to by themselves once the user has answered: `returnUrl` on `/cmc-accept` and `/cmc-scope-update` (redirect mode), `backUrl` on `/auth` in a tab, and `returnURL` after a completed sign-in (`/signin`, the second factor, a third-party provider, `/register`). Anyone can build such a link, so you may want to restrict where it leads. `trustedOrigins` (exact origins, `https://`, or `http://` on loopback only) and this app's own origin are always followed; any other origin gets `otherOrigins`: `"follow"` (the default), `"confirm"` (the hand-off pages show a "Return to {host}" link the user clicks; `/auth` shows "This request is complete" with the header's back link; a sign-in lands on the account profile with that link) or `"stay"` (not followed; the page shows the outcome; a sign-in lands on the account profile with a notice). Key absent: every http(s) address is followed. Not covered: an access request's own `returnURL` on `/auth` (the requesting app's redirect, answered on the consent screen), which is always followed. A separate list from `trustedApiOrigins`, which names cores. |
 | `legal.terms`, `legal.privacy` | Links shown at registration, each a URL or a `{ "<lang>": url }` map. When at least one resolves, registering requires ticking "I accept". The Terms fall back to the platform's service-info `terms`. |
 | `appCatalogUrl` | The operator's app list, used to name apps on the consent screens (`/auth`, `/oauth2-authorize`) by their id. Apps not listed show their raw id, never a name the app supplies about itself. See the format below. |

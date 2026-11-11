@@ -21,6 +21,7 @@
  */
 
 import { httpUrlOrNull } from "./safeRedirect";
+import { trustedOriginEntry } from "./originMatch";
 import { parseLegalSettings, type LegalSettings } from "./legal";
 import i18n from "../i18n";
 import { isThemeChoice, type ThemeSettings } from "./theme";
@@ -41,6 +42,11 @@ export interface DeployedSettings {
    * must be listed in `trustedApiOrigins`.
    */
   allowedServiceInfoUrls?: string[];
+  /**
+   * Core origins trusted with credentials: exact origins, or a one-label
+   * wildcard `https://*.example.com` for a platform with per-user hosts (see
+   * originMatch.ts).
+   */
   trustedApiOrigins?: string[];
   /**
    * What the pages do with a caller-supplied return address (see
@@ -101,6 +107,26 @@ function origins(raw: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * `trustedApiOrigins`: exact origins as `origins()` keeps them, plus one-label
+ * wildcards (`https://*.example.com[:port]`, https only by construction).
+ */
+function apiOrigins(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const entry = trustedOriginEntry(item);
+    if (!entry) continue;
+    if (!entry.startsWith("https://")) {
+      const parsed = httpUrlOrNull(entry);
+      if (!parsed || !LOOPBACK_HOSTS.has(parsed.hostname)) continue;
+    }
+    out.push(entry);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /** `{ default, userChoice }`, keeping only valid values; undefined when none is. */
 function themeSettings(raw: unknown): Partial<ThemeSettings> | undefined {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined;
@@ -140,7 +166,7 @@ export function parseDeployedSettings(raw: unknown): DeployedSettings {
       .map(url)
       .filter((u): u is string => u != null);
   }
-  const trusted = origins(json.trustedApiOrigins);
+  const trusted = apiOrigins(json.trustedApiOrigins);
   if (trusted) out.trustedApiOrigins = trusted;
   const returnPolicy = returnPolicySettings(json.returnPolicy);
   if (returnPolicy) out.returnPolicy = returnPolicy;

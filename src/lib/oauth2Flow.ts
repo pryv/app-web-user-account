@@ -27,6 +27,7 @@
 
 import { pickText, type LocalizableText, type OfferEntryGroup, type OfferPermission } from "./consent";
 import { httpUrlOrNull } from "./safeRedirect";
+import { originTrusted } from "./originMatch";
 
 // Permission vocabulary + display model live in `lib/consent.ts` (shared by
 // every consent surface); re-exported here for the OAuth flow's callers.
@@ -472,7 +473,8 @@ export function serviceInfoUrlFromPryvApi(pryvApi: string): string {
  * Two layers, most-specific first:
  *   1. If the operator configured an allowlist (`trustedOrigins`, from the
  *      build-time env and settings.json, see trustedOrigins.ts), require an exact
- *      origin match — this is the authoritative, recommended control.
+ *      origin match, or a one-label wildcard match (`https://*.example.com`,
+ *      originMatch.ts) — this is the authoritative, recommended control.
  *   2. Otherwise fall back to requiring `pryvApi` to share the consent UI's own
  *      registrable domain (`selfOrigin`): operators deploy the core and this
  *      app under one parent domain (e.g. `core.example.com` + `app.example.com`),
@@ -506,7 +508,7 @@ export function assertTrustedPryvApi(
 
   const allow = (opts.trustedOrigins ?? []).map((o) => o.trim()).filter(Boolean);
   if (allow.length > 0) {
-    if (!allow.includes(url.origin)) {
+    if (!originTrusted(url.origin, allow)) {
       throw new Error("oauth2: `pryvApi` origin is not in the trusted allowlist.");
     }
     return;
