@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, resolveUserId } from "../lib/service";
@@ -10,12 +10,28 @@ import { signInSearch } from "../lib/signInSearch";
  * Two modes:
  * - no `resetToken` in the URL → request a reset (`Service.requestPasswordReset`);
  * - with `resetToken` → set a new password (`Service.resetPassword`).
+ * `?username=` pre-fills the username field, a hint as on /signin.
  */
 export default function ResetPassword() {
   const { t } = useTranslation();
   const { search } = useLocation();
-  const resetToken = new URLSearchParams(search).get("resetToken");
-  const [username, setUsername] = useState("");
+  const navigate = useNavigate();
+  // Read once: the token then leaves the URL (below), the page keeps it.
+  const [resetToken] = useState(() => new URLSearchParams(search).get("resetToken"));
+  const [username, setUsername] = useState(() => parseAuthParams(search).username ?? "");
+
+  // The one-time token must not stay in the address bar, the history entry or
+  // an outbound Referer. A router replace, so the router's own location drops
+  // it too and a later navigation cannot bring it back.
+  useEffect(() => {
+    const kept = new URLSearchParams(search);
+    if (!kept.has("resetToken")) return;
+    kept.delete("resetToken");
+    const q = kept.toString();
+    navigate({ search: q ? `?${q}` : "" }, { replace: true });
+    // Once, on mount: the token is already in state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Reset password: the reset token leaves the address bar.** The page opened from the reset email
+  read `resetToken` from the URL and left it there, in the history entry and in any outbound
+  Referer, while the email verification page already dropped its own token. The page now reads it
+  once and drops it from the URL with a router replace (the other parameters stay), so a later
+  navigation cannot bring it back.
+- **Reset password: `?username=` pre-fills the username field**, a hint as on `/signin` (an app
+  sending the user to `/reset-password?username=<name>` saves them typing it). The field stays
+  editable.
+
 ## 0.31.0 - 2026-11-11
 
 Connected apps lists each OAuth app once, by the name the core stamps on its accesses, with its
