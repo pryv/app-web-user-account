@@ -221,6 +221,8 @@
     "thisSession": "this session",
     "meta": "{{type}} · {{count}} permission(s)",
     "typeApp": "app",
+    "sessions_one": "{{count}} active session",
+    "sessions_other": "{{count}} active sessions",
     "details": "Details",
     "liveTitle": "Connected via Socket.IO — this list updates automatically",
     "liveOn": "● live updates on",

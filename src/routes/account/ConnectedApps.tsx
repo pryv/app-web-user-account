@@ -6,6 +6,7 @@ import { Card, Button, Alert } from "../../components/ui";
 import { useSession } from "../../lib/useSession";
 import { subscribeToAccessChanges } from "../../lib/socket";
 import { delegationManagedKind, managedKindLabel } from "../../lib/delegation";
+import { entryNaming, foldOAuthSessions } from "../../lib/oauthClient";
 
 interface Access {
   id: string;
@@ -87,7 +88,8 @@ export default function ConnectedApps() {
     };
   }, [connection, load]);
 
-  const apps = accesses?.filter((a) => delegationManagedKind(a) == null) ?? null;
+  // One entry per OAuth app: its sessions are folded under its consent grant.
+  const apps = accesses != null ? foldOAuthSessions(accesses.filter((a) => delegationManagedKind(a) == null)) : null;
   const managed =
     accesses
       ?.map((access) => ({ access, kind: delegationManagedKind(access) }))
@@ -102,8 +104,14 @@ export default function ConnectedApps() {
       {accesses === null && !error && <p className="text-sm text-muted">{t("common.loading")}</p>}
       {apps?.length === 0 && <p className="text-sm text-muted">{t("apps.empty")}</p>}
       <div className="space-y-3">
-        {apps?.map((a) => (
-          <AccessRow key={a.id} access={a} isSelf={a.id === selfAccessId} search={search} />
+        {apps?.map(({ access: a, sessions }) => (
+          <AccessRow
+            key={a.id}
+            access={a}
+            sessions={sessions}
+            isSelf={a.id === selfAccessId || sessions.some((s) => s.id === selfAccessId)}
+            search={search}
+          />
         ))}
       </div>
       {managed != null && managed.length > 0 && (
@@ -146,15 +154,35 @@ export default function ConnectedApps() {
   );
 }
 
-/** One access: name, type, and the link to its details and audit trail. */
-function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; isSelf: boolean; kindLabel?: string; search: string }) {
+/**
+ * One access: its name (an OAuth app by the name its access is stamped with,
+ * a metadata-document client's host beside it), type, the number of OAuth
+ * sessions folded under it, and the link to its details and audit trail.
+ */
+function AccessRow({
+  access: a,
+  sessions = [],
+  isSelf,
+  kindLabel,
+  search,
+}: {
+  access: Access;
+  sessions?: Access[];
+  isSelf: boolean;
+  kindLabel?: string;
+  search: string;
+}) {
   const { t } = useTranslation();
+  const naming = entryNaming({ access: a, sessions });
   return (
     <Card>
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="font-medium">
-            {a.name}
+            <span className="accessName">{naming.label}</span>
+            {naming.host != null && (
+              <span className="accessHost ml-2 text-xs font-normal text-muted">{naming.host}</span>
+            )}
             {isSelf && (
               <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
                 {t("apps.thisSession")}
@@ -166,6 +194,7 @@ function AccessRow({ access: a, isSelf, kindLabel, search }: { access: Access; i
               type: kindLabel ?? a.type ?? t("apps.typeApp"),
               count: a.permissions?.length ?? 0,
             })}
+            {sessions.length > 0 && <> · {t("apps.sessions", { count: sessions.length })}</>}
           </div>
         </div>
         <Link
