@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.30.0 - 2026-11-11
+
+The OAuth2 consent page names the case where the owner's own address is already used by another
+app, with an extension slot under it, and says that a change of subject away from a pseudonym ends
+that pseudonym.
+
 ### Added
 
 - **OAuth2 consent: the owner's address used by another app reads as such, with an extension
