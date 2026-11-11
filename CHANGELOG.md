@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **OAuth2 consent: a state the core refuses ends the page's own session.** When Accept or Reject
+  is answered `400 invalid_request` `signed state <reason>` (`bad_signature`, `malformed`,
+  `expired`, `not_yet_valid`: a forged or stale authorization link), nothing on the page can
+  succeed any more. The page now ends the personal session it opened for the consent (a session
+  this app keeps open in the browser is left alone, as on success) and shows the error card an
+  offer by reference already gets for such a state before sign-in. Before, the session stayed open
+  in the tab behind an inline error. Helper `isInvalidStateError` in `src/lib/oauth2Flow.ts`.
+
 ## 0.32.0 - 2026-11-11
 
 `trustedApiOrigins` accepts a one-label wildcard, for platforms whose accounts have their own host.
