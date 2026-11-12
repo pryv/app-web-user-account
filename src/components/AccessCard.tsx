@@ -6,6 +6,7 @@ import { entryNaming, type OAuthAccessLike } from "../lib/oauthClient";
 import { useAccessNaming } from "../extensions/accessNaming";
 import { clientDataRows } from "../lib/clientDataView";
 import { formatDate, formatDateTime } from "../lib/dates";
+import { maskUrlCredentials } from "../lib/maskCredentials";
 import { AppIcon } from "./AppIcon";
 import { ClientDataList } from "./ClientDataList";
 
@@ -78,9 +79,9 @@ export function AccessCard({
           )}
           <div className="min-w-0">
             <div className="break-words font-medium">
-              <span className="accessName">{naming.label}</span>
+              <span className="accessName">{maskUrlCredentials(naming.label)}</span>
               {naming.host != null && (
-                <span className="accessHost ml-2 text-xs font-normal text-muted">{naming.host}</span>
+                <span className="accessHost ml-2 text-xs font-normal text-muted">{maskUrlCredentials(naming.host)}</span>
               )}
               {isSelf && <span className={`${BADGE} bg-primary/10 text-primary`}>{t("common.thisSession")}</span>}
               {access.expired === true && (

@@ -34,12 +34,15 @@ export function ActivityCard({
   const [summary, setSummary] = useState<ActivitySummary | null>(null);
   const [lastError, setLastError] = useState<AuditEvent | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  // The last-error call failed on its own (the window call answered).
+  const [lastErrorFailed, setLastErrorFailed] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setSummary(null);
     setLastError(undefined);
     setError(null);
+    setLastErrorFailed(null);
     const now = new Date();
     void (async () => {
       try {
@@ -50,7 +53,11 @@ export function ActivityCard({
         if (cancelled) return;
         if (win?.error) throw new Error(win.error.message);
         setSummary(summarizeActivity(win?.events ?? [], now));
-        setLastError(last?.error ? undefined : (last?.events?.[0] ?? null));
+        if (last?.error) {
+          setLastErrorFailed(maskUrlCredentials(last.error.message ?? ""));
+        } else {
+          setLastError(last?.events?.[0] ?? null);
+        }
       } catch (err: unknown) {
         if (!cancelled) setError(maskUrlCredentials(platformError(err, t("activity.errorLoad")).message));
       }
@@ -92,7 +99,20 @@ export function ActivityCard({
 
       <section className="mb-4" data-testid="activity-last-error">
         <h3 className="mb-1 text-sm font-medium">{t("activity.lastError")}</h3>
-        {lastError === undefined && !error && <p className="text-sm text-muted">{t("common.loading")}</p>}
+        {lastError === undefined && !error && lastErrorFailed === null && (
+          <p className="text-sm text-muted">{t("common.loading")}</p>
+        )}
+        {lastErrorFailed !== null && (
+          <p className="text-sm text-muted" data-testid="activity-last-error-failed">
+            {t("activity.errorLastError")}
+            {lastErrorFailed && (
+              <>
+                {" "}
+                <span className="break-all font-mono text-xs">{lastErrorFailed}</span>
+              </>
+            )}
+          </p>
+        )}
         {lastError === null && <p className="text-sm text-muted">{t("activity.noError")}</p>}
         {lastError && (
           <p className="text-sm">

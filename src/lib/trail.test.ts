@@ -32,7 +32,7 @@ describe("[TRLQ] trail URL parsing", () => {
     expect(parseTrailSearch("?from=nope&to=never")).toEqual({});
   });
 
-  it("[TRQ13] kind and action are validated; access is reduced to its base id", () => {
+  it("[TRQ13] kind and action are validated; access is reduced to its base id, ignored when not an id", () => {
     expect(parseTrailSearch("?kind=write&action=events.get&access=ck1:3")).toEqual({
       kind: "write",
       action: "events.get",
@@ -40,6 +40,11 @@ describe("[TRLQ] trail URL parsing", () => {
     });
     expect(parseTrailSearch("?kind=everything&action=" + encodeURIComponent("<script>"))).toEqual({});
     expect(parseTrailSearch("?kind=error").kind).toBe("error");
+    expect(parseTrailSearch("?access=ck1_x-2").access).toBe("ck1_x-2");
+    expect(parseTrailSearch("?access=%20ck1:3%20").access).toBe("ck1");
+    for (const refused of ["you have been hacked", "ck1\"x", "<b>x</b>", "a".repeat(101), "*", ":3"]) {
+      expect(parseTrailSearch("?access=" + encodeURIComponent(refused))).toEqual({});
+    }
   });
 
   it("[TRQ14] app is kept as given, trimmed; hand-off params are not filters", () => {

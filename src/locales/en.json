@@ -549,7 +549,8 @@
     "errorsCount_one": "{{count}} error",
     "errorsCount_other": "{{count}} errors",
     "rawData": "<raw>Raw data</raw>: every entry of this access, in the Audit trail.",
-    "errorLoad": "Could not load the activity of this access."
+    "errorLoad": "Could not load the activity of this access.",
+    "errorLastError": "Could not load the last error of this access."
   },
   "trail": {
     "title": "Audit trail",
@@ -567,6 +568,7 @@
     "removed": "removed",
     "noEntries": "No audit entries match these filters.",
     "accessFilter": "Showing the entries of {{name}}.",
+    "accessFilterUnknown": "Showing the entries of the requested access.",
     "clearAccess": "Show every access",
     "errorActions": "Could not load the list of actions, so the kind filter cannot be applied.",
     "errorAccesses": "Could not load the accesses of this account."

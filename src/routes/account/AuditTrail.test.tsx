@@ -98,6 +98,13 @@ function renderAt(search: string) {
   );
 }
 
+/** What the page shows (the address probe `Where` left out). */
+function pageText(): string {
+  const page = document.querySelector("section");
+  expect(page).not.toBeNull();
+  return page!.textContent ?? "";
+}
+
 function trailCalls(): Array<Record<string, unknown>> {
   return conn.api.mock.calls
     .flatMap(([calls]) => calls as Call[])
@@ -165,6 +172,22 @@ describe("[TRLP] audit trail page", () => {
     await screen.findByText("events.get", { selector: "td" });
     expect(screen.queryByRole("columnheader", { name: "Access" })).toBeNull();
     expect(screen.getByTestId("trail-access-filter").textContent).toContain("Showing the entries of diary-app.");
+    cleanup();
+    // An id no access of the account has: queried, but never echoed.
+    renderAt("?access=zz9-unknown");
+    await waitFor(() => expect(trailCalls().at(-1)?.streams).toEqual([{ any: [":_audit:access-zz9-unknown"] }]));
+    expect((await screen.findByTestId("trail-access-filter")).textContent).toContain(
+      "Showing the entries of the requested access.",
+    );
+    expect(screen.queryByRole("columnheader", { name: "Access" })).toBeNull();
+    expect(pageText()).not.toContain("zz9-unknown");
+    cleanup();
+    // A value that is not an id is ignored: the whole trail, nothing of it on the page.
+    renderAt("?access=" + encodeURIComponent("Your account is compromised, call us"));
+    await screen.findByRole("link", { name: "diary-app" });
+    expect(trailCalls().at(-1)?.streams).toEqual([":_audit:actions"]);
+    expect(screen.queryByTestId("trail-access-filter")).toBeNull();
+    expect(pageText()).not.toContain("compromised");
   });
 
   it("[TRP5] a revoked access still lists its rows, named from its deletion record", async () => {
@@ -177,12 +200,20 @@ describe("[TRLP] audit trail page", () => {
     expect(line.textContent).toContain("Showing the entries of old-app.");
     expect(within(line).getByText("removed")).toBeTruthy();
     expect(within(line).getByRole("link", { name: "Show every access" }).getAttribute("href")).toBe("/account/audit");
+    cleanup();
+    // Unknown to both the accesses and the deletion records: neutral wording, no id echoed.
+    renderAt("?access=gone-2:7");
+    await waitFor(() => expect(trailCalls().at(-1)?.streams).toEqual([{ any: [":_audit:access-gone-2"] }]));
+    const unknown = await screen.findByTestId("trail-access-filter");
+    expect(unknown.textContent).toContain("Showing the entries of the requested access.");
+    expect(within(unknown).queryByText("removed")).toBeNull();
+    expect(pageText()).not.toContain("gone-2");
   });
 
   it("[TRP6] app matching no access: a notice, an empty table, and no request for the whole log", async () => {
     renderAt("?app=nobody&access=app-1");
     expect(await screen.findByText("No access of this account matches nobody.")).toBeTruthy();
-    expect(screen.getByText("No audit entries match these filters.")).toBeTruthy();
+    expect(await screen.findByText("No audit entries match these filters.")).toBeTruthy();
     expect(trailCalls()).toHaveLength(0);
   });
 
@@ -206,5 +237,32 @@ describe("[TRLP] audit trail page", () => {
     renderAt("?kind=read");
     expect(await screen.findByText(/the kind filter cannot be applied/)).toBeTruthy();
     expect(trailCalls()).toHaveLength(0);
+  });
+
+  it("[TRP9] the accesses cannot be read without app: the trail still loads, and the page says why accesses are unnamed", async () => {
+    conn.api.mockImplementation(async (calls: Call[]) =>
+      calls.map((c) => {
+        if (c.method === "accesses.get") return { error: { id: "forbidden", message: "accesses refused" } };
+        if (c.method === "streams.get") return { streams: conn.actions.map((a) => ({ id: ":_audit:action-" + a })) };
+        return { events: conn.events };
+      }),
+    );
+    renderAt("");
+    expect(await screen.findByText("accesses refused")).toBeTruthy();
+    await screen.findByText("events.get", { selector: "td" });
+    expect(trailCalls()).toHaveLength(1);
+    expect(screen.getByText("app-1", { selector: "td span" })).toBeTruthy();
+  });
+
+  it("[TRP10] app resolving to a single access: the column is hidden and the line names the access", async () => {
+    renderAt("?app=diary-app&access=g1&backLabel=App");
+    await waitFor(() => expect(trailCalls()).toHaveLength(1));
+    expect(trailCalls()[0].streams).toEqual([{ any: [":_audit:access-app-1"] }]);
+    const line = await screen.findByTestId("trail-access-filter");
+    expect(line.textContent).toContain("Showing the entries of diary-app.");
+    expect(within(line).getByRole("link", { name: "Show every access" }).getAttribute("href")).toBe(
+      "/account/audit?backLabel=App",
+    );
+    expect(screen.queryByRole("columnheader", { name: "Access" })).toBeNull();
   });
 });

@@ -4,7 +4,11 @@
  * Every access card (sessions on Security, apps on Connected apps) calls this
  * hook once, unconditionally, with the signed-in connection and the entry it
  * shows: `access`, plus the OAuth sessions folded under it (`sessions`, empty
- * for a single access). Return `{ label, host?, icon? }` to name it, or `null`
+ * for a single access). The Audit trail's Access column calls it too, once per
+ * row (up to 15 rows a page, each its own instance), so an asynchronous
+ * replacement should cache what it resolves by `entry.access.id` (a module
+ * level map, or a context), or it fetches once per row on every page.
+ * Return `{ label, host?, icon? }` to name it, or `null`
  * to keep the default naming (`entryNaming` in `src/lib/oauthClient.ts`: the
  * OAuth client stamp, the client id, else the access name).
  *
@@ -22,6 +26,8 @@
  *   session while the pages act for a managed account.
  * - `icon` is a `CatalogIcon` (`src/lib/appCatalog.ts`: an emoji, an http(s)
  *   URL or a raster image data URL), shown in a 20 px slot left of the name.
+ *   The image is loaded by the viewer's browser: take its URL from a source
+ *   you trust (your catalogue), not from what an access says about itself.
  * - `label` and `host` are shown as text, never as HTML.
  *
  * The default names nothing.

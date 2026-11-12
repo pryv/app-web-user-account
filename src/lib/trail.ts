@@ -2,7 +2,10 @@
  * The Audit trail tab's URL contract (`/account/audit?...`). The URL is the
  * single source of truth for the filters; all are optional:
  *
- * - `access=<id>`: one access (`:<serial>` tolerated, reduced to the base id).
+ * - `access=<id>`: one access (`:<serial>` tolerated, reduced to the base id);
+ *   a value that is not an id (letters, digits, `_`, `-`) is ignored. The
+ *   page names it only when it is an access of the account, and never
+ *   echoes the value itself.
  * - `app=<clientId | access name>`: the accesses of one app: every access whose
  *   OAuth client id is `app` (its grant `oauth-grant:<app>` and its sessions
  *   `oauth:<app>`) plus every access named `app` (a personal session is named
@@ -11,7 +14,8 @@
  *   date alone is local time, and a date-only `to` means the end of that day.
  *   An unreadable value is ignored.
  * - `kind=read | write | session | error`; other values are ignored.
- * - `action=<methodId>`: one API method.
+ * - `action=<methodId>`: one API method; a value that is not a method id is
+ *   ignored.
  *
  * The hand-off parameters (`pryvServiceInfoUrl`, `backUrl`, `backLabel`,
  * `username`, `lang`) ride along untouched.
@@ -26,6 +30,8 @@ export type TrailParam = (typeof TRAIL_PARAMS)[number];
 
 const KINDS: readonly TrailKind[] = ["read", "write", "session", "error"];
 const ACTION = /^[A-Za-z][\w.]*$/;
+/** An access id (a cuid), optionally `:<serial>`; anything else is not one. */
+const ACCESS_REF = /^[A-Za-z0-9_-]{1,100}(:[A-Za-z0-9_-]{1,100})?$/;
 const SECONDS = /^\d+(\.\d+)?$/;
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -54,6 +60,8 @@ export function parseTrailTime(value: string | null | undefined, endOfDay = fals
     const [y, m, d] = [Number(date[1]), Number(date[2]) - 1, Number(date[3])];
     const start = new Date(y, m, d);
     if (start.getFullYear() !== y || start.getMonth() !== m || start.getDate() !== d) return undefined;
+    // End of day is 23:59:59.999; the form shows it as 23:59 and keeps the
+    // URL's own spelling unless the field is changed.
     return endOfDay ? new Date(y, m, d + 1).getTime() / 1000 - 0.001 : start.getTime() / 1000;
   }
   const ms = Date.parse(v);
@@ -65,7 +73,7 @@ export function parseTrailSearch(search: string): TrailFilters {
   const q = new URLSearchParams(search);
   const out: TrailFilters = {};
   const access = q.get("access")?.trim();
-  if (access) out.access = parseAttribution(access).base;
+  if (access && ACCESS_REF.test(access)) out.access = parseAttribution(access).base;
   const app = q.get("app")?.trim();
   if (app) out.app = app;
   const from = parseTrailTime(q.get("from"));

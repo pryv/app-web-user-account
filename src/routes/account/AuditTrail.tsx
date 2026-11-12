@@ -136,7 +136,9 @@ export default function AuditTrail() {
             accessIds,
             kind: filters.kind,
             action: filters.action,
-            actions: actions ?? [],
+            // Only a class `kind` reads the action list: other views do not
+            // wait for it, nor ask again once it arrives.
+            actions: needsClasses ? (actions ?? []) : [],
             fromTime: filters.from,
             toTime: filters.to,
             page,
@@ -144,7 +146,7 @@ export default function AuditTrail() {
           }),
     // `accessIds` is derived from the list and the filters: key it by value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [waiting, classUnavailable, appUnresolvable, JSON.stringify(accessIds), filters, actions, page],
+    [waiting, classUnavailable, appUnresolvable, JSON.stringify(accessIds), filters, needsClasses ? actions : null, page],
   );
 
   const [rows, setRows] = useState<AuditEvent[] | null>(null);
@@ -199,7 +201,12 @@ export default function AuditTrail() {
 
   const linkSearch = withoutTrailFilters(search);
   const oneAccess = accessIds != null && accessIds !== undefined && accessIds.length === 1;
-  const focused = filters.app == null && filters.access != null ? findAccess(accessList ?? [], filters.access) : undefined;
+  // The one access the view is on, when the filters name one: `access`, or an
+  // `app` that resolves to a single access. Its id is shown only when it is a
+  // known access (a link must not put its own words on the page).
+  const focusId = filters.app != null ? (appIds?.length === 1 ? appIds[0] : undefined) : filters.access;
+  const focused = focusId != null ? findAccess(accessList ?? [], focusId) : undefined;
+  const clearFocus = filters.app != null ? { app: null, access: null } : { access: null };
 
   function apply(next: FormValues) {
     setSearchParams(
@@ -230,16 +237,16 @@ export default function AuditTrail() {
         <h2 className="mb-3 text-xs font-normal uppercase tracking-wide text-muted">{t("trail.title")}</h2>
         <TrailForm key={search} search={search} actions={actions ?? []} busy={busy} onApply={apply} onRefresh={() => setRefreshTick((n) => n + 1)} />
 
-        {filters.app == null && filters.access != null && (
+        {focusId != null && (
           <p className="mb-3 text-sm" data-testid="trail-access-filter">
-            {t("trail.accessFilter", {
-              name: focused ? entryNaming({ access: focused, sessions: [] }).label : filters.access,
-            })}
+            {focused
+              ? t("trail.accessFilter", { name: maskUrlCredentials(entryNaming({ access: focused, sessions: [] }).label) })
+              : t("trail.accessFilterUnknown")}
             {focused?.deleted != null && (
               <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">{t("trail.removed")}</span>
             )}{" "}
             <Link
-              to={{ pathname: "/account/audit", search: searchWith(search, { access: null }) }}
+              to={{ pathname: "/account/audit", search: searchWith(search, clearFocus) }}
               className="text-primary underline"
             >
               {t("trail.clearAccess")}
@@ -247,9 +254,9 @@ export default function AuditTrail() {
           </p>
         )}
         {filters.app != null && appIds != null && appIds.length === 0 && (
-          <Alert tone="info">{t("trail.appNoMatch", { app: filters.app })}</Alert>
+          <Alert tone="info">{t("trail.appNoMatch", { app: capped(filters.app) })}</Alert>
         )}
-        {appUnresolvable && <Alert>{accessesError}</Alert>}
+        {accessesError && <Alert>{accessesError}</Alert>}
         {classUnavailable && <Alert>{t("trail.errorActions")}</Alert>}
         {trailError && <Alert>{trailError}</Alert>}
 
@@ -470,7 +477,7 @@ function AccessName({
   return (
     <>
       <Link to={`/account/audit-access/${encodeURIComponent(access.id)}${search}`} className="text-primary underline">
-        {naming.label}
+        {maskUrlCredentials(naming.label)}
       </Link>
       {access.deleted != null && <span className="ml-1 text-muted">({t("trail.removed")})</span>}
     </>
@@ -483,6 +490,14 @@ function AccessName({
  */
 function shownError(err: unknown, fallback: string): string {
   return maskUrlCredentials(platformError(err, fallback).message);
+}
+
+/** Longest part of a free-text URL value the page echoes. */
+const MAX_ECHO = 200;
+
+/** `text` cut at `MAX_ECHO` characters (a link cannot paste a paragraph into the page). */
+function capped(text: string): string {
+  return text.length > MAX_ECHO ? text.slice(0, MAX_ECHO) + "…" : text;
 }
 
 function detailText(e: AuditEvent): string {

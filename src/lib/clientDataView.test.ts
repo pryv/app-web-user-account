@@ -35,14 +35,14 @@ describe("[CDVW] clientDataRows", () => {
     ]);
   });
 
-  it("[CDV2] arrays of plain values are lists; arrays of objects, long strings and empty objects are raw", () => {
+  it("[CDV2] arrays of plain values are lists; arrays of objects and long strings are raw; an empty object is none", () => {
     const long = "x".repeat(MAX_INLINE_CHARS + 1);
     const rows = clientDataRows({ tags: ["a", 2, true], items: [{ a: 1 }], note: long, empty: {}, none: null, n: 3 });
     expect(rows).toEqual([
       { path: "tags", value: ["a", "2", "true"] },
       { path: "items", value: { raw: [{ a: 1 }] } },
       { path: "note", value: { raw: long } },
-      { path: "empty", value: { raw: {} } },
+      { path: "empty", value: null },
       { path: "none", value: null },
       { path: "n", value: "3" },
     ]);

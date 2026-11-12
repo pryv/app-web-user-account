@@ -42,6 +42,8 @@ function isScalar(v: unknown): v is string | number | boolean | null {
 
 function valueOf(v: unknown): ClientDataValue {
   if (v === null) return null;
+  // An empty object reads as nothing, like null (no "Raw" view holding `{}`).
+  if (isPlainObject(v) && Object.keys(v).length === 0) return null;
   if (typeof v === "string") return v.length > MAX_INLINE_CHARS ? { raw: v } : v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   if (Array.isArray(v) && v.every(isScalar)) {

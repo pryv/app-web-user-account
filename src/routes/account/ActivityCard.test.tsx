@@ -27,8 +27,14 @@ const row = (id: string, action: string, time: number, error = false): AuditEven
 type Call = { method: string; params: Record<string, unknown> };
 let windowRows: AuditEvent[] = [];
 let lastError: AuditEvent[] = [];
+/** When set, the last-error call answers this API error instead. */
+let lastErrorRefusal: { id: string; message: string } | null = null;
 const api = vi.fn(async (calls: Call[]) =>
-  calls.map((c) => ({ events: c.params.types != null ? lastError : windowRows })),
+  calls.map((c) =>
+    c.params.types != null && lastErrorRefusal != null
+      ? { error: lastErrorRefusal }
+      : { events: c.params.types != null ? lastError : windowRows },
+  ),
 );
 const connection = { api } as never;
 
@@ -36,6 +42,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   windowRows = [];
   lastError = [];
+  lastErrorRefusal = null;
   api.mockClear();
 });
 afterEach(() => {
@@ -151,5 +158,20 @@ describe("[ACTV] activity card", () => {
     const link = screen.getByRole("link", { name: "Raw data" });
     expect(link.getAttribute("href")).toBe("/account/audit?pryvServiceInfoUrl=x&backLabel=App&access=app-1");
     await screen.findByRole("img");
+  });
+
+  it("[ACT7] the last-error call answers an error: the section says so (masked) instead of loading forever", async () => {
+    lastErrorRefusal = { id: "forbidden", message: "refused for https://k7tok3n@core.example/x/" };
+    windowRows = [row("1", "events.get", at(15, 10))];
+    renderCard();
+    await screen.findByRole("img");
+    const last = within(screen.getByTestId("activity-last-error"));
+    expect(await last.findByText(/Could not load the last error of this access\./)).toBeTruthy();
+    expect(last.getByText("refused for https://***@core.example/x/")).toBeTruthy();
+    expect(last.queryByText(/Loading/)).toBeNull();
+    expect(last.queryByText("No error recorded.")).toBeNull();
+    expect(document.body.innerHTML).not.toContain("k7tok3n");
+    // The 7-day chart is unaffected.
+    expect(screen.getByTestId("activity-caption").textContent).toContain("0 errors");
   });
 });

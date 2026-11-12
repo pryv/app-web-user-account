@@ -9,7 +9,8 @@
   page, marked when removed). Filters, all optional and read from the address: `app=<clientId |
   access name>` (the OAuth grant and its sessions, exchange-derived ones included, plus every access
   of that name; wins over `access`; no match shows a notice and lists nothing), `access=<id>` (a
-  revoked access still lists its rows), `from=` / `to=` (Unix seconds or ISO 8601; a date-only `to`
+  revoked access still lists its rows; a value that is not an id is ignored, an unknown id is never
+  echoed), `from=` / `to=` (Unix seconds or ISO 8601; a date-only `to`
   covers that day), `kind=read | write | session | error` and `action=<methodId>` (wins over a class
   `kind`). Apply writes the filters back with a history replace, the hand-off parameters kept; `as`
   is read once and dropped, as on the access page. Example:
@@ -51,8 +52,11 @@
   deeper or longer, credentials in URLs masked, URLs never made links; known keys labelled ("App
   host", "Counterparty endpoint", ...).
 - Catalog: `profile.password` / `profile.changePassword` become `security.password` /
-  `security.changePassword`; `audit.errorsOnly`, `apps.thisSession` and the other keys of the
-  removed rows are gone (`common.thisSession` stays). A fork's own locale files follow the rename.
+  `security.changePassword`; `common.details`, `audit.errorsOnly`, `apps.thisSession` and the other
+  keys of the removed rows are gone (`common.thisSession` stays). A fork's own locale files follow
+  the rename, and a fork that reused `common.details` elsewhere brings it back in its own catalog.
+- `Button`: a `className` with its own width (`w-auto`, `w-32`, ...) now wins over the default
+  `w-full`; a responsive or min/max width (`sm:w-auto`, `min-w-0`) keeps `w-full` beside it.
 
 - **Password reset: a platform that sends no reset mail says so.** When the core advertises
   `features.passwordResetByEmail: false` (reset mail switched off, or mail not configured), the

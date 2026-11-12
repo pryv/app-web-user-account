@@ -10,8 +10,7 @@
  *    audited one by one. Never counted, never charted.
  * 2. `auth.*`, `mfa.*`, `oauth.*`, `sso.*` are `session`.
  * 3. `read` when `last` starts with `get`, `list`, `check` or `retrieve`, or is
- *    `info`, `usernameChanges`, `controlledStatus`, `extIdHolds` or
- *    `getAccessInfo`.
+ *    `info`, `usernameChanges`, `controlledStatus` or `extIdHolds`.
  * 4. `write` when `last` starts with `create`, `update`, `delete`, `set`,
  *    `replace`, `claim`, `release`, `change`, `accept`, `refuse`, `cancel`,
  *    `detach`, `dismiss`, `issue`, `notify`, `request`, `reset`, `verify`,
@@ -29,7 +28,7 @@ export type MethodClass = (typeof METHOD_CLASSES)[number];
 
 const SESSION = /^(auth|mfa|oauth|sso)\./;
 const READ_PREFIXES = ["get", "list", "check", "retrieve"];
-const READ_NAMES = new Set(["info", "usernameChanges", "controlledStatus", "extIdHolds", "getAccessInfo"]);
+const READ_NAMES = new Set(["info", "usernameChanges", "controlledStatus", "extIdHolds"]);
 const WRITE_PREFIXES = [
   "create",
   "update",
