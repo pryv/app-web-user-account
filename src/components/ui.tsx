@@ -45,8 +45,11 @@ export function Button({
   className = "",
   ...props
 }: ComponentProps<"button"> & { variant?: "primary" | "ghost" | "danger" }) {
+  // Full width unless the caller sets a width of its own: in the generated CSS
+  // `w-full` comes after `w-auto`, so both on one element always gave `w-full`.
+  const width = /(^|\s)w-\S+/.test(className) ? "" : "w-full ";
   const base =
-    "inline-flex w-full items-center justify-center rounded px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+    `inline-flex ${width}items-center justify-center rounded px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50`;
   const styles =
     variant === "primary"
       ? "bg-primary text-white hover:brightness-95 active:brightness-90"

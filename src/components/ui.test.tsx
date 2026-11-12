@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { SelectField } from "./ui";
+import { Button, SelectField } from "./ui";
 
 /** [SLFD] SelectField: labelled select reporting the chosen value. */
 
@@ -26,5 +26,20 @@ describe("[SLFD] SelectField", () => {
     render(<SelectField id="lang" label="Language" value="en" onChange={onChange} options={OPTIONS} />);
     fireEvent.change(screen.getByLabelText("Language"), { target: { value: "fr" } });
     expect(onChange).toHaveBeenCalledWith("fr");
+  });
+});
+
+describe("[UIBW] Button width", () => {
+  it("[UIBW1] full width by default", () => {
+    render(<Button>Go</Button>);
+    expect(screen.getByRole("button", { name: "Go" }).className.split(/\s+/)).toContain("w-full");
+  });
+
+  it("[UIBW2] a caller's own width replaces the default, a responsive one keeps it", () => {
+    render(<><Button className="w-auto">Auto</Button><Button className="sm:w-auto">Resp</Button></>);
+    const auto = screen.getByRole("button", { name: "Auto" }).className.split(/\s+/);
+    expect(auto).toContain("w-auto");
+    expect(auto).not.toContain("w-full");
+    expect(screen.getByRole("button", { name: "Resp" }).className.split(/\s+/)).toContain("w-full");
   });
 });
