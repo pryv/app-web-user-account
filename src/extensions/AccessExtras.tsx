@@ -5,7 +5,7 @@ import type { AccessDetails } from "../lib/audit";
 /**
  * Access details extension slot, rendered on the access details page
  * (`/account/audit-access/:accessId`) between the access details card and the
- * audit trail card, once the access is loaded. Renders nothing here; a fork
+ * Activity card, once the access is loaded. Renders nothing here; a fork
  * replaces this file to show what its integration knows about an access (for
  * example which form or study a consent belongs to).
  *
@@ -15,7 +15,7 @@ import type { AccessDetails } from "../lib/audit";
  * request: it can be `false` on the first render and become `true` later (it
  * stays `false` if that request fails), so read it on every render rather than
  * once on mount. The slot only adds content: it cannot change the details card,
- * the revoke button or the audit trail.
+ * the revoke button or the Activity card.
  *
  * `access` is raw: `access.clientData` can carry token-bearing URLs (a consent
  * grant's `cmc.counterparty.apiEndpoint` and `cmc.backChannelApiEndpoint`, a

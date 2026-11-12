@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
 
 /**
  * [ATRG] The account tabs registry and src/routes.json (read by the build's
@@ -10,7 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("pryv", () => ({ default: { Service: class {}, Connection: class {} } }));
 
 import routes from "./routes.json";
-import { ACCOUNT_TABS, EXTRA_ROUTES } from "./accountTabs";
+import { ACCOUNT_TABS, EXTRA_ROUTES, useAccountTabs } from "./accountTabs";
 
 describe("[ATRG] account tabs registry vs routes.json", () => {
   it("[ATR1] every account tab is in routes.json account", () => {
@@ -27,6 +28,16 @@ describe("[ATRG] account tabs registry vs routes.json", () => {
       expect(r.path.startsWith("/")).toBe(true);
       expect(routes.static).toContain(r.path.slice(1));
     }
+  });
+
+  it("[ATR5] the Audit trail tab is registered and routed", () => {
+    expect(ACCOUNT_TABS.map((t) => t.path)).toContain("audit");
+    expect(routes.account).toContain("audit");
+  });
+
+  it("[ATR6] useAccountTabs returns a subset of ACCOUNT_TABS (the default: all of them)", () => {
+    const { result } = renderHook(() => useAccountTabs());
+    for (const tab of result.current) expect(ACCOUNT_TABS).toContain(tab);
   });
 
   it("[ATR4] tab paths are relative and unique", () => {

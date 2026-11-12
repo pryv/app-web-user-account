@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Profile from "./routes/account/Profile";
 import Security from "./routes/account/Security";
 import ConnectedApps from "./routes/account/ConnectedApps";
+import AuditTrail from "./routes/account/AuditTrail";
 import DataRights from "./routes/account/DataRights";
 import DelegationPage from "./routes/account/Delegation";
 import Memberships from "./routes/account/Memberships";
@@ -26,6 +27,7 @@ export const ACCOUNT_TABS: AccountTab[] = [
   { path: "profile", label: "account.nav.profile", element: <Profile /> },
   { path: "security", label: "account.nav.security", element: <Security /> },
   { path: "apps", label: "account.nav.apps", element: <ConnectedApps /> },
+  { path: "audit", label: "account.nav.audit", element: <AuditTrail /> },
   { path: "delegation", label: "account.nav.delegation", element: <DelegationPage /> },
   { path: "memberships", label: "account.nav.memberships", element: <Memberships /> },
   { path: "data", label: "account.nav.data", element: <DataRights /> },

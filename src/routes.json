@@ -15,5 +15,5 @@
     "transfer-claim",
     "transfer-decline"
   ],
-  "account": ["profile", "security", "apps", "delegation", "memberships", "data"]
+  "account": ["profile", "security", "apps", "audit", "delegation", "memberships", "data"]
 }
