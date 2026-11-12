@@ -12,6 +12,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 const service = vi.hoisted(() => ({
   requestPasswordReset: vi.fn(async () => undefined),
   resetPassword: vi.fn(async () => undefined),
+  info: vi.fn(async (): Promise<{ features?: Record<string, unknown> }> => ({ features: {} })),
 }));
 vi.mock("../lib/service", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/service")>()),
@@ -96,5 +97,41 @@ describe("[RSPU] reset password: URL hygiene", () => {
   it("[RSPU5] no hint: the field starts empty", () => {
     const { container } = renderAt("/reset-password");
     expect(container.querySelector<HTMLInputElement>("#username")!.value).toBe("");
+  });
+});
+
+describe("[RSPM] reset password: the platform sends no reset mail", () => {
+  beforeEach(() => {
+    service.requestPasswordReset.mockClear();
+    service.info.mockReset();
+  });
+  afterEach(() => cleanup());
+
+  it("[RSPM1] features.passwordResetByEmail false: no request form, the operator is named", async () => {
+    service.info.mockResolvedValue({ features: { passwordResetByEmail: false } });
+    const { container } = renderAt("/reset-password");
+    await screen.findByText(/contact the platform operator/);
+    expect(container.querySelector("form")).toBeNull();
+  });
+
+  it("[RSPM2] absent (older core) or unreadable service-info: the request form stays", async () => {
+    service.info.mockResolvedValue({ features: {} });
+    const a = renderAt("/reset-password");
+    await waitFor(() => expect(service.info).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(a.container.querySelector("form")).not.toBeNull();
+    cleanup();
+    service.info.mockRejectedValue(new Error("unreachable"));
+    const b = renderAt("/reset-password");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(b.container.querySelector("form")).not.toBeNull();
+  });
+
+  it("[RSPM3] with a reset token, the set-password form shows whatever the platform advertises", async () => {
+    service.info.mockResolvedValue({ features: { passwordResetByEmail: false } });
+    const { container } = renderAt("/reset-password?resetToken=tok");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(container.querySelector("#newPassword")).not.toBeNull();
+    expect(service.info).not.toHaveBeenCalled();
   });
 });

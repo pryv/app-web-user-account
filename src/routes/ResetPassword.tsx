@@ -32,6 +32,26 @@ export default function ResetPassword() {
     // Once, on mount: the token is already in state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A core that sends no reset mail (switched off, or mail not configured)
+  // answers the request the same as one that does: it says so in
+  // `features.passwordResetByEmail`. Only an explicit `false` hides the form;
+  // absent (older core) or an unreadable service-info keeps it.
+  const [mailUnavailable, setMailUnavailable] = useState(false);
+  useEffect(() => {
+    if (resetToken) return;
+    let live = true;
+    (async () => {
+      try {
+        const info = await getService(search).info();
+        if (live && info?.features?.passwordResetByEmail === false) setMailUnavailable(true);
+      } catch {
+        // Unknown: keep the request form.
+      }
+    })();
+    return () => { live = false; };
+    // Once, on mount: the platform does not change under the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +87,18 @@ export default function ResetPassword() {
             ? t("reset.passwordChangedBody")
             : t("reset.linkSentBody")}
         </Alert>
+        <Link to={`/signin${signInSearch(search)}`} className="text-primary hover:underline">
+          {t("reset.backToSignIn")}
+        </Link>
+      </Card>
+    );
+  }
+
+  if (mailUnavailable) {
+    return (
+      <Card>
+        <h1 className="mb-2 text-2xl">{t("reset.requestTitle")}</h1>
+        <Alert tone="info">{t("reset.mailUnavailableBody")}</Alert>
         <Link to={`/signin${signInSearch(search)}`} className="text-primary hover:underline">
           {t("reset.backToSignIn")}
         </Link>

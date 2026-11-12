@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Password reset: a platform that sends no reset mail says so.** When the core advertises
+  `features.passwordResetByEmail: false` (reset mail switched off, or mail not configured), the
+  reset-request page shows "contact the platform operator" instead of a form whose "check your email"
+  answer would never be followed by a mail. An older core (field absent) or an unreadable service-info
+  keeps the form; the set-password step (link with a reset token) is unchanged.
+
 ## 0.32.1 - 2026-11-11
 
 The OAuth2 consent page ends its own session when the core refuses the authorization's signed state.

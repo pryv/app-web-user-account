@@ -154,6 +154,7 @@
     "checkEmailTitle": "Check your email",
     "passwordChangedBody": "Your password has been changed.",
     "linkSentBody": "If the account exists, a reset link has been sent.",
+    "mailUnavailableBody": "This platform does not send password reset emails. Please contact the platform operator to recover access to your account.",
     "backToSignIn": "Back to sign in",
     "failed": "Request failed."
   },
