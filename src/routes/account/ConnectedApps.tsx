@@ -1,21 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Trans, useTranslation } from "react-i18next";
-import { RefreshCw, ScrollText } from "lucide-react";
-import { Card, Button, Alert } from "../../components/ui";
+import { RefreshCw } from "lucide-react";
+import { Button, Alert } from "../../components/ui";
+import { AccessCard, type AccessCardAccess } from "../../components/AccessCard";
 import { useSession } from "../../lib/useSession";
 import { subscribeToAccessChanges } from "../../lib/socket";
 import { delegationManagedKind, managedKindLabel } from "../../lib/delegation";
-import { entryNaming, foldOAuthSessions } from "../../lib/oauthClient";
+import { foldOAuthSessions } from "../../lib/oauthClient";
 
-interface Access {
-  id: string;
-  name: string;
-  type?: string;
-  permissions?: Array<{ streamId?: string; level?: string }>;
-  lastUsed?: number;
-  clientData?: Record<string, unknown> | null;
-}
+type Access = AccessCardAccess;
 
 /**
  * List the account's app accesses. Each row links to the audit-access
@@ -105,12 +99,13 @@ export default function ConnectedApps() {
       {apps?.length === 0 && <p className="text-sm text-muted">{t("apps.empty")}</p>}
       <div className="space-y-3">
         {apps?.map(({ access: a, sessions }) => (
-          <AccessRow
+          <AccessCard
             key={a.id}
             access={a}
             sessions={sessions}
             isSelf={a.id === selfAccessId || sessions.some((s) => s.id === selfAccessId)}
             search={search}
+            connection={connection}
           />
         ))}
       </div>
@@ -129,12 +124,13 @@ export default function ConnectedApps() {
           </p>
           <div className="space-y-3">
             {managed.map(({ access, kind }) => (
-              <AccessRow
+              <AccessCard
                 key={access.id}
                 access={access}
                 isSelf={access.id === selfAccessId}
                 kindLabel={managedKindLabel(kind)}
                 search={search}
+                connection={connection}
               />
             ))}
           </div>
@@ -154,57 +150,3 @@ export default function ConnectedApps() {
   );
 }
 
-/**
- * One access: its name (an OAuth app by the name its access is stamped with,
- * a metadata-document client's host beside it), type, the number of OAuth
- * sessions folded under it, and the link to its details and audit trail.
- */
-function AccessRow({
-  access: a,
-  sessions = [],
-  isSelf,
-  kindLabel,
-  search,
-}: {
-  access: Access;
-  sessions?: Access[];
-  isSelf: boolean;
-  kindLabel?: string;
-  search: string;
-}) {
-  const { t } = useTranslation();
-  const naming = entryNaming({ access: a, sessions });
-  return (
-    <Card>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium">
-            <span className="accessName">{naming.label}</span>
-            {naming.host != null && (
-              <span className="accessHost ml-2 text-xs font-normal text-muted">{naming.host}</span>
-            )}
-            {isSelf && (
-              <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                {t("apps.thisSession")}
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-muted">
-            {t("apps.meta", {
-              type: kindLabel ?? a.type ?? t("apps.typeApp"),
-              count: a.permissions?.length ?? 0,
-            })}
-            {sessions.length > 0 && <> · {t("apps.sessions", { count: sessions.length })}</>}
-          </div>
-        </div>
-        <Link
-          to={`/account/audit-access/${encodeURIComponent(a.id)}${search}`}
-          className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <ScrollText size={14} aria-hidden />
-          {t("apps.details")}
-        </Link>
-      </div>
-    </Card>
-  );
-}

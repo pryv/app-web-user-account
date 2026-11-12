@@ -14,6 +14,8 @@
  * consent (grant) or refresh (session).
  */
 
+import type { CatalogIcon } from "./appCatalog";
+
 export const OAUTH_GRANT_PREFIX = "oauth-grant:";
 export const OAUTH_SESSION_PREFIX = "oauth:";
 
@@ -74,10 +76,15 @@ export function oauthGrantIdOf(access: OAuthAccessLike): string | null {
   return id != null ? baseId(id) : null;
 }
 
-/** What a screen calls an access: `label`, plus the host to show next to it for a metadata-document client. */
+/**
+ * What a screen calls an access: `label`, plus the host to show next to it for
+ * a metadata-document client, and an icon when a fork's naming gives one
+ * (`src/extensions/accessNaming.ts`; the default naming never does).
+ */
 export interface AccessNaming {
   label: string;
   host?: string;
+  icon?: CatalogIcon;
 }
 
 /**

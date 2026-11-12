@@ -141,11 +141,18 @@ describe("[AXSP] access details extension slot", () => {
       ACCESSES[1],
     ];
     renderPage("app-1");
-    const block = await screen.findByText(/"counterparty"/);
-    expect(block.textContent).toContain("https://***@core.example.com/alice/");
+    // A labelled row per value, not a JSON dump.
+    const endpoint = await screen.findByText("Counterparty endpoint");
+    expect(endpoint.tagName).toBe("DT");
+    expect(endpoint.nextElementSibling?.textContent).toBe("https://***@core.example.com/alice/");
+    expect(screen.getByText("Back-channel endpoint").nextElementSibling?.textContent).toBe(
+      "https://***@core.example.com/alice/",
+    );
+    expect(screen.getByText("Counterparty").nextElementSibling?.textContent).toBe("alice");
     expect(document.body.textContent).not.toContain("c3x9tok3n");
     expect(document.body.textContent).not.toContain("bk7tok3n");
-    expect(block.textContent).toContain('"username": "alice"');
+    // URLs stay text.
+    expect(screen.queryByRole("link", { name: /core\.example\.com/ })).toBeNull();
   });
 
   it("[AXS7] audit and data rows show endpoints without their token", async () => {

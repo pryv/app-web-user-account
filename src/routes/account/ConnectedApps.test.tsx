@@ -65,7 +65,7 @@ describe("[CAPD] connected apps: delegation plumbing", () => {
     const section = (await screen.findByRole("heading", { name: "Managed by account delegation" })).closest("section")!;
     const managed = within(section);
     for (const name of ["__deleg-ctl-r1", "delegation:parent@core-a", "invite", "notify"]) {
-      expect(managed.getByText(name)).toBeTruthy();
+      expect(managed.getByText(name, { selector: ".accessName" })).toBeTruthy();
     }
     expect(managed.getByText("delegate session", { exact: false })).toBeTruthy();
     expect(managed.getByText("this session")).toBeTruthy();
@@ -142,10 +142,11 @@ describe("[CAON] connected apps: OAuth apps by name, one entry per app", () => {
         <ConnectedApps />
       </MemoryRouter>,
     );
-    expect(await screen.findByText("Clinic app")).toBeTruthy();
-    expect(screen.getAllByText("Clinic app")).toHaveLength(1);
+    const NAME = { selector: ".accessName" };
+    expect(await screen.findByText("Clinic app", NAME)).toBeTruthy();
+    expect(screen.getAllByText("Clinic app", NAME)).toHaveLength(1);
     expect(screen.getByText("2 active sessions", { exact: false })).toBeTruthy();
-    const agent = screen.getByText("Agent").closest("div")!;
+    const agent = screen.getByText("Agent", NAME).closest("div")!;
     expect(within(agent).getByText("client.example")).toBeTruthy();
     expect(screen.getByText("legacy")).toBeTruthy();
     expect(screen.queryByText("oauth-grant:clinic")).toBeNull();
@@ -164,7 +165,7 @@ describe("[CAON] connected apps: OAuth apps by name, one entry per app", () => {
           <ConnectedApps />
         </MemoryRouter>,
       );
-      const entry = (await screen.findByText("Clinic app")).closest("div")!;
+      const entry = (await screen.findByText("Clinic app", { selector: ".accessName" })).closest("div")!;
       expect(await within(entry).findByText("this session")).toBeTruthy();
     } finally {
       conn.selfId = "pat-1";

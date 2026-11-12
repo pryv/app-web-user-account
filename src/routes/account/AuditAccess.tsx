@@ -31,7 +31,9 @@ import {
   type DataEvent,
 } from "../../lib/audit";
 import { MarkdownLite } from "../../lib/markdownLite";
-import { CONSENT_KEY, consentMessage } from "../../lib/consentMessage";
+import { consentMessage } from "../../lib/consentMessage";
+import { clientDataRows } from "../../lib/clientDataView";
+import { ClientDataList } from "../../components/ClientDataList";
 import { delegationManagedKind } from "../../lib/delegation";
 import { formatDateTime } from "../../lib/dates";
 import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
@@ -423,6 +425,8 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
     });
   }
 
+  const clientRows = clientDataRows(details?.clientData);
+
   const backLink = (
     <Link
       to={"/account/apps" + search}
@@ -603,24 +607,13 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
             </div>
           </div>
         )}
-        {details?.clientData &&
-          Object.keys(details.clientData).filter((k) => k !== CONSENT_KEY).length > 0 && (
-            <div className="mt-3">
-              <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.clientData")}</div>
-              <pre className="overflow-x-auto rounded bg-body p-2 font-mono text-xs">
-                {/* Token-bearing endpoints (a consent grant's counterparty) shown without their token. */}
-                {JSON.stringify(
-                  maskCredentials(
-                    Object.fromEntries(
-                      Object.entries(details.clientData).filter(([k]) => k !== CONSENT_KEY),
-                    ),
-                  ),
-                  null,
-                  2,
-                )}
-              </pre>
-            </div>
-          )}
+        {clientRows.length > 0 && (
+          <div className="mt-3">
+            <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("audit.clientData")}</div>
+            {/* Masked rows: token-bearing endpoints (a consent grant's counterparty) shown without their token. */}
+            <ClientDataList rows={clientRows} />
+          </div>
+        )}
       </Card>
 
       {connection && details && (

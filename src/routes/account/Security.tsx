@@ -1,22 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
-import { ShieldOff, Copy, ScrollText, Smartphone, MessageSquare } from "lucide-react";
+import { ShieldOff, Copy, Smartphone, MessageSquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../../components/ui";
+import { AccessCard, type AccessCardAccess } from "../../components/AccessCard";
 import { usePasswordPrompt } from "../../components/PasswordPrompt";
-import { formatDateTime } from "../../lib/dates";
 import { apiErrorIds } from "../../lib/apiError";
+import { sameAccess } from "../../lib/audit";
 import { normalisePhone } from "../../lib/phone";
 import { useSession } from "../../lib/useSession";
 
-interface Access {
-  id: string;
-  name: string;
-  type?: string;
-  lastUsed?: number;
-  expires?: number | null;
-}
+type Access = AccessCardAccess;
 
 /**
  * Security: MFA enrolment/disable + active personal sessions.
@@ -42,6 +37,8 @@ type EnrollMethod = "totp" | "sms";
 export default function Security() {
   const { t } = useTranslation();
   const { connection } = useSession();
+  // Carried on every in-app link so the platform choice and the way back survive.
+  const { search } = useLocation();
   const [askPassword, passwordDialog] = usePasswordPrompt();
 
   // MFA enable flow state
@@ -272,9 +269,10 @@ export default function Security() {
 
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
       {passwordDialog}
-      <Card>
+      {/* The MFA card spans both columns: its enrolment forms are wide. */}
+      <Card className="lg:col-span-2">
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
           {t("security.mfaHeading")}
         </div>
@@ -481,6 +479,13 @@ export default function Security() {
       </Card>
 
       <Card>
+        <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("security.password")}</div>
+        <Link to={"/change-password" + search} className="text-sm text-primary hover:underline">
+          {t("security.changePassword")}
+        </Link>
+      </Card>
+
+      <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
           {t("security.activeSessions")}
         </div>
@@ -492,33 +497,13 @@ export default function Security() {
         {sessions?.length === 0 && <p className="text-sm text-muted">{t("security.noSessions")}</p>}
         <div className="space-y-2">
           {sessions?.map((s) => (
-            <div
+            <AccessCard
               key={s.id}
-              className="flex items-center justify-between gap-3 rounded border border-divider p-3"
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm">
-                  {s.name}
-                  {s.id === selfId && (
-                    <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
-                      {t("common.thisSession")}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-muted">
-                  {s.lastUsed
-                    ? t("security.lastUsedLabel") + formatDateTime(s.lastUsed)
-                    : t("security.neverUsed")}
-                </div>
-              </div>
-              <Link
-                to={`/account/audit-access/${encodeURIComponent(s.id)}`}
-                className="inline-flex items-center gap-1 rounded border border-divider px-3 py-1 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <ScrollText size={12} aria-hidden />
-                {t("common.details")}
-              </Link>
-            </div>
+              access={s}
+              isSelf={sameAccess(s.id, selfId)}
+              search={search}
+              connection={connection}
+            />
           ))}
         </div>
       </Card>

@@ -23,10 +23,10 @@ vi.mock("./returnTarget", async (importOriginal) => ({
 vi.mock("./useSession", () => ({
   useSession: () => ({ connection: { api: vi.fn().mockResolvedValue([{}]) }, setConnection: vi.fn() }),
 }));
-vi.mock("../accountTabs", () => ({
-  ACCOUNT_TABS: [{ path: "profile", label: "Profile", element: <p>profile page</p> }],
-  EXTRA_ROUTES: [],
-}));
+vi.mock("../accountTabs", () => {
+  const tabs = [{ path: "profile", label: "Profile", element: <p>profile page</p> }];
+  return { ACCOUNT_TABS: tabs, useAccountTabs: () => tabs, EXTRA_ROUTES: [] };
+});
 
 import { continueSignedIn, resumeAfterAccountActs, signInReturnOutcome } from "./accountActsGate";
 import { _setDeployedSettingsForTest, parseDeployedSettings, type ReturnAction } from "./deployedSettings";

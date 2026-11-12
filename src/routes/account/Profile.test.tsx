@@ -64,6 +64,13 @@ describe("[PRFP] profile page", () => {
     expect(ext.compareDocumentPosition(email) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("[PRF4] the password card is on Security, not here", async () => {
+    renderProfile();
+    await screen.findByText("alice");
+    expect(screen.queryByText("Password")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Change your password" })).toBeNull();
+  });
+
   it("[PRF2] with a single language option, shows the language read-only", async () => {
     renderProfile();
     await screen.findByText("alice");

@@ -125,7 +125,7 @@ export function CreateManagedAccount({
   const passwordField = (
     <Field
       id="managed-password"
-      label={t("profile.password")}
+      label={t("common.password")}
       type="password"
       autoComplete="new-password"
       hint={t("delegation.managedPasswordHint")}

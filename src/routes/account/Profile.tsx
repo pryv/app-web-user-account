@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
 import { Pencil, Plus, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert, SelectField } from "../../components/ui";
@@ -180,8 +179,12 @@ export default function Profile() {
   }
 
   return (
-    <section className="space-y-4">
-      {error && <Alert>{error}</Alert>}
+    <section className="space-y-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-4 lg:space-y-0">
+      {error && (
+        <div className="lg:col-span-2">
+          <Alert>{error}</Alert>
+        </div>
+      )}
       <Card>
         <div className="text-xs uppercase tracking-wide text-muted">{t("profile.username")}</div>
         <div className="text-lg">{info?.username ?? "…"}</div>
@@ -356,12 +359,6 @@ export default function Profile() {
           </div>
         </Card>
       )}
-      <Card>
-        <div className="mb-1 text-xs uppercase tracking-wide text-muted">{t("profile.password")}</div>
-        <Link to="/change-password" className="text-sm text-primary hover:underline">
-          {t("profile.changePassword")}
-        </Link>
-      </Card>
     </section>
   );
 }

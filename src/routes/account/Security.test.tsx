@@ -14,7 +14,7 @@ const state = vi.hoisted(() => ({
   connection: {
     endpoint: "https://core.example.com/alice/",
     token: "personal-token",
-    api: async () => [{ accesses: [] }],
+    api: async (): Promise<unknown[]> => [{ accesses: [] }],
     accessInfo: async () => ({ id: "self" }),
     service: { info: async () => ({ features: { mfa: { methods: ["totp"] } } }) },
   },
@@ -59,6 +59,53 @@ async function typePasswordAndSubmit(password: string, submitLabel: string) {
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
   fireEvent.click(screen.getByRole("button", { name: submitLabel }));
 }
+
+/**
+ * [SECS] Sessions are shown as access cards whose Details link keeps the
+ * query (pryvServiceInfoUrl, backUrl, backLabel); the Password card lives here.
+ */
+describe("[SECS] security page sessions and password", () => {
+  const Q = "?pryvServiceInfoUrl=" + encodeURIComponent("https://core.test/service/info") + "&backLabel=App";
+  const noAccesses = state.connection.api;
+  afterEach(() => {
+    state.connection.api = noAccesses;
+  });
+
+  function renderAt(entry: string) {
+    return render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Security />
+      </MemoryRouter>,
+    );
+  }
+
+  it("[SECS1] personal sessions render as access cards, Details keeps the query", async () => {
+    state.connection.api = async () => [
+      {
+        accesses: [
+          { id: "self", name: "account-app", type: "personal", lastUsed: 1789000000 },
+          { id: "p2", name: "my-cli", type: "personal" },
+          { id: "app-1", name: "diary", type: "app", permissions: [] },
+        ],
+      },
+    ];
+    renderAt("/account/security" + Q);
+    await screen.findByText("my-cli", { selector: ".accessName" });
+    const cards = screen.getAllByTestId("access-card");
+    expect(cards).toHaveLength(2);
+    expect(screen.queryByText("diary")).toBeNull();
+    const hrefs = screen.getAllByRole("link", { name: /details/i }).map((l) => l.getAttribute("href"));
+    expect(hrefs).toEqual(["/account/audit-access/self" + Q, "/account/audit-access/p2" + Q]);
+    expect(await screen.findByText("this session")).toBeTruthy();
+    expect(screen.getAllByTestId("access-card-dates")[1].textContent).toContain("Never expires");
+  });
+
+  it("[SECS2] the Password card links to change-password with the query", async () => {
+    renderAt("/account/security" + Q);
+    const link = await screen.findByRole("link", { name: "Change your password" });
+    expect(link.getAttribute("href")).toBe("/change-password" + Q);
+  });
+});
 
 describe("[SECP] security page step-up", () => {
   it("[SEC1] Disable MFA sends the password typed in the dialog", async () => {
