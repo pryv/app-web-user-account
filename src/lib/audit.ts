@@ -6,25 +6,14 @@
  * (`audit-log/pryv-api-error` for failed calls).
  */
 
+import { classifyMethod } from "./methodClasses";
+
 export const AUDIT_ACCESS_STREAM_PREFIX = ":_audit:access-";
 export const AUDIT_ACTION_STREAM_PREFIX = ":_audit:action-";
 /** Parent stream whose children enumerate the actions used on this account. */
 export const AUDIT_ACTIONS_PARENT_STREAM_ID = ":_audit:actions";
 export const AUDIT_TYPE_VALID = "audit-log/pryv-api";
 export const AUDIT_TYPE_ERROR = "audit-log/pryv-api-error";
-
-export interface AuditQuery {
-  /** The access id, bare or with its `:<serial>` (the trail covers every version). */
-  accessId: string;
-  /** Unix time in SECONDS (Pryv API convention); omit for open-ended. */
-  fromTime?: number;
-  toTime?: number;
-  errorsOnly?: boolean;
-  /** API method id (`events.get`, `auth.login`, …); omit for all actions. */
-  action?: string;
-  page: number;
-  pageSize: number;
-}
 
 export interface AuditEvent {
   id: string;
@@ -66,6 +55,22 @@ export interface AccessDetails {
   clientData?: Record<string, unknown>;
   /** Set on a removed access (an `accessDeletions` record): when it was deleted, Unix seconds. */
   deleted?: number;
+  /**
+   * Approximate lifetime call counts, returned by the core to the account
+   * owner (a personal access) when it tracks them; absent otherwise.
+   */
+  usage?: AccessUsage;
+}
+
+/** Lifetime call counters of an access, as the core returns them to the owner on `accesses.get`. */
+export interface AccessUsage {
+  total: number;
+  reads: number;
+  writes: number;
+  session: number;
+  other: number;
+  /** Calls per method id (`events.get`), batch envelopes not counted. */
+  byMethod?: Record<string, number>;
 }
 
 /**
@@ -115,29 +120,84 @@ export function findAccess(list: AccessDetails[], ref: string | undefined | null
   return list.find((a) => a.id === ref) ?? list.find((a) => sameAccess(a.id, ref));
 }
 
+/** What the Audit trail tab filters on (see `buildTrailGetParams`). */
+export type TrailKind = "read" | "write" | "session" | "error";
+
+export interface TrailQuery {
+  /**
+   * The accesses whose entries to list (ids, bare or with `:<serial>`), or
+   * null for every access of the account. An empty list matches nothing.
+   */
+  accessIds: string[] | null;
+  kind?: TrailKind;
+  /** One API method id; wins over a class `kind` (it is the narrower filter). */
+  action?: string;
+  /**
+   * The methods ever used on the account (the children of `:_audit:actions`):
+   * a class `kind` selects those of its class.
+   */
+  actions: string[];
+  /** Unix time in SECONDS (Pryv API convention); omit for open-ended. */
+  fromTime?: number;
+  toTime?: number;
+  page: number;
+  pageSize: number;
+}
+
 /**
- * Build the `events.get` params for one page of an access's audit trail.
- * Every entry is filed under the access's base id (`access-<id>`), and those
+ * Build the `events.get` params for one page of the Audit trail, or null when
+ * nothing can match (no access, or a class no method of the account is in).
+ *
+ * Every entry is filed under its access's base id (`access-<id>`), and those
  * made under an updated version also under `access-<id>:<serial>`: querying
- * the base stream lists the whole trail, before and after each update.
+ * the base stream lists the whole trail of an access, before and after each
+ * update. Streams blocks (an array of blocks is OR; inside a block `any` is OR,
+ * `all` is AND):
+ * - accesses only: `[{ any: [access-A1, ...] }]`
+ * - accesses and an action: `[{ any: [access-A1, ...], all: [action-m] }]`
+ * - accesses and a class: one block per access, `{ any: <class actions>, all: [access-Ai] }`
+ * - a class only: `[{ any: <class actions> }]`; an action only: `[{ any: [action-m] }]`
+ * - nothing: the whole log (`[":_audit:actions"]`).
+ * `kind=error` selects the error entries (`types`), with any of the above.
+ * `callBatch` is in no class, so a class never lists batch envelopes.
  */
-export function buildAuditGetParams(q: AuditQuery): Record<string, unknown> {
-  const accessStream = AUDIT_ACCESS_STREAM_PREFIX + parseAttribution(q.accessId).base;
+export function buildTrailGetParams(q: TrailQuery): Record<string, unknown> | null {
+  const accesses =
+    q.accessIds == null
+      ? null
+      : [...new Set(q.accessIds.map((id) => AUDIT_ACCESS_STREAM_PREFIX + parseAttribution(id).base))];
+  if (accesses != null && accesses.length === 0) return null;
+  const cls = q.action ? null : q.kind === "read" || q.kind === "write" || q.kind === "session" ? q.kind : null;
+  let streams: unknown[];
+  if (q.action) {
+    const action = AUDIT_ACTION_STREAM_PREFIX + q.action;
+    streams = accesses ? [{ any: accesses, all: [action] }] : [{ any: [action] }];
+  } else if (cls) {
+    const members = q.actions
+      .filter((m) => classifyMethod(m) === cls)
+      .map((m) => AUDIT_ACTION_STREAM_PREFIX + m);
+    if (members.length === 0) return null;
+    streams = accesses ? accesses.map((a) => ({ any: members, all: [a] })) : [{ any: members }];
+  } else {
+    streams = accesses ? [{ any: accesses }] : [AUDIT_ACTIONS_PARENT_STREAM_ID];
+  }
   const params: Record<string, unknown> = {
-    // Filtering on an action too needs AND semantics — the streams-query
-    // object form ({any} AND {all}); a plain array would mean OR.
-    streams: q.action
-      ? [{ any: [accessStream], all: [AUDIT_ACTION_STREAM_PREFIX + q.action] }]
-      : [accessStream],
+    streams,
     sortAscending: false,
-    // One extra row tells us whether a next page exists.
+    // One extra row tells whether a next page exists.
     limit: q.pageSize + 1,
     skip: q.page * q.pageSize,
   };
   if (q.fromTime !== undefined) params.fromTime = q.fromTime;
   if (q.toTime !== undefined) params.toTime = q.toTime;
-  if (q.errorsOnly) params.types = [AUDIT_TYPE_ERROR];
+  if (q.kind === "error") params.types = [AUDIT_TYPE_ERROR];
   return params;
+}
+
+/** The base id of the access an audit entry is filed under, or null. */
+export function auditAccessId(e: AuditEvent): string | null {
+  const stream = e.streamIds?.find((s) => s.startsWith(AUDIT_ACCESS_STREAM_PREFIX));
+  return stream ? parseAttribution(stream.slice(AUDIT_ACCESS_STREAM_PREFIX.length)).base : null;
 }
 
 /** Extract the API action (`events.get`, `auth.login`, …) from an audit event. */

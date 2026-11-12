@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ChevronLeft, ChevronRight, RefreshCw, XCircle } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
@@ -6,18 +6,12 @@ import { Card, Button, Alert } from "../../components/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useSession } from "../../lib/useSession";
 import { signinPath } from "../../lib/sessionPaths";
-import { storedParentConnection, type PryvConnection } from "../../lib/sessionStore";
-import { Pryv, Delegation } from "../../lib/pryvClient";
-import { runFlow } from "../../lib/delegation";
-import { asParam, withoutAs, resolveAs } from "../../lib/auditAs";
+import { useAsResolution } from "../../lib/useAuditAs";
+import { AsGate, AsNotice } from "../../components/AsGate";
 import { tNodes } from "../../components/consent/tNodes";
+import { ActivityCard } from "./ActivityCard";
 import {
-  buildAuditGetParams,
-  auditAction,
-  isAuditError,
   dateInputToTime,
-  AUDIT_ACTIONS_PARENT_STREAM_ID,
-  AUDIT_ACTION_STREAM_PREFIX,
   buildDataGetParams,
   filterEventsByAccess,
   eventRelation,
@@ -27,7 +21,6 @@ import {
   sameAccess,
   DATA_BATCH_LIMIT,
   type AccessDetails,
-  type AuditEvent,
   type DataEvent,
 } from "../../lib/audit";
 import { MarkdownLite } from "../../lib/markdownLite";
@@ -50,30 +43,17 @@ const RELATION_KEYS: Record<ReturnType<typeof eventRelation>, string> = {
   "created + modified": "audit.relationCreatedModified",
 };
 
-/**
- * What the page does with `?as=<username>` (see lib/auditAs): `checking` while
- * the managed accounts are listed, `offer` / `opening` around the "Open as"
- * card, a notice for `not-managed` / `list-failed` / `ignored`, `none` when
- * there is nothing (left) to do.
- */
-type AsState =
-  | { kind: "none" }
-  | { kind: "checking" }
-  | { kind: "offer"; username: string; hostSlug?: string; error?: string | null }
-  | { kind: "opening"; username: string; hostSlug?: string }
-  | { kind: "not-managed"; username: string }
-  | { kind: "list-failed"; username: string }
-  | { kind: "ignored" };
-
 function fmtTime(t?: number | null): string {
   // No value: a dash (as before).
   return t ? formatDateTime(t) : "\u2014";
 }
 
 /**
- * Access detail + audit trail. The audit store keeps a per-access stream
- * (`:_audit:access-<id>`) that outlives the access itself, so the trail stays
- * readable even after the access was revoked.
+ * One access: its details, Revoke, an Activity summary (lifetime counts, last
+ * error, 7-day chart, link to its entries in the Audit trail tab) and the data
+ * it created or modified. The audit store keeps a per-access stream
+ * (`:_audit:access-<id>`) that outlives the access itself, so its activity
+ * stays readable even after the access was revoked.
  *
  * One page per access: following a "via" link to another access starts a new
  * page (filters, pages and loads of the previous one do not carry over).
@@ -85,114 +65,15 @@ export default function AuditAccess() {
 
 function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
   const { t } = useTranslation();
-  const { connection, setConnection, actingAs, actAs } = useSession();
+  const { connection, setConnection } = useSession();
   const navigate = useNavigate();
   // Carried on every in-app link so the platform choice (pryvServiceInfoUrl) survives.
-  const { search, pathname } = useLocation();
+  const { search } = useLocation();
   const [confirm, confirmDialog] = useConfirm();
 
-  // `?as=<username>`: read once, then dropped from the address (it would ride
-  // on every in-app link and offer the switch again on the way back).
-  const [asRequested] = useState(() => asParam(search));
-  const [asState, setAsState] = useState<AsState>(() =>
-    asRequested == null ? { kind: "none" } : { kind: "checking" },
-  );
-  // The access data loads wait until it is decided which account they load
-  // from: a late response for the person's own account must never land after
-  // the switch.
-  const ready = asState.kind !== "checking" && asState.kind !== "offer" && asState.kind !== "opening";
-  // The managed accounts are listed, and opened, with the signed-in person's
-  // OWN session: while the pages act for an account, the one kept to return to.
-  const actingUsername = actingAs?.username ?? null;
-  // Built only when a link asked for an account: a page without `as` needs neither.
-  const ownerConnection = useMemo<PryvConnection | null>(
-    () => (asRequested == null ? null : actingUsername != null ? storedParentConnection() : connection),
-    [asRequested, actingUsername, connection],
-  );
-  const ownerClient = useMemo(
-    () => (ownerConnection ? Delegation.fromConnection(ownerConnection, { pryv: Pryv }) : null),
-    [ownerConnection],
-  );
-  const asCheckPending = asState.kind === "checking";
-  useEffect(() => {
-    if (!asCheckPending || asRequested == null || !connection) return;
-    navigate({ pathname, search: withoutAs(search) }, { replace: true });
-    let cancelled = false;
-    void (async () => {
-      // Shape, and the account the pages already act for: no listing needed.
-      const first = resolveAs({ as: asRequested, selfUsername: null, actingUsername, controlled: [] });
-      // Without a list, `not-managed` here only means: a valid username, not the
-      // account acted for. Anything else is decided already.
-      if (first.kind !== "not-managed") {
-        if (!cancelled) setAsState(first.kind === "ignored" ? { kind: "ignored" } : { kind: "none" });
-        return;
-      }
-      if (!ownerConnection || !ownerClient) {
-        if (!cancelled) setAsState({ kind: "list-failed", username: first.username });
-        return;
-      }
-      let selfUsername: string | null = null;
-      try {
-        selfUsername = await ownerConnection.username();
-      } catch {
-        selfUsername = null;
-      }
-      if (cancelled) return;
-      if (selfUsername === first.username) {
-        setAsState({ kind: "none" });
-        return;
-      }
-      const listed = await runFlow(() => ownerClient.listControlled());
-      if (cancelled) return;
-      if (!listed.ok) {
-        setAsState({ kind: "list-failed", username: first.username });
-        return;
-      }
-      const resolution = resolveAs({ as: asRequested, selfUsername, actingUsername, controlled: listed.value });
-      setAsState(resolution.kind === "offer" ? { ...resolution, error: null } : resolution);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // Once per page: `search` and `pathname` change only through the strip above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asCheckPending, connection]);
-
-  /** "Open as": what Open on the Delegation page does, then this page reloads as that account. */
-  async function openAs(username: string, hostSlug?: string) {
-    if (!ownerConnection || !ownerClient || !actAs) return;
-    setAsState({ kind: "opening", username, hostSlug });
-    const res = await runFlow(() => ownerClient.openControlled(username));
-    if (!res.ok) {
-      setAsState({ kind: "offer", username, hostSlug, error: res.message });
-      return;
-    }
-    let parentUsername = actingAs?.parentUsername ?? null;
-    if (parentUsername == null) {
-      try {
-        parentUsername = await ownerConnection.username();
-      } catch {
-        setAsState({ kind: "offer", username, hostSlug, error: t("delegation.errGeneric") });
-        return;
-      }
-    }
-    actAs(res.value as unknown as PryvConnection, { username, parentUsername });
-    setAsState({ kind: "none" });
-  }
-
-  // The card's heading takes the focus when the offer shows.
-  // Once (a page shows at most one offer, `as` being read once): a failed Open
-  // comes back to the card without taking the focus away from where the person
-  // is (the error is announced as an alert).
-  const offerHeading = useRef<HTMLHeadingElement>(null);
-  const offerFocused = useRef(false);
-  const asKind = asState.kind;
-  useEffect(() => {
-    if (asKind === "offer" && !offerFocused.current) {
-      offerFocused.current = true;
-      offerHeading.current?.focus();
-    }
-  }, [asKind]);
+  // `?as=<username>`: read once and resolved before anything loads (lib/useAuditAs).
+  const asRes = useAsResolution(search);
+  const ready = asRes.ready;
 
   const [details, setDetails] = useState<AccessDetails | null>(null);
   // Every access of the account, removed ones included: resolves "created by" / "modified by".
@@ -202,50 +83,6 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
   const [selfAccessId, setSelfAccessId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [revokeError, setRevokeError] = useState<string | null>(null);
-
-  // Filters (applied values drive the query; inputs are staged until Apply).
-  const [fromInput, setFromInput] = useState("");
-  const [toInput, setToInput] = useState("");
-  const [errorsOnlyInput, setErrorsOnlyInput] = useState(false);
-  const [actionInput, setActionInput] = useState("");
-  const [applied, setApplied] = useState<{
-    fromTime?: number;
-    toTime?: number;
-    errorsOnly: boolean;
-    action?: string;
-  }>({ errorsOnly: false });
-  const [page, setPage] = useState(0);
-
-  // Actions ever used on this account — populates the action filter dropdown.
-  const [actions, setActions] = useState<string[]>([]);
-  useEffect(() => {
-    if (!connection || !ready) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [res] = (await connection.api([
-          { method: "streams.get", params: { parentId: AUDIT_ACTIONS_PARENT_STREAM_ID } },
-        ])) as Array<{ streams?: Array<{ id: string }>; error?: { message: string } }>;
-        if (cancelled || res?.error) return; // dropdown is a nicety — stay silent
-        const list = (res?.streams ?? [])
-          .map((s) => s.id)
-          .filter((id) => id.startsWith(AUDIT_ACTION_STREAM_PREFIX))
-          .map((id) => id.slice(AUDIT_ACTION_STREAM_PREFIX.length))
-          .sort();
-        setActions(list);
-      } catch {
-        // ignore — filter dropdown simply stays empty
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [connection, ready]);
-
-  const [rows, setRows] = useState<AuditEvent[] | null>(null);
-  const [hasNext, setHasNext] = useState(false);
-  const [auditError, setAuditError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   // Self-access marker: warn before the user revokes the very access their
   // session runs on (revoking it signs them out).
@@ -335,40 +172,6 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
     };
   }, [connection, accessId, ready, t]);
 
-  const loadAudit = useCallback(async () => {
-    if (!connection || !accessId || !ready) return;
-    setBusy(true);
-    setAuditError(null);
-    try {
-      const params = buildAuditGetParams({
-        accessId,
-        fromTime: applied.fromTime,
-        toTime: applied.toTime,
-        errorsOnly: applied.errorsOnly,
-        action: applied.action,
-        page,
-        pageSize: PAGE_SIZE,
-      });
-      const [res] = (await connection.api([{ method: "events.get", params }])) as Array<{
-        events?: AuditEvent[];
-        error?: { message: string };
-      }>;
-      if (res?.error) throw new Error(res.error.message);
-      const events = res?.events ?? [];
-      setHasNext(events.length > PAGE_SIZE);
-      setRows(events.slice(0, PAGE_SIZE));
-    } catch (err: unknown) {
-      setAuditError(shownError(err, t("audit.errorLoadTrail")));
-      setRows([]);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection, accessId, applied, page, ready, t]);
-
-  useEffect(() => {
-    void loadAudit();
-  }, [loadAudit]);
-
   // Data created / modified by this access. events.get cannot filter by
   // createdBy/modifiedBy server-side, so we fetch the window (bounded batch)
   // and filter client-side; pagination is over the filtered list.
@@ -414,17 +217,6 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
     });
   }
 
-  function applyFilters(e: FormEvent) {
-    e.preventDefault();
-    setPage(0);
-    setApplied({
-      fromTime: dateInputToTime(fromInput),
-      toTime: dateInputToTime(toInput),
-      errorsOnly: errorsOnlyInput,
-      action: actionInput || undefined,
-    });
-  }
-
   const clientRows = clientDataRows(details?.clientData);
 
   const backLink = (
@@ -437,63 +229,13 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
   );
 
   // Until it is decided which account the page shows: the back link and the card only.
-  if (asState.kind === "checking") {
-    return (
-      <section className="space-y-4">
-        {backLink}
-        <Card>
-          <p className="text-sm text-muted">{t("audit.asChecking")}</p>
-        </Card>
-      </section>
-    );
-  }
-  if (asState.kind === "offer" || asState.kind === "opening") {
-    const name = <strong>{asState.username}</strong>;
-    return (
-      <section className="space-y-4">
-        {backLink}
-        <Card>
-          <h2 ref={offerHeading} tabIndex={-1} className="mb-2 text-lg font-medium focus:outline-none">
-            {tNodes("audit.asOfferTitle", { username: name })}
-            {asState.hostSlug && <span className="text-sm font-normal text-muted"> · {asState.hostSlug}</span>}
-          </h2>
-          <p className="mb-4 text-sm">{tNodes("audit.asOfferBody", { username: name })}</p>
-          {asState.kind === "offer" && asState.error && <Alert>{asState.error}</Alert>}
-          <div className="flex flex-wrap gap-3">
-            <Button
-              type="button"
-              className="w-auto"
-              disabled={asState.kind === "opening"}
-              onClick={() => void openAs(asState.username, asState.hostSlug)}
-            >
-              {asState.kind === "opening" ? t("audit.asOpening") : tNodes("audit.asOfferOpen", { username: asState.username })}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-auto"
-              disabled={asState.kind === "opening"}
-              onClick={() => setAsState({ kind: "none" })}
-            >
-              {t("audit.asOfferStay")}
-            </Button>
-          </div>
-        </Card>
-      </section>
-    );
-  }
+  if (!ready) return <AsGate as={asRes}>{backLink}</AsGate>;
 
   return (
     <section className="space-y-4">
       {confirmDialog}
       {backLink}
-      {asState.kind === "not-managed" && (
-        <Alert tone="info">{tNodes("audit.asNotManaged", { username: <strong>{asState.username}</strong> })}</Alert>
-      )}
-      {asState.kind === "list-failed" && (
-        <Alert tone="info">{tNodes("audit.asListFailed", { username: <strong>{asState.username}</strong> })}</Alert>
-      )}
-      {asState.kind === "ignored" && <Alert tone="info">{t("audit.asIgnored")}</Alert>}
+      <AsNotice state={asRes.state} />
 
       <Card>
         <div className="mb-2 flex items-center justify-between gap-3">
@@ -624,137 +366,9 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
         />
       )}
 
-      <Card>
-        <div className="mb-2 text-xs uppercase tracking-wide text-muted">{t("audit.auditTrail")}</div>
-        <form onSubmit={applyFilters} className="mb-3 flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">{t("common.from")}</span>
-            <input
-              type="datetime-local"
-              value={fromInput}
-              onChange={(e) => setFromInput(e.target.value)}
-              className="rounded border border-divider bg-card px-2 py-1 text-ink outline-none focus:border-primary"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">{t("common.to")}</span>
-            <input
-              type="datetime-local"
-              value={toInput}
-              onChange={(e) => setToInput(e.target.value)}
-              className="rounded border border-divider bg-card px-2 py-1 text-ink outline-none focus:border-primary"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">{t("audit.action")}</span>
-            <select
-              value={actionInput}
-              onChange={(e) => setActionInput(e.target.value)}
-              className="rounded border border-divider bg-card px-2 py-1 text-ink outline-none focus:border-primary"
-            >
-              <option value="">{t("audit.allActions")}</option>
-              {actions.map((a) => (
-                <option key={a} value={a}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1 pb-1">
-            <input
-              type="checkbox"
-              checked={errorsOnlyInput}
-              onChange={(e) => setErrorsOnlyInput(e.target.checked)}
-            />
-            <span className="text-xs">{t("audit.errorsOnly")}</span>
-          </label>
-          <Button type="submit" disabled={busy} className="w-auto">
-            {t("common.apply")}
-          </Button>
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={busy}
-            onClick={() => void loadAudit()}
-            className="w-auto"
-          >
-            <RefreshCw size={14} aria-hidden className="mr-1" /> {t("common.refresh")}
-          </Button>
-        </form>
-
-        {auditError && <Alert>{auditError}</Alert>}
-        {rows === null && !auditError && <p className="text-sm text-muted">{t("common.loading")}</p>}
-        {rows?.length === 0 && !auditError && (
-          <p className="text-sm text-muted">{t("audit.noEntries")}</p>
-        )}
-        {rows && rows.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-divider text-xs text-muted">
-                  <th className="py-1 pr-4 font-normal">{t("audit.colTime")}</th>
-                  <th className="py-1 pr-4 font-normal">{t("audit.colAction")}</th>
-                  <th className="py-1 pr-4 font-normal">{t("audit.colStatus")}</th>
-                  <th className="py-1 pr-4 font-normal">{t("audit.colSource")}</th>
-                  <th className="py-1 font-normal">{t("audit.colDetail")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => (
-                  <tr key={e.id} className="border-b border-divider/50 align-top">
-                    <td className="whitespace-nowrap py-1 pr-4 text-xs">{fmtTime(e.time)}</td>
-                    <td className="py-1 pr-4 font-mono text-xs">{auditAction(e)}</td>
-                    <td className="py-1 pr-4">
-                      {isAuditError(e) ? (
-                        <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">
-                          {t("audit.statusError")}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-success/10 px-1.5 py-0.5 text-xs text-success">
-                          {t("audit.statusOk")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-1 pr-4 text-xs">
-                      {e.content?.source?.ip ?? "—"}
-                      {e.content?.callerId && (
-                        <span className="block break-all text-muted" title={t("audit.callerIdHint")}>
-                          {t("audit.callerId", { callerId: maskUrlCredentials(e.content.callerId) })}
-                        </span>
-                      )}
-                    </td>
-                    <td className="max-w-[16rem] truncate py-1 font-mono text-xs" title={detailText(e)}>
-                      {detailText(e)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center justify-between text-sm">
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={busy || page === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="w-auto"
-          >
-            <ChevronLeft size={14} aria-hidden className="mr-1" /> {t("common.previous")}
-          </Button>
-          <span className="text-xs text-muted">{t("common.page", { page: page + 1 })}</span>
-          <Button
-            variant="ghost"
-            type="button"
-            disabled={busy || !hasNext}
-            onClick={() => setPage((p) => p + 1)}
-            className="w-auto"
-          >
-            {t("common.next")} <ChevronRight size={14} aria-hidden className="ml-1" />
-          </Button>
-        </div>
-      </Card>
+      {connection && accessId && (
+        <ActivityCard connection={connection} accessId={accessId} usage={details?.usage} search={search} />
+      )}
 
       <Card>
         <div className="mb-2 text-xs uppercase tracking-wide text-muted">
@@ -886,15 +500,6 @@ function contentText(e: DataEvent): string {
   const content = maskCredentials(e.content);
   const s = typeof content === "string" ? content : JSON.stringify(content);
   return s.length > 200 ? s.slice(0, 200) + "…" : s;
-}
-
-function detailText(e: AuditEvent): string {
-  if (isAuditError(e)) {
-    return maskUrlCredentials([e.content?.id, e.content?.message].filter(Boolean).join(": ")) || "\u2014";
-  }
-  return e.content?.query && Object.keys(e.content.query).length > 0
-    ? JSON.stringify(maskCredentials(e.content.query))
-    : "\u2014";
 }
 
 /**

@@ -79,12 +79,12 @@ function renderPage(accessId: string) {
 }
 
 describe("[AXSP] access details extension slot", () => {
-  it("[AXS1] mounts between the access details card and the audit trail card", async () => {
+  it("[AXS1] mounts between the access details card and the activity card", async () => {
     renderPage("app-1");
     const ext = await screen.findByTestId("access-ext");
     expect(ext.textContent).toBe("extension for diary-app (app-1) self=false");
     const details = screen.getByText("Access details");
-    const trail = screen.getByText("Audit trail");
+    const trail = screen.getByRole("heading", { name: "Activity" });
     expect(details.compareDocumentPosition(ext) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(ext.compareDocumentPosition(trail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The page settles: no refetch loop (a fresh connection per render would cause one).
@@ -155,18 +155,18 @@ describe("[AXSP] access details extension slot", () => {
     expect(screen.queryByRole("link", { name: /core\.example\.com/ })).toBeNull();
   });
 
-  it("[AXS7] audit and data rows show endpoints without their token", async () => {
-    conn.api.mockImplementation(async (calls: Array<{ method: string; params?: { streams?: unknown } }>) =>
+  it("[AXS7] the last error and data rows show endpoints without their token", async () => {
+    conn.api.mockImplementation(async (calls: Array<{ method: string; params?: { streams?: unknown; types?: unknown } }>) =>
       calls.map((c) => {
         if (c.method === "accesses.get") return { accesses: conn.accesses };
-        if (c.method === "events.get" && c.params?.streams != null) {
+        if (c.method === "events.get" && c.params?.types != null) {
           return {
             events: [
-              { id: "a1", time: 1789000000, type: "audit-log/pryv-api", streamIds: [], content: { action: "events.get", query: { capabilityUrl: "https://q5tok3n@core.example.com/bob/" } } },
               { id: "a2", time: 1789000001, type: "audit-log/pryv-api-error", streamIds: [], content: { id: "unreachable", message: "could not reach https://m6tok3n@core.example.com/bob/" } },
             ],
           };
         }
+        if (c.method === "events.get" && c.params?.streams != null) return { events: [] };
         if (c.method === "events.get") {
           return { events: [{ id: "d1", time: 1789000000, type: "note/txt", createdBy: "app-1", content: "https://d8tok3n@core.example.com/bob/" }] };
         }
@@ -176,9 +176,8 @@ describe("[AXSP] access details extension slot", () => {
     renderPage("app-1");
     await screen.findByText(/could not reach https:\/\/\*\*\*@core\.example\.com\/bob\//);
     await screen.findByText("https://***@core.example.com/bob/");
-    await screen.findByText('{"capabilityUrl":"https://***@core.example.com/bob/"}');
     const text = document.body.innerHTML;
-    for (const token of ["q5tok3n", "m6tok3n", "d8tok3n"]) expect(text).not.toContain(token);
+    for (const token of ["m6tok3n", "d8tok3n"]) expect(text).not.toContain(token);
   });
 
   it("[AXS8] an error the page shows names no token", async () => {
@@ -207,7 +206,7 @@ describe("[AXSP] access details extension slot", () => {
       return calls.map((c) => (c.method === "accesses.get" ? { accesses: conn.accesses } : c.method === "events.get" ? { events: [] } : { streams: [] }));
     });
     renderPage("gone-1");
-    await screen.findByText("Audit trail");
+    await screen.findByRole("heading", { name: "Activity" });
     expect(screen.queryByTestId("access-ext")).toBeNull();
     release();
     await screen.findByText(/This access is not listed anymore/);
@@ -300,27 +299,30 @@ describe("[ATTR] attribution on the access details page", () => {
     conn.deletions = [MEMBER];
     renderPage("member-1");
     const via = await screen.findByRole("link", { name: "clinic-group" });
-    // Filter the removed access's trail to its errors.
-    const errorsOnly = screen.getByRole("checkbox", { name: "Errors only" });
-    fireEvent.click(errorsOnly);
-    fireEvent.submit(errorsOnly.closest("form")!);
+    // Filter the removed access's data to a period.
+    const dataForm = screen.getByText("Data created / modified by this access").closest("div")!.parentElement!.querySelector("form")!;
+    const from = dataForm.querySelector("input")!;
+    fireEvent.change(from, { target: { value: "2026-10-01T00:00" } });
+    fireEvent.submit(dataForm);
     await waitFor(() =>
       expect(conn.api.mock.calls.some(([calls]) =>
-        (calls as Array<{ method: string; params?: { types?: unknown } }>).some((c) => c.method === "events.get" && c.params?.types != null),
+        (calls as Array<{ method: string; params?: { streams?: unknown; fromTime?: unknown } }>).some(
+          (c) => c.method === "events.get" && c.params?.streams == null && c.params?.fromTime != null,
+        ),
       )).toBe(true),
     );
     fireEvent.click(via);
     await waitFor(() => expect(screen.queryByText("dr-smith")).toBeNull());
     await screen.findByText("clinic-group");
     expect(screen.queryByText(/This access was removed/)).toBeNull();
-    expect((screen.getByRole("checkbox", { name: "Errors only" }) as HTMLInputElement).checked).toBe(false);
-    // The parent's trail is read unfiltered.
+    const newForm = screen.getByText("Data created / modified by this access").closest("div")!.parentElement!.querySelector("form")!;
+    expect(newForm.querySelector("input")!.value).toBe("");
+    // The parent's activity is read from its own stream.
     await waitFor(() => {
-      const trailReads = conn.api.mock.calls
-        .flatMap(([calls]) => calls as Array<{ method: string; params?: { streams?: unknown; types?: unknown } }>)
+      const reads = conn.api.mock.calls
+        .flatMap(([calls]) => calls as Array<{ method: string; params?: { streams?: unknown } }>)
         .filter((c) => c.method === "events.get" && JSON.stringify(c.params?.streams ?? "").includes("access-grant-1"));
-      expect(trailReads.length).toBeGreaterThan(0);
-      expect(trailReads.every((c) => c.params?.types == null)).toBe(true);
+      expect(reads.length).toBeGreaterThan(0);
     });
   });
 
@@ -333,54 +335,18 @@ describe("[ATTR] attribution on the access details page", () => {
     );
   });
 
-  it("[ATT7] an access updated once: its trail lists the entries from before and after the update", async () => {
-    // As the platform files them: every entry under `access-<base>`, those
-    // made after the update also under `access-<base>:2`.
-    const AUDIT = [
-      { id: "before", time: 1789000000, type: "audit-log/pryv-api", streamIds: [":_audit:access-upd-1", ":_audit:action-events.get"], content: { source: { ip: "10.0.0.1" } } },
-      { id: "after", time: 1789000100, type: "audit-log/pryv-api", streamIds: [":_audit:access-upd-1", ":_audit:access-upd-1:2", ":_audit:action-events.create"], content: { source: { ip: "10.0.0.2" } } },
-    ];
+  it("[ATT7] an access updated once: its activity is read from its base stream, every version included", async () => {
     conn.accesses = [{ id: "upd-1:2", name: "updated-app", type: "app" }, ACCESSES[1]];
-    conn.api.mockImplementation(async (calls: Call[]) =>
-      calls.map((c) => {
-        if (c.method === "accesses.get") return accessesGet(c);
-        if (c.method === "events.get" && Array.isArray(c.params?.streams)) {
-          const wanted = c.params?.streams as string[];
-          return { events: AUDIT.filter((e) => e.streamIds.some((s) => wanted.includes(s))).reverse() };
-        }
-        if (c.method === "events.get") return { events: [] };
-        return { streams: [] };
-      }),
-    );
     // The page is opened with the access's current id, as connected apps links it.
     renderPage(encodeURIComponent("upd-1:2"));
     await screen.findByText("updated-app");
-    await screen.findByText("events.get");
-    expect(screen.getByText("events.create")).toBeTruthy();
-    expect(screen.getByText("10.0.0.1")).toBeTruthy();
-    expect(screen.getByText("10.0.0.2")).toBeTruthy();
-  });
-
-  it("[ATT6] an audit entry shows the caller label it carries, as not verified", async () => {
-    conn.api.mockImplementation(async (calls: Call[]) =>
-      calls.map((c) => {
-        if (c.method === "accesses.get") return accessesGet(c);
-        if (c.method === "events.get" && c.params?.streams != null) {
-          return {
-            events: [
-              { id: "a1", time: 1789000000, type: "audit-log/pryv-api", streamIds: [], content: { action: "events.get", source: { ip: "10.0.0.1" }, callerId: "nurse-desk" } },
-              { id: "a2", time: 1789000001, type: "audit-log/pryv-api", streamIds: [], content: { action: "events.create", source: { ip: "10.0.0.2" } } },
-            ],
-          };
-        }
-        if (c.method === "events.get") return { events: [] };
-        return { streams: [] };
-      }),
-    );
-    renderPage("app-1");
-    const label = await screen.findByText("Caller label (not verified): nurse-desk");
-    expect(label.getAttribute("title")).toMatch(/not verify/);
-    expect(label.closest("td")?.textContent).toContain("10.0.0.1");
-    expect(screen.getAllByText(/Caller label/)).toHaveLength(1);
+    await waitFor(() => {
+      const reads = conn.api.mock.calls
+        .flatMap(([calls]) => calls as Call[])
+        .filter((c) => c.method === "events.get" && c.params?.streams != null);
+      expect(reads.length).toBe(2);
+      for (const c of reads) expect(c.params?.streams).toEqual([":_audit:access-upd-1"]);
+    });
+    expect(screen.getByRole("link", { name: "Raw data" }).getAttribute("href")).toBe("/account/audit?access=upd-1");
   });
 });

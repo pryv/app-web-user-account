@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildAuditGetParams,
+  buildTrailGetParams,
+  auditAccessId,
   auditAction,
   isAuditError,
   dateInputToTime,
@@ -16,45 +17,89 @@ import {
   AUDIT_TYPE_VALID,
 } from "./audit";
 
-describe("buildAuditGetParams", () => {
-  it("targets the access's audit stream with pagination", () => {
-    const p = buildAuditGetParams({ accessId: "ck123", page: 2, pageSize: 20 });
-    expect(p.streams).toEqual([":_audit:access-ck123"]);
-    expect(p.limit).toBe(21); // one extra row probes for a next page
+/**
+ * [TRLQ] The Audit trail's events.get params: every streams block shape,
+ * `action` over a class `kind`, `kind=error` as types, versions read from the
+ * base stream, nothing asked when nothing can match.
+ */
+describe("[TRLQ] buildTrailGetParams", () => {
+  const ACTIONS = ["events.get", "events.create", "streams.get", "auth.login", "callBatch", "events.frobnicate"];
+  const base = { actions: ACTIONS, page: 0, pageSize: 15 };
+  const A = (id: string) => ":_audit:access-" + id;
+  const M = (id: string) => ":_audit:action-" + id;
+
+  it("[TRQ1] pagination and order, with the +1 next-page probe", () => {
+    const p = buildTrailGetParams({ ...base, accessIds: ["a1"], page: 2, pageSize: 20 })!;
+    expect(p.limit).toBe(21);
     expect(p.skip).toBe(40);
     expect(p.sortAscending).toBe(false);
     expect(p).not.toHaveProperty("fromTime");
     expect(p).not.toHaveProperty("types");
   });
 
-  it("[ATB5] an updated access's trail is read from its base stream, every version included", () => {
-    expect(buildAuditGetParams({ accessId: "ck123:2", page: 0, pageSize: 15 }).streams).toEqual([
-      ":_audit:access-ck123",
-    ]);
-    expect(buildAuditGetParams({ accessId: "ck123:2", action: "events.get", page: 0, pageSize: 15 }).streams).toEqual([
-      { any: [":_audit:access-ck123"], all: [":_audit:action-events.get"] },
+  it("[TRQ2] accesses only: one any block, versions reduced to the base stream", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: ["ck123:2", "b2", "ck123"] })!.streams).toEqual([
+      { any: [A("ck123"), A("b2")] },
     ]);
   });
 
-  it("combines access and action streams with AND semantics", () => {
-    const p = buildAuditGetParams({ accessId: "a1", action: "events.get", page: 0, pageSize: 15 });
-    expect(p.streams).toEqual([
-      { any: [":_audit:access-a1"], all: [":_audit:action-events.get"] },
+  it("[TRQ3] accesses and an action: AND through all", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: ["a1", "a2"], action: "events.get" })!.streams).toEqual([
+      { any: [A("a1"), A("a2")], all: [M("events.get")] },
     ]);
   });
 
-  it("carries time range and errors-only filters", () => {
-    const p = buildAuditGetParams({
-      accessId: "a",
-      fromTime: 100,
-      toTime: 200,
-      errorsOnly: true,
-      page: 0,
-      pageSize: 10,
-    });
+  it("[TRQ4] accesses and a class: one block per access, any of the class's actions", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: ["a1", "a2"], kind: "read" })!.streams).toEqual([
+      { any: [M("events.get"), M("streams.get")], all: [A("a1")] },
+      { any: [M("events.get"), M("streams.get")], all: [A("a2")] },
+    ]);
+    expect(buildTrailGetParams({ ...base, accessIds: ["a1"], kind: "write" })!.streams).toEqual([
+      { any: [M("events.create")], all: [A("a1")] },
+    ]);
+  });
+
+  it("[TRQ5] no access: a class, an action, or the whole log", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: null, kind: "session" })!.streams).toEqual([
+      { any: [M("auth.login")] },
+    ]);
+    expect(buildTrailGetParams({ ...base, accessIds: null, action: "events.get" })!.streams).toEqual([
+      { any: [M("events.get")] },
+    ]);
+    expect(buildTrailGetParams({ ...base, accessIds: null })!.streams).toEqual([":_audit:actions"]);
+  });
+
+  it("[TRQ6] action wins over a class kind; with kind=error both apply", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: ["a1"], kind: "write", action: "events.get" })!.streams).toEqual([
+      { any: [A("a1")], all: [M("events.get")] },
+    ]);
+    const err = buildTrailGetParams({ ...base, accessIds: ["a1"], kind: "error", action: "events.get" })!;
+    expect(err.streams).toEqual([{ any: [A("a1")], all: [M("events.get")] }]);
+    expect(err.types).toEqual([AUDIT_TYPE_ERROR]);
+  });
+
+  it("[TRQ7] kind=error alone: error types over the accesses", () => {
+    const p = buildTrailGetParams({ ...base, accessIds: ["a1"], kind: "error", fromTime: 100, toTime: 200 })!;
+    expect(p.streams).toEqual([{ any: [A("a1")] }]);
+    expect(p.types).toEqual([AUDIT_TYPE_ERROR]);
     expect(p.fromTime).toBe(100);
     expect(p.toTime).toBe(200);
-    expect(p.types).toEqual([AUDIT_TYPE_ERROR]);
+  });
+
+  it("[TRQ8] nothing can match: no access, or a class no action of the account is in", () => {
+    expect(buildTrailGetParams({ ...base, accessIds: [] })).toBeNull();
+    expect(buildTrailGetParams({ ...base, accessIds: ["a1"], kind: "write", actions: ["events.get"] })).toBeNull();
+  });
+
+  it("[TRQ9] callBatch is in no class: a class never lists batch envelopes", () => {
+    for (const kind of ["read", "write", "session"] as const) {
+      expect(JSON.stringify(buildTrailGetParams({ ...base, accessIds: null, kind }))).not.toContain("callBatch");
+    }
+  });
+
+  it("[TRQ10] the access an entry is filed under, by its base id", () => {
+    expect(auditAccessId({ id: "e", time: 1, type: AUDIT_TYPE_VALID, streamIds: [M("events.get"), A("x1"), A("x1:2")] })).toBe("x1");
+    expect(auditAccessId({ id: "e", time: 1, type: AUDIT_TYPE_VALID })).toBeNull();
   });
 });
 

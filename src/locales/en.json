@@ -548,7 +548,7 @@
     "otherCounts": "Session calls: {{session}} · other calls: {{other}}",
     "errorsCount_one": "{{count}} error",
     "errorsCount_other": "{{count}} errors",
-    "rawData": "Every entry of this access is in the <raw>Audit trail</raw>.",
+    "rawData": "<raw>Raw data</raw>: every entry of this access, in the Audit trail.",
     "errorLoad": "Could not load the activity of this access."
   },
   "trail": {
