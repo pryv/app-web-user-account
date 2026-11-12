@@ -1,9 +1,6 @@
 # Changelog
 
-## 0.33.0 - 2026-11-12
-
-The password-reset page says so when the platform sends no reset mail (needs open-pryv.io 2.0.0-rc.83 or later;
-older cores keep today's behaviour).
+## Unreleased
 
 ### Added
 
@@ -60,6 +57,13 @@ older cores keep today's behaviour).
   the rename, and a fork that reused `common.details` elsewhere brings it back in its own catalog.
 - `Button`: a `className` with its own width (`w-auto`, `w-32`, ...) now wins over the default
   `w-full`; a responsive or min/max width (`sm:w-auto`, `min-w-0`) keeps `w-full` beside it.
+
+## 0.33.0 - 2026-11-12
+
+The password-reset page says so when the platform sends no reset mail (needs open-pryv.io 2.0.0-rc.83 or later;
+older cores keep today's behaviour).
+
+### Changed
 
 - **Password reset: a platform that sends no reset mail says so.** When the core advertises
   `features.passwordResetByEmail: false` (reset mail switched off, or mail not configured), the
