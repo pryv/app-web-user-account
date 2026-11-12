@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.33.0 - 2026-11-12
+
+The password-reset page says so when the platform sends no reset mail (needs open-pryv.io 2.0.0-rc.83 or later;
+older cores keep today's behaviour).
 
 ### Changed
 
