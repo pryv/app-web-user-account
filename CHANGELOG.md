@@ -2,7 +2,57 @@
 
 ## Unreleased
 
+### Added
+
+- **Audit trail tab (`/account/audit`), linkable and filtered by the URL.** Every audited call on
+  the account, newest first, with an Access column naming the access that made it (linking to its
+  page, marked when removed). Filters, all optional and read from the address: `app=<clientId |
+  access name>` (the OAuth grant and its sessions, exchange-derived ones included, plus every access
+  of that name; wins over `access`; no match shows a notice and lists nothing), `access=<id>` (a
+  revoked access still lists its rows), `from=` / `to=` (Unix seconds or ISO 8601; a date-only `to`
+  covers that day), `kind=read | write | session | error` and `action=<methodId>` (wins over a class
+  `kind`). Apply writes the filters back with a history replace, the hand-off parameters kept; `as`
+  is read once and dropped, as on the access page. Example:
+  `/account/audit?app=<clientId>&from=2026-10-01&kind=write&backUrl=...&backLabel=...`. Helpers:
+  `src/lib/trail.ts` (URL contract), `buildTrailGetParams` in `src/lib/audit.ts`.
+- **Access page: an Activity card replaces the trail table.** Lifetime call counts (total, reads,
+  writes, session, other) when the core returns `usage` on `accesses.get` (shown only then), the
+  last error ever recorded, a 7-day read/write chart by local day (inline SVG in the theme tokens,
+  with a screen-reader table; "1000+" and the incomplete days marked when the window is full) with
+  the session, other and error counts, and a "Raw data" link to the Audit trail filtered on the
+  access. Two `events.get` calls on the access's audit stream; batch envelopes are not counted.
+  Method classes in `src/lib/methodClasses.ts` (`classifyMethod`, `METHOD_CLASSES`), the same rules
+  as the core's.
+- **Extension point `src/extensions/accessNaming.ts`**: `useAccessNaming(connection, { access,
+  sessions })`, a React hook returning `{ label, host?, icon? }` or `null` (default naming), may
+  resolve asynchronously. Names the access cards and the Audit trail's Access column.
+  `AccessNaming` gains `icon?: CatalogIcon`.
+- **Extension point `src/extensions/clientDataLabels.ts`**: `clientDataLabel(path)` returns a
+  catalog key or text for a client data row, or `null` for the built-in labels.
+- **`useAccountTabs()` in `src/accountTabs.tsx`**: the nav and the routes read the tabs through
+  it; a fork replaces its body to hide tabs at run time (it returns a subset of `ACCOUNT_TABS`).
+- **Layout tokens** `--layout-narrow-max`, `--layout-account-max`, `--layout-nav-width` in
+  `src/index.css`.
+
 ### Changed
+
+- **Account section: wide, responsive layout.** `/account/...` pages use up to 64rem (auth and
+  consent pages keep the narrow column). Below 1024 px the tabs are one row that scrolls sideways
+  (no more wrapping); from 1024 px the nav is a vertical list in a left column with the page beside
+  it, and the Profile and Security cards pair in two columns.
+- **One access card for sessions and apps.** Security (personal sessions) and Connected apps show
+  the same `AccessCard`: name with an icon slot and host, badges (this session, expired, removed),
+  kind and counts, created / last used / expires, the client data behind a closed disclosure, and
+  Details. Fixed on the way: a session's Details link on Security dropped the query
+  (`pryvServiceInfoUrl`, `backUrl`, `backLabel`); it now keeps it.
+- **Change password moves from Profile to Security**, and its link keeps the query.
+- **Client data as a labelled list** instead of a JSON dump, on the access cards and the access
+  page: dotted paths down to three levels, lists for arrays, a collapsed raw view for anything
+  deeper or longer, credentials in URLs masked, URLs never made links; known keys labelled ("App
+  host", "Counterparty endpoint", ...).
+- Catalog: `profile.password` / `profile.changePassword` become `security.password` /
+  `security.changePassword`; `audit.errorsOnly`, `apps.thisSession` and the other keys of the
+  removed rows are gone (`common.thisSession` stays). A fork's own locale files follow the rename.
 
 - **Password reset: a platform that sends no reset mail says so.** When the core advertises
   `features.passwordResetByEmail: false` (reset mail switched off, or mail not configured), the

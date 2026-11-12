@@ -38,6 +38,16 @@ Brand tokens (palette, typography, radii) are defined as theme variables in
 [`src/index.css`](src/index.css). Re-brand by overriding the `--color-*` and
 `--font-*` values — no component changes required.
 
+**Layout:** three width tokens sit next to the colours in
+[`src/index.css`](src/index.css) (on `:root`, mirrored in `@theme`):
+`--layout-narrow-max` (28rem, the sign-in, register and consent pages),
+`--layout-account-max` (64rem, the account section, `/account/...`) and
+`--layout-nav-width` (15rem, the account nav column). The account section has
+one breakpoint, Tailwind's `lg` (1024 px): below it the tabs are one row that
+scrolls sideways; from it the nav is a vertical list in a left column, the page
+beside it, and the Profile and Security cards pair in two columns. Override the
+tokens to re-size without editing components.
+
 **Branding:** replace [`src/brand.tsx`](src/brand.tsx) and
 [`src/brand.css`](src/brand.css). `brand.tsx` sets the product name, the account
 noun used in copy ("Register a new … account") and the header `Logo`;
@@ -105,9 +115,11 @@ of them keeps a stable interface; everything else can be merged from upstream.
 |---|---|---|
 | `src/lib/pryvClient.ts` | Your own wrapper of the Pryv client libraries. Every other module imports the client from here, and a test refuses a direct import elsewhere. | The exported names (`Pryv`, `attachSocketIO`, `cmc`, `Delegation`, ...). |
 | `src/brand.tsx`, `src/brand.css` | Your product name, account noun, logo and fonts. | `brand`, `Logo`. |
-| `src/accountTabs.tsx` + `src/routes.json` | Extra account tabs (`ACCOUNT_TABS`, path relative to `/account`) or top-level pages (`EXTRA_ROUTES`); add each path to `routes.json` (`account` / `static`) for static hosting. A test fails when the two disagree. | The `AccountTab` shape. |
+| `src/accountTabs.tsx` + `src/routes.json` | Extra account tabs (`ACCOUNT_TABS`, path relative to `/account`) or top-level pages (`EXTRA_ROUTES`); add each path to `routes.json` (`account` / `static`) for static hosting. A test fails when the two disagree. To hide tabs at run time (by role, by feature flag), replace the body of the `useAccountTabs()` hook in the same file: the nav and the routes read the tabs through it. It must return a subset of `ACCOUNT_TABS` (in any order), so every tab stays declared in one place and the drift test keeps guarding it. | The `AccountTab` shape, `useAccountTabs()`. |
+| `src/extensions/accessNaming.ts` | How the access cards (Security sessions, Connected apps) and the Audit trail's Access column name an access, for example from your own app catalogue: `useAccessNaming(connection, { access, sessions })` is a React hook called once per card, unconditionally; return `{ label, host?, icon? }`, or `null` for the default naming (the OAuth client stamp, the client id, else the access name). `sessions` holds the OAuth sessions folded under a grant (empty for a single access), so a grant can be named from a stamped session. It may resolve asynchronously (read a manifest pointer in `access.clientData`, read an event through `connection`, fetch a catalogue): return `null` while loading. `entry` is a new object on every render: depend on `entry.access.id` in your effects. Never throw (catch and return `null`). `icon` is a `CatalogIcon` (`src/lib/appCatalog.ts`: emoji, http(s) URL or raster data URL), shown in a 20 px slot. Names nothing by default. | The signature, `AccessNaming` (`src/lib/oauthClient.ts`). |
+| `src/extensions/clientDataLabels.ts` | Labels for the client data rows of an access (shown as a list of dotted paths such as `oauth.client.host`, on the access cards and the access page): `clientDataLabel(path)` returns a catalog key (`src/locales/*.json`) or literal text, or `null` to fall back to the built-in labels (`src/lib/clientDataLabels.ts`), then to the path itself. Synchronous. Labels nothing by default. | The signature. |
 | `src/extensions/ProfileExtensions.tsx` | Extra profile sections, rendered between the account and email cards; receives `{ connection, username }`. Renders nothing by default. | The props. |
-| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the audit trail card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, a removed access included, with `access.deleted` set to its deletion time; `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the audit trail stay as they are. Renders nothing by default. After the user opened the page as a managed account (`?as=`, or Open on the Delegation page), `connection` is that account's delegated session. `access` is raw: its `clientData` can carry token-bearing URLs (a consent grant's `cmc.counterparty.apiEndpoint` and `cmc.backChannelApiEndpoint`, a delegation invite's `delegation.capabilityUrl`); print any of it through `maskCredentials` (`src/lib/maskCredentials.ts`). | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
+| `src/extensions/AccessExtras.tsx` | Extra content on the access details page (`/account/audit-access/:accessId`), rendered between the access details card and the Activity card once the access is loaded; receives `{ connection, access, isSelf }` (`access` is the loaded `AccessDetails`, a removed access included, with `access.deleted` set to its deletion time; `isSelf` is true for the session's own access; it is resolved by a separate request, so it can turn from `false` to `true` after the first render). It only adds content: the details card, the revoke button and the Activity card stay as they are. Renders nothing by default. After the user opened the page as a managed account (`?as=`, or Open on the Delegation page), `connection` is that account's delegated session. `access` is raw: its `clientData` can carry token-bearing URLs (a consent grant's `cmc.counterparty.apiEndpoint` and `cmc.backChannelApiEndpoint`, a delegation invite's `delegation.capabilityUrl`); print any of it through `maskCredentials` (`src/lib/maskCredentials.ts`). | The props and the `AccessDetails` type (`src/lib/audit.ts`). |
 | `src/extensions/AddressAliasHelp.tsx` | Extra content on the OAuth2 consent page, under the refusal shown when the address the app was given is one of the account's own address aliases, already used by another app (core `reason: "address-alias-held"`, from open-pryv.io 2.0.0-rc.79), for example a link to where your deployment lists the account's addresses. Takes no props. It only adds content: the refusal message and "Back to the app" stay as they are. Renders nothing by default. | Nothing (no props). |
 | `src/extensions/registerActs.tsx` | Acts your users must give at account creation on top of the Terms (an explicit consent, a residence declaration, ...): `useRegisterActs({ hosting })` returns `{ element, ready, onRegistered? }`; `hosting` is the hosting the user chose (`FlatHosting` from `src/lib/service.ts`), or `null` while none is (with several hostings none is pre-selected), so you can describe where the data will be stored and record it with the acts. Your replacement must accept that argument (it may ignore it; a hook with no parameter fails the type check), and should depend on `input.hosting`, not on `input` (a new object every render). The register page renders `element` above Create and keeps Create disabled until `ready`; once the account is created and signed in, it awaits `onRegistered(connection)` (a personal-token connection to the new account) so you can write the acts into it, then moves on. A failure there is logged and does not fail the registration (the account exists; the sign-in gate below can ask again); when the automatic sign-in after registration fails, it is not called. Collects nothing by default. | `RegisterActs`, `RegisterActsInput`. |
 | `src/extensions/registerEmail.ts` | The email a new account is created with, for deployments that invite people to register and already know their address: `registerEmailPolicy(search)` receives the register page's query string (for example to read an invitation parameter your links carry) and returns `{ prefill, required }`. `prefill` is the email field's initial value (the user can still edit it; it comes from a link anyone can build, so it is a suggestion, not a verified address); `required: true` marks the field required, so a blank email is refused and no random `@pryv.io` placeholder is generated. Called once, when the page opens; a throw is logged and read as the default, a `prefill` that is not a string as empty, and only `required: true` requires the email. The email is sent trimmed. With the platform's email verification on, the email is required whatever this returns. Default: `{ prefill: null, required: false }` (the email is optional and a blank one becomes a random placeholder). | `RegisterEmailPolicy`, the signature. |
@@ -158,7 +170,8 @@ Every route accepts these query parameters:
   the sign-in gate's page): for an origin it does not follow, the user lands on
   the account profile with a "Return to {host}" link (`confirm`) or a notice
   (`stay`).
-- `/account/profile`, `/account/security`, `/account/apps`, `/account/data`,
+- `/account/profile`, `/account/security` (second factor, change password,
+  active sessions), `/account/apps`, `/account/data`,
   `/change-password`, `/reset-password` — self-service pages; combine with
   `backUrl`/`backLabel` so users find their way back to you. You can link any
   of them directly: a signed-out user is sent to sign in and then back to the
@@ -202,7 +215,10 @@ Every route accepts these query parameters:
   sweeps run when a membership ends. Needs a core that supports group
   memberships.
 - `/account/audit-access/<accessId>`: one access of the signed-in account (its
-  details, Revoke, audit trail), the page the rows of `/account/apps` open. Link
+  details, Revoke, and an Activity summary: lifetime call counts when the core
+  returns them, the last error, a 7-day read/write chart, and a "Raw data" link
+  to its entries in the Audit trail), the page the cards of `/account/apps` and
+  `/account/security` open. Link
   it when your app shows the user a consent or an app access and wants to send
   them to its page. For an access of an account the user MANAGES (account
   delegation), add `as=<username>`: when the user actively manages that
@@ -215,6 +231,25 @@ Every route accepts these query parameters:
   page says so and shows the user's own account; naming the account the session
   already is does nothing. `as` is read once and dropped from the address. A
   signed-out user signs in first and comes back with `as` kept, like `create=1`.
+- `/account/audit`: the Audit trail tab, every audited call on the account,
+  newest first, with the access that made it. Link it when your app wants to
+  show its user what was done with their data. The URL is the single source of
+  truth for its filters, all optional, on top of the parameters every route
+  takes (`pryvServiceInfoUrl`, `backUrl`, `backLabel`, `username`, `lang`):
+
+  | Param | Meaning |
+  |---|---|
+  | `app=<clientId \| access name>` | The accesses of one app, resolved by the page from the account's accesses: for an OAuth client, its consent grant (`oauth-grant:<clientId>`) and its sessions (`oauth:<clientId>`, those a resource server derived included); plus every access named `<app>` (a personal session is named after the `appId` it signed in with). An app knows its client id or app id, not its access ids, which is what this is for. Wins over `access`. When no access matches, the page says so and lists nothing (never the whole log). |
+  | `access=<accessId>` | One access (`:<serial>` tolerated). A revoked access still lists its rows, named from its deletion record. |
+  | `from=`, `to=` | The period: Unix seconds, or an ISO 8601 date or date-time. A date alone is local time; a date-only `to` covers that whole day. An unreadable value is ignored. |
+  | `kind=read \| write \| session \| error` | `error`: failed calls only. `read`, `write`, `session`: calls of that class (read: `*.get*`, `*.list*`, `*.check*`, ...; write: `*.create*`, `*.update*`, `*.delete*`, ...; session: `auth.*`, `mfa.*`, `oauth.*`, `sso.*`; the rules are in `src/lib/methodClasses.ts`, shared with the core). Batch envelopes (`callBatch`) are in no class: their inner calls are listed one by one. Other values are ignored. |
+  | `action=<methodId>` | One API method (`events.get`). With a class `kind`, `action` wins (it is the narrower filter); with `kind=error`, both apply. |
+
+  Example: `/account/audit?app=<clientId>&from=2026-10-01&kind=write&backUrl=…&backLabel=…`.
+  The user can change the filters on the page: Apply writes them back into the
+  address (replacing the history entry, every other parameter kept), so a view
+  can be bookmarked or shared. `as=<username>` works as on the access page:
+  read once, then dropped.
 - `/verify-email` — the landing page for a verification email. Don't link it
   directly: point the core's `auth:emailVerificationPageURL` at it and the
   mailed link arrives with `verifyToken` and `username` already set.
