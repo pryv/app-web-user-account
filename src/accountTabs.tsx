@@ -32,6 +32,19 @@ export const ACCOUNT_TABS: AccountTab[] = [
 ];
 
 /**
+ * The tabs shown, in nav order: what the account nav and the routes read.
+ *
+ * Replace its body in a fork to hide tabs at run time (by role, by feature
+ * flag, ...). It must return a SUBSET of `ACCOUNT_TABS`, in any order, so
+ * every tab stays declared in one place and the routes.json drift test keeps
+ * guarding it. It is a hook: it may call other hooks (the session, a context),
+ * unconditionally.
+ */
+export function useAccountTabs(): AccountTab[] {
+  return ACCOUNT_TABS;
+}
+
+/**
  * Extra top-level routes (absolute paths, e.g. "/preferences"). Each one also
  * goes in `static` in `src/routes.json`, without the leading slash.
  */

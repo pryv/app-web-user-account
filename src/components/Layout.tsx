@@ -16,9 +16,12 @@ import ThemeToggle from "./ThemeToggle";
  * following it would load the app inside the pop-up or the frame.
  */
 export default function Layout({ children }: { children: ReactNode }) {
-  const { search } = useLocation();
+  const { search, pathname } = useLocation();
   const { t } = useTranslation();
   const backTo = inPopupOrFrame() ? NO_BACK_TO : parseBackTo(search);
+  // The account section uses the wide layout; the auth and consent pages keep
+  // the narrow column. Widths are the `--layout-*` tokens of src/index.css.
+  const wide = isAccountPath(pathname);
 
   return (
     <div className="min-h-screen bg-body text-ink">
@@ -35,7 +38,17 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
       <DelegatedSessionBanner />
-      <main className="mx-auto max-w-md px-4 py-8">{children}</main>
+      <main
+        className={`mx-auto px-4 py-8 ${wide ? "max-w-(--layout-account-max)" : "max-w-(--layout-narrow-max)"}`}
+        data-layout={wide ? "wide" : "narrow"}
+      >
+        {children}
+      </main>
     </div>
   );
+}
+
+/** Whether a path belongs to the account section (`/account` and below). */
+function isAccountPath(pathname: string): boolean {
+  return pathname === "/account" || pathname.startsWith("/account/");
 }

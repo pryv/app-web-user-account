@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { syncLocaleFromAccount } from "../../i18n";
 import { useSession } from "../../lib/useSession";
 import { signinPath } from "../../lib/sessionPaths";
-import { ACCOUNT_TABS } from "../../accountTabs";
+import { useAccountTabs } from "../../accountTabs";
 import { signInReturnOutcome } from "../../lib/accountActsGate";
 import { ReturnNotice } from "../../components/consent/ReturnNotice";
 
@@ -21,6 +21,7 @@ export default function AccountLayout() {
   const { connection, setConnection } = useSession();
   const { pathname, search, state } = useLocation();
   const navigate = useNavigate();
+  const tabs = useAccountTabs();
 
   // Adopt the account's language once per session, whichever account page
   // the user lands on (a `?lang=` on the link still wins).
@@ -74,28 +75,34 @@ export default function AccountLayout() {
           <LogOut size={14} aria-hidden /> {t("account.signOut")}
         </button>
       </div>
-      <nav
-        aria-label={t("account.navAriaLabel")}
-        className="mb-6 flex flex-wrap gap-1 border-b border-divider"
-      >
-        {ACCOUNT_TABS.map((tab) => (
-          <NavLink
-            key={tab.path}
-            to={`/account/${tab.path}${search}`}
-            className={({ isActive }) =>
-              `-mb-px flex-1 border-b-2 px-3 py-2 text-center text-sm transition-colors sm:flex-none ${
-                isActive
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted hover:text-ink"
-              }`
-            }
-          >
-            {t(tab.label, { defaultValue: tab.label })}
-          </NavLink>
-        ))}
-      </nav>
-      <ReturnNotice outcome={signInReturnOutcome(state)} stayKey="signin.returnNotAllowed" />
-      <Outlet />
+      {/* Below lg: one row of tabs that scrolls sideways (never wraps). From lg:
+          the nav is a vertical list in the left column, the page beside it. */}
+      <div className="lg:grid lg:grid-cols-[var(--layout-nav-width)_minmax(0,1fr)] lg:items-start lg:gap-8">
+        <nav
+          aria-label={t("account.navAriaLabel")}
+          className="-mx-4 mb-6 flex overflow-x-auto whitespace-nowrap border-b border-divider px-4 lg:mx-0 lg:flex-col lg:overflow-visible lg:whitespace-normal lg:border-b-0 lg:border-l lg:px-0"
+        >
+          {tabs.map((tab) => (
+            <NavLink
+              key={tab.path}
+              to={`/account/${tab.path}${search}`}
+              className={({ isActive }) =>
+                `-mb-px shrink-0 border-b-2 px-3 py-2 text-sm transition-colors lg:mb-0 lg:-ml-px lg:border-b-0 lg:border-l-2 ${
+                  isActive
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted hover:text-ink"
+                }`
+              }
+            >
+              {t(tab.label, { defaultValue: tab.label })}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="min-w-0" data-testid="account-content">
+          <ReturnNotice outcome={signInReturnOutcome(state)} stayKey="signin.returnNotAllowed" />
+          <Outlet />
+        </div>
+      </div>
     </div>
   );
 }

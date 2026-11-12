@@ -17,7 +17,7 @@ import TransferClaim from "./routes/TransferClaim";
 import TransferDecline from "./routes/TransferDecline";
 import AccountLayout from "./routes/account/AccountLayout";
 import AuditAccess from "./routes/account/AuditAccess";
-import { ACCOUNT_TABS, EXTRA_ROUTES } from "./accountTabs";
+import { EXTRA_ROUTES, useAccountTabs } from "./accountTabs";
 
 /** Internal redirect that forwards the current `?…` query through. */
 function NavigatePreservingSearch({ to }: { to: string }) {
@@ -36,6 +36,7 @@ function NavigatePreservingSearch({ to }: { to: string }) {
  */
 export default function App() {
   const { t } = useTranslation();
+  const accountTabs = useAccountTabs();
   return (
     <Layout>
       <Routes>
@@ -72,7 +73,7 @@ export default function App() {
             src/accountTabs.tsx; audit-access is reached from a tab, not the nav. */}
         <Route path="/account" element={<AccountLayout />}>
           <Route index element={<NavigatePreservingSearch to="/account/profile" />} />
-          {ACCOUNT_TABS.map((tab) => (
+          {accountTabs.map((tab) => (
             <Route key={tab.path} path={tab.path} element={tab.element} />
           ))}
           <Route path="audit-access/:accessId" element={<AuditAccess />} />

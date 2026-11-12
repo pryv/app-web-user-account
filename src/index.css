@@ -32,6 +32,15 @@
   --color-muted: var(--color-pryv-dark-gray);
   --color-card: #ffffff;
   --color-divider: var(--color-pryv-light-gray);
+
+  /*
+   * Layout widths. The auth and consent pages use the narrow column; the
+   * account section (`/account/...`) the wide one, with its nav in a left
+   * column of `--layout-nav-width` from the `lg` breakpoint (1024 px).
+   */
+  --layout-narrow-max: 28rem;
+  --layout-account-max: 64rem;
+  --layout-nav-width: 15rem;
 }
 
 /*
@@ -102,6 +111,11 @@
   --radius-sm: 2px;
   --radius-DEFAULT: 3px;
   --radius-lg: 5px;
+
+  /* Layout widths (mirrors of the :root definitions, the override surface) */
+  --layout-narrow-max: 28rem;
+  --layout-account-max: 64rem;
+  --layout-nav-width: 15rem;
 }
 
 @layer base {

@@ -31,6 +31,43 @@ describe("[LAYB] layout branding", () => {
 });
 
 /**
+ * [LYWD] The account section uses the wide layout token, the auth and
+ * consent pages the narrow one.
+ */
+describe("[LYWD] layout width by route", () => {
+  afterEach(() => cleanup());
+
+  function mainAt(entry: string): HTMLElement {
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Layout>
+          <p>content</p>
+        </Layout>
+      </MemoryRouter>,
+    );
+    return screen.getByRole("main");
+  }
+
+  it("[LYW1] /account/... is wide", () => {
+    for (const path of ["/account", "/account/profile", "/account/audit-access/a1", "/account/audit?kind=write"]) {
+      const main = mainAt(path);
+      expect(main.className).toContain("max-w-(--layout-account-max)");
+      expect(main.getAttribute("data-layout")).toBe("wide");
+      cleanup();
+    }
+  });
+
+  it("[LYW2] auth and consent pages stay narrow", () => {
+    for (const path of ["/signin", "/oauth2-authorize", "/accounting", "/"]) {
+      const main = mainAt(path);
+      expect(main.className).toContain("max-w-(--layout-narrow-max)");
+      expect(main.getAttribute("data-layout")).toBe("narrow");
+      cleanup();
+    }
+  });
+});
+
+/**
  * [LAYK] The header "Back to {label}" link: shown in a tab, not in a pop-up an
  * app opened, where following it would load the app inside the pop-up.
  */
