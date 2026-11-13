@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.34.0 - 2026-11-13
+
+Account section: a wide layout, one access card for sessions and apps, an Activity card with
+per-access call counts and an Audit trail tab (the call counts need open-pryv.io 2.0.0-rc.84 or
+later; older cores show the rest without them).
 
 ### Added
 
