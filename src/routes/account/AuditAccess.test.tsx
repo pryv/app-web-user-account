@@ -60,8 +60,17 @@ beforeEach(() => {
   conn.deletions = [];
   conn.selfId = "self-1";
   conn.api.mockReset();
+  // `audit.getSummary` answers as a core without the method: the Activity card reads the events.get window.
   conn.api.mockImplementation(async (calls: Call[]) =>
-    calls.map((c) => (c.method === "accesses.get" ? accessesGet(c) : c.method === "events.get" ? { events: [] } : { streams: [] })),
+    calls.map((c) =>
+      c.method === "accesses.get"
+        ? accessesGet(c)
+        : c.method === "events.get"
+          ? { events: [] }
+          : c.method === "audit.getSummary"
+            ? { error: { id: "invalid-method", message: "Invalid method id" } }
+            : { streams: [] },
+    ),
   );
   conn.accessInfo.mockReset();
   conn.accessInfo.mockImplementation(async () => ({ id: conn.selfId }));
@@ -347,6 +356,10 @@ describe("[ATTR] attribution on the access details page", () => {
       expect(reads.length).toBe(2);
       for (const c of reads) expect(c.params?.streams).toEqual([":_audit:access-upd-1"]);
     });
+    const summaries = conn.api.mock.calls
+      .flatMap(([calls]) => calls as Array<{ method: string; params?: Record<string, unknown> }>)
+      .filter((c) => c.method === "audit.getSummary");
+    expect(summaries.map((c) => c.params?.accessIds)).toEqual([["upd-1"]]);
     expect(screen.getByRole("link", { name: "Raw data" }).getAttribute("href")).toBe("/account/audit?access=upd-1");
   });
 });

@@ -5,7 +5,15 @@ import { Card, Alert } from "../../components/ui";
 import { ActivityChart } from "../../components/ActivityChart";
 import type { PryvConnection } from "../../lib/session";
 import { parseAttribution, type AccessUsage, type AuditEvent } from "../../lib/audit";
-import { ACTIVITY_LIMIT, buildActivityCalls, summarizeActivity, type ActivitySummary } from "../../lib/activity";
+import {
+  ACTIVITY_LIMIT,
+  activityFromSummary,
+  buildActivityCalls,
+  buildActivitySummaryCall,
+  summarizeActivity,
+  type ActivitySummary,
+} from "../../lib/activity";
+import { isSummaryUnavailable, isSummaryUnsupported, readSummary } from "../../lib/summary";
 import { formatDateTime } from "../../lib/dates";
 import { maskUrlCredentials } from "../../lib/maskCredentials";
 import { platformError } from "../../lib/apiError";
@@ -36,6 +44,8 @@ export function ActivityCard({
   const [error, setError] = useState<string | null>(null);
   // The last-error call failed on its own (the window call answered).
   const [lastErrorFailed, setLastErrorFailed] = useState<string | null>(null);
+  // The core's audit trail is switched off (`unavailable-method`): no chart.
+  const [chartHidden, setChartHidden] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,21 +53,35 @@ export function ActivityCard({
     setLastError(undefined);
     setError(null);
     setLastErrorFailed(null);
+    setChartHidden(false);
     const now = new Date();
+    type Res = { events?: AuditEvent[]; summary?: unknown; error?: { id?: string; message: string } };
     void (async () => {
       try {
-        const [win, last] = (await connection.api(buildActivityCalls(base, now))) as Array<{
-          events?: AuditEvent[];
-          error?: { message: string };
-        }>;
+        const [windowCall, lastErrorCall] = buildActivityCalls(base, now);
+        const [sum, last] = (await connection.api([buildActivitySummaryCall(base, now), lastErrorCall])) as Res[];
         if (cancelled) return;
-        if (win?.error) throw new Error(win.error.message);
-        setSummary(summarizeActivity(win?.events ?? [], now));
         if (last?.error) {
           setLastErrorFailed(maskUrlCredentials(last.error.message ?? ""));
         } else {
           setLastError(last?.events?.[0] ?? null);
         }
+        if (isSummaryUnavailable(sum?.error)) {
+          setChartHidden(true);
+          return;
+        }
+        if (isSummaryUnsupported(sum?.error)) {
+          // A core older than `audit.getSummary`: count the window here.
+          const [win] = (await connection.api([windowCall])) as Res[];
+          if (cancelled) return;
+          if (win?.error) throw new Error(win.error.message);
+          setSummary(summarizeActivity(win?.events ?? [], now));
+          return;
+        }
+        if (sum?.error) throw new Error(sum.error.message);
+        const read = readSummary(sum);
+        if (read == null) throw new Error(t("activity.errorLoad"));
+        setSummary(activityFromSummary(read));
       } catch (err: unknown) {
         if (!cancelled) setError(maskUrlCredentials(platformError(err, t("activity.errorLoad")).message));
       }
@@ -124,6 +148,7 @@ export function ActivityCard({
         )}
       </section>
 
+      {!chartHidden && (
       <section data-testid="activity-week">
         <h3 className="mb-1 text-sm font-medium">{t("activity.last7Days")}</h3>
         {error && <Alert>{error}</Alert>}
@@ -144,6 +169,7 @@ export function ActivityCard({
           </>
         )}
       </section>
+      )}
 
       <p className="mt-4 text-sm">
         <Trans

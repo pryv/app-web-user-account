@@ -2,16 +2,22 @@
  * The access page's Activity card: what it asks the audit store, and how it
  * turns the answer into a 7-day chart.
  *
- * Two `events.get` calls on the access's base stream (`:_audit:access-<base>`,
- * which holds every version's entries):
- * - the window: entries since the start of the local day six days ago, newest
- *   first, at most {@link ACTIVITY_LIMIT}; classified here with
- *   `classifyMethod`, batch envelopes dropped, bucketed by local day;
- * - the last error: the newest `audit-log/pryv-api-error` entry, any time.
+ * Two calls, in one batch:
+ * - the 7 days: `audit.getSummary` with day buckets in the browser's time
+ *   zone since the start of the local day six days ago, for the access's base
+ *   id (every version); the core classifies and counts;
+ * - the last error: `events.get` of the newest `audit-log/pryv-api-error`
+ *   entry of the access's base stream (`:_audit:access-<base>`), any time.
+ *
+ * On a core without `audit.getSummary`, the 7 days come from the former
+ * window instead: `events.get` on the base stream since the same day, newest
+ * first, at most {@link ACTIVITY_LIMIT}, classified here with
+ * `classifyMethod`, batch envelopes dropped, bucketed by local day.
  */
 
 import { AUDIT_ACCESS_STREAM_PREFIX, AUDIT_TYPE_ERROR, auditAction, isAuditError, parseAttribution, type AuditEvent } from "./audit";
 import { classifyMethod } from "./methodClasses";
+import { buildSummaryCall, summaryBars, summaryTotals, type AuditSummary } from "./summary";
 
 export const ACTIVITY_DAYS = 7;
 export const ACTIVITY_LIMIT = 1000;
@@ -26,7 +32,16 @@ export function activityDays(now: Date): Date[] {
   return days;
 }
 
-/** The two `events.get` calls of the Activity card. */
+/** The `audit.getSummary` call of the 7 days, for the access's base id. */
+export function buildActivitySummaryCall(accessId: string, now: Date) {
+  return buildSummaryCall({
+    fromTime: activityDays(now)[0].getTime() / 1000,
+    bucket: "day",
+    accessIds: [parseAttribution(accessId).base],
+  });
+}
+
+/** The two `events.get` calls of the Activity card on a core without `audit.getSummary`: the window, the last error. */
 export function buildActivityCalls(accessId: string, now: Date): Array<{ method: "events.get"; params: Record<string, unknown> }> {
   const stream = AUDIT_ACCESS_STREAM_PREFIX + parseAttribution(accessId).base;
   return [
@@ -65,6 +80,20 @@ export interface ActivitySummary {
   errors: number;
   /** The window came back with {@link ACTIVITY_LIMIT} entries: older ones were not read. */
   truncated: boolean;
+}
+
+/** The card's figures from the core's summary (complete by construction: no window limit). */
+export function activityFromSummary(s: AuditSummary): ActivitySummary {
+  const totals = summaryTotals(s);
+  return {
+    days: summaryBars(s),
+    reads: totals.reads,
+    writes: totals.writes,
+    session: totals.session,
+    other: totals.other,
+    errors: totals.errors,
+    truncated: false,
+  };
 }
 
 /** Bucket the window's entries (any order) into the last 7 local days. */
