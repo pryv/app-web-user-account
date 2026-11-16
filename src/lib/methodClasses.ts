@@ -20,6 +20,10 @@
  *
  * A failed call keeps its method's class: an error is a row type
  * (`audit-log/pryv-api-error`), not a class.
+ *
+ * Case is ignored: a core with the SQLite audit engine lists the method ids
+ * of `:_audit:actions` lowercased (`callbatch`, `getaccessinfo`). Every rule
+ * gives the same class to a method id and to its lowercased form.
  */
 
 /** The public classes (`batch` is never counted). */
@@ -28,7 +32,8 @@ export type MethodClass = (typeof METHOD_CLASSES)[number];
 
 const SESSION = /^(auth|mfa|oauth|sso)\./;
 const READ_PREFIXES = ["get", "list", "check", "retrieve"];
-const READ_NAMES = new Set(["info", "usernameChanges", "controlledStatus", "extIdHolds"]);
+// Names and prefixes are compared lowercased (see above).
+const READ_NAMES = new Set(["info", "usernamechanges", "controlledstatus", "extidholds"]);
 const WRITE_PREFIXES = [
   "create",
   "update",
@@ -53,12 +58,13 @@ const WRITE_PREFIXES = [
   "deactivate",
   "erase",
 ];
-const WRITE_NAMES = new Set(["adminRelease", "extIdRelease"]);
+const WRITE_NAMES = new Set(["adminrelease", "extidrelease"]);
 
 export function classifyMethod(methodId: string): MethodClass | "batch" {
-  if (methodId === "callBatch") return "batch";
-  if (SESSION.test(methodId)) return "session";
-  const last = methodId.slice(methodId.lastIndexOf(".") + 1);
+  const id = methodId.toLowerCase();
+  if (id === "callbatch") return "batch";
+  if (SESSION.test(id)) return "session";
+  const last = id.slice(id.lastIndexOf(".") + 1);
   if (READ_NAMES.has(last) || READ_PREFIXES.some((p) => last.startsWith(p))) return "read";
   if (WRITE_NAMES.has(last) || WRITE_PREFIXES.some((p) => last.startsWith(p))) return "write";
   return "other";

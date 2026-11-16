@@ -21,6 +21,13 @@
   (`unavailable-method`) the chart is left out and the rest of the card stays. `ActivityChart` now
   draws any number of hour, day or week buckets.
 
+### Fixed
+
+- **Audit trail: the Kind filter on a core with the SQLite audit engine.** That engine lists the
+  methods of the account lowercased (`callbatch`, `getaccessinfo`), and the class of a camelCase name
+  (`usernameChanges`, `controlledStatus`, `extIdHolds`, `adminRelease`, `extIdRelease`) was lost, so
+  `kind=read` / `kind=write` left those methods out. `classifyMethod` now ignores case.
+
 ## 0.34.0 - 2026-11-13
 
 Account section: a wide layout, one access card for sessions and apps, an Activity card with

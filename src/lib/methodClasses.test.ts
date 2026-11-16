@@ -52,6 +52,14 @@ describe("[MCLS] classifyMethod", () => {
     expect(classifyMethod("events.frobnicate")).toBe("other");
   });
 
+  it("[MCL5] a lowercased method id (SQLite audit stream listing) keeps its class", () => {
+    for (const [method, cls] of FIXTURE) expect([method, classifyMethod(method.toLowerCase())]).toEqual([method, cls]);
+    expect(classifyMethod("callbatch")).toBe("batch");
+    expect(classifyMethod("system.extidrelease")).toBe("write");
+    expect(classifyMethod("account.externalids.adminrelease")).toBe("write");
+    expect(classifyMethod("getaccessinfo")).toBe("read");
+  });
+
   it("[MCL4] the public classes", () => {
     expect([...METHOD_CLASSES]).toEqual(["read", "write", "session", "other"]);
   });
