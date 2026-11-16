@@ -4,11 +4,14 @@ import { render, screen, cleanup, within, waitFor } from "@testing-library/react
 import { MemoryRouter } from "react-router-dom";
 
 /**
- * [ACTV] The access page's Activity card: two events.get calls on the
- * access's base stream (the 7-day window and the last error), rows bucketed
- * by local day with batch envelopes dropped, the truncation notice at 1000
- * rows, the lifetime block only when the core returns `usage`, and the Raw
- * data link to the Audit trail.
+ * [ACTV] The access page's Activity card: `audit.getSummary` (day buckets in
+ * the browser's time zone, the access's base id) and the last error in one
+ * batch; on a core without the method (`invalid-method`), the former 7-day
+ * `events.get` window on the access's base stream, rows bucketed by local day
+ * with batch envelopes dropped and the truncation notice at 1000 rows; no
+ * chart when the audit trail is off (`unavailable-method`); the lifetime
+ * block only when the core returns `usage`, and the Raw data link to the
+ * Audit trail. ACT1..ACT7 run against a core without the method.
  */
 
 import { ActivityCard } from "./ActivityCard";
@@ -29,20 +32,37 @@ let windowRows: AuditEvent[] = [];
 let lastError: AuditEvent[] = [];
 /** When set, the last-error call answers this API error instead. */
 let lastErrorRefusal: { id: string; message: string } | null = null;
+const OLD_CORE = { error: { id: "invalid-method", message: 'Invalid method id "audit.getSummary"' } };
+/** What `audit.getSummary` answers: by default, a core without the method. */
+let summaryAnswer: Record<string, unknown> = OLD_CORE;
 const api = vi.fn(async (calls: Call[]) =>
   calls.map((c) =>
-    c.params.types != null && lastErrorRefusal != null
-      ? { error: lastErrorRefusal }
-      : { events: c.params.types != null ? lastError : windowRows },
+    c.method === "audit.getSummary"
+      ? summaryAnswer
+      : c.params.types != null && lastErrorRefusal != null
+        ? { error: lastErrorRefusal }
+        : { events: c.params.types != null ? lastError : windowRows },
   ),
 );
 const connection = { api } as never;
+
+const day = (d: number) => new Date(2026, 9, d).getTime() / 1000;
+const bucket = (d: number, reads: number, writes: number, extra: Partial<Record<"session" | "other" | "errors", number>> = {}) => ({
+  time: day(d),
+  reads,
+  writes,
+  session: extra.session ?? 0,
+  other: extra.other ?? 0,
+  errors: extra.errors ?? 0,
+  total: reads + writes + (extra.session ?? 0) + (extra.other ?? 0),
+});
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   windowRows = [];
   lastError = [];
   lastErrorRefusal = null;
+  summaryAnswer = OLD_CORE;
   api.mockClear();
 });
 afterEach(() => {
@@ -67,11 +87,26 @@ function tableRows(): string[][] {
 }
 
 describe("[ACTV] activity card", () => {
-  it("[ACT1] asks two events.get on the base stream: the 7-day window and the last error", async () => {
+  it("[ACT1] asks the summary and the last error; a core without the method then gets the 7-day window on the base stream", async () => {
     renderCard();
-    await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
-    const calls = api.mock.calls[0][0];
-    expect(calls).toEqual([
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+    const [first, second] = api.mock.calls.map((c) => c[0]);
+    expect(first).toEqual([
+      {
+        method: "audit.getSummary",
+        params: {
+          fromTime: new Date(2026, 9, 9).getTime() / 1000,
+          bucket: "day",
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          accessIds: ["app-1"],
+        },
+      },
+      {
+        method: "events.get",
+        params: { streams: [":_audit:access-app-1"], types: ["audit-log/pryv-api-error"], limit: 1, sortAscending: false },
+      },
+    ]);
+    expect(second).toEqual([
       {
         method: "events.get",
         params: {
@@ -80,10 +115,6 @@ describe("[ACTV] activity card", () => {
           limit: 1000,
           sortAscending: false,
         },
-      },
-      {
-        method: "events.get",
-        params: { streams: [":_audit:access-app-1"], types: ["audit-log/pryv-api-error"], limit: 1, sortAscending: false },
       },
     ]);
   });
@@ -173,5 +204,61 @@ describe("[ACTV] activity card", () => {
     expect(document.body.innerHTML).not.toContain("k7tok3n");
     // The 7-day chart is unaffected.
     expect(screen.getByTestId("activity-caption").textContent).toContain("0 errors");
+  });
+
+  it("[ACT8] a core with audit.getSummary: the chart and counts are the core's, one request, no window", async () => {
+    summaryAnswer = {
+      summary: {
+        bucket: "day",
+        timezone: "Europe/Zurich",
+        fromTime: day(9),
+        toTime: NOW.getTime() / 1000,
+        buckets: [
+          bucket(9, 0, 1),
+          bucket(10, 0, 0),
+          bucket(11, 0, 0, { other: 1 }),
+          bucket(12, 0, 0, { session: 1 }),
+          bucket(13, 1, 0, { errors: 1 }),
+          bucket(14, 2, 0),
+          bucket(15, 1, 1),
+        ],
+      },
+    };
+    // Window rows would give other figures: they must not be read.
+    windowRows = [row("1", "events.get", at(15, 10))];
+    renderCard();
+    await screen.findByRole("img");
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(tableRows().map(([reads, writes]) => [Number(reads), Number(writes)])).toEqual([
+      [0, 1],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [1, 1],
+    ]);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "Calls per day over the last 7 days: 4 reads and 2 writes in total.",
+    );
+    expect(screen.getByTestId("activity-caption").textContent).toBe("Session calls: 1 · other calls: 1 · 1 error");
+    expect(screen.queryByText(/entries in the last 7 days/)).toBeNull();
+  });
+
+  it("[ACT9] audit trail off (unavailable-method): no chart, the rest of the card stays", async () => {
+    summaryAnswer = { error: { id: "unavailable-method", message: "The audit trail is disabled on this platform." } };
+    renderCard();
+    expect(await within(screen.getByTestId("activity-last-error")).findByText("No error recorded.")).toBeTruthy();
+    expect(screen.queryByTestId("activity-week")).toBeNull();
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "Raw data" })).toBeTruthy();
+  });
+
+  it("[ACTA] any other summary error is shown (masked), without falling back", async () => {
+    summaryAnswer = { error: { id: "too-many-requests", message: "busy at https://z9tok3n@core.example/x/" } };
+    renderCard();
+    expect(await screen.findByText("busy at https://***@core.example/x/")).toBeTruthy();
+    expect(api).toHaveBeenCalledTimes(1);
+    expect(document.body.innerHTML).not.toContain("z9tok3n");
   });
 });

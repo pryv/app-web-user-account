@@ -216,8 +216,11 @@ Every route accepts these query parameters:
   memberships.
 - `/account/audit-access/<accessId>`: one access of the signed-in account (its
   details, Revoke, and an Activity summary: lifetime call counts when the core
-  returns them, the last error, a 7-day read/write chart, and a "Raw data" link
-  to its entries in the Audit trail), the page the cards of `/account/apps` and
+  returns them, the last error, a 7-day read/write chart counted by the core's
+  `audit.getSummary` in the browser's time zone (open-pryv.io with that method;
+  older cores fall back to counting the last 1000 entries in the browser, and
+  the chart is left out when the platform's audit trail is off), and a "Raw
+  data" link to its entries in the Audit trail), the page the cards of `/account/apps` and
   `/account/security` open. Link
   it when your app shows the user a consent or an app access and wants to send
   them to its page. For an access of an account the user MANAGES (account
@@ -232,7 +235,10 @@ Every route accepts these query parameters:
   already is does nothing. `as` is read once and dropped from the address. A
   signed-out user signs in first and comes back with `as` kept, like `create=1`.
 - `/account/audit`: the Audit trail tab, every audited call on the account,
-  newest first, with the access that made it. Link it when your app wants to
+  newest first, with the access that made it, under an Activity chart (reads
+  and writes over the last 24 hours, 7 or 30 days, or 52 weeks, picked on the
+  page; counted by `audit.getSummary` for the accesses the view is filtered to,
+  shown only on a core with that method). Link it when your app wants to
   show its user what was done with their data. The URL is the single source of
   truth for its filters, all optional, on top of the parameters every route
   takes (`pryvServiceInfoUrl`, `backUrl`, `backLabel`, `username`, `lang`):

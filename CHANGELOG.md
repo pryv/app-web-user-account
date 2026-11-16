@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Audit trail tab: an Activity chart with a period picker.** Reads and writes per hour (last 24
+  hours), per day (last 7 or 30 days) or per week (last 52 weeks, from Mondays), with the total,
+  session, other and error counts, for the accesses the view is filtered to (`access`, `app`) or the
+  whole account. Counted by the core's `audit.getSummary` in the browser's time zone; the Kind and
+  Action filters apply to the list only. Shown only on a core with that method and an active audit
+  trail. Component `src/routes/account/TrailSummary.tsx`, helpers `src/lib/summary.ts`.
+
+### Changed
+
+- **Access page: the 7-day chart is counted by the core.** The Activity card asks
+  `audit.getSummary` (day buckets, browser time zone, the access's base id, every version) with the
+  last-error call in one batch, so the chart is complete whatever the volume (no "1000+" window). On
+  a core without the method (`invalid-method` in a batch, `unknown-resource` over HTTP) it falls back
+  to the former `events.get` window counted in the browser; when the platform's audit trail is off
+  (`unavailable-method`) the chart is left out and the rest of the card stays. `ActivityChart` now
+  draws any number of hour, day or week buckets.
+
 ## 0.34.0 - 2026-11-13
 
 Account section: a wide layout, one access card for sessions and apps, an Activity card with

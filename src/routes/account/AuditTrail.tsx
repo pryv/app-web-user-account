@@ -32,6 +32,7 @@ import { useAccessNaming } from "../../extensions/accessNaming";
 import { formatDateTime } from "../../lib/dates";
 import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
 import { platformError } from "../../lib/apiError";
+import { TrailSummary } from "./TrailSummary";
 
 const PAGE_SIZE = 15;
 const INPUT =
@@ -233,6 +234,9 @@ export default function AuditTrail() {
     <section className="space-y-4">
       {intro}
       <AsNotice state={asRes.state} />
+      {connection && (
+        <TrailSummary connection={connection} accessIds={appUnresolvable ? [] : accessIds} refreshTick={refreshTick} />
+      )}
       <Card>
         <h2 className="mb-3 text-xs font-normal uppercase tracking-wide text-muted">{t("trail.title")}</h2>
         <TrailForm key={search} search={search} actions={actions ?? []} busy={busy} onApply={apply} onRefresh={() => setRefreshTick((n) => n + 1)} />

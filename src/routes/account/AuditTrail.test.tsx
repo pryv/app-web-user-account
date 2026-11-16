@@ -67,6 +67,8 @@ beforeEach(() => {
       if (c.method === "accesses.get") return { accesses: conn.accesses, accessDeletions: conn.deletions };
       if (c.method === "streams.get") return { streams: conn.actions.map((a) => ({ id: ":_audit:action-" + a })) };
       if (c.method === "events.get") return { events: conn.events };
+      // A core without the method: the activity chart stays hidden.
+      if (c.method === "audit.getSummary") return { error: { id: "invalid-method", message: "Invalid method id" } };
       return {};
     }),
   );
@@ -264,5 +266,29 @@ describe("[TRLP] audit trail page", () => {
       "/account/audit?backLabel=App",
     );
     expect(screen.queryByRole("columnheader", { name: "Access" })).toBeNull();
+  });
+
+  it("[TRP11] the activity chart counts the accesses of the view: the app's resolved ids, or the whole account", async () => {
+    const summaries = () =>
+      conn.api.mock.calls.flatMap(([calls]) => calls as Call[]).filter((c) => c.method === "audit.getSummary");
+    conn.api.mockImplementation(async (calls: Call[]) =>
+      calls.map((c) => {
+        if (c.method === "accesses.get") return { accesses: conn.accesses, accessDeletions: conn.deletions };
+        if (c.method === "streams.get") return { streams: [] };
+        if (c.method === "audit.getSummary") {
+          return { summary: { bucket: "day", timezone: "UTC", fromTime: 0, toTime: 1, buckets: [{ time: 0, total: 3, reads: 2, writes: 1, session: 0, other: 0, errors: 0 }] } };
+        }
+        return { events: conn.events };
+      }),
+    );
+    renderAt("?app=clinic");
+    expect((await screen.findByTestId("trail-summary-caption")).textContent).toContain("3 calls");
+    expect(summaries().map((c) => c.params.accessIds)).toEqual([["g1", "s1"]]);
+    cleanup();
+    conn.api.mockClear();
+    renderAt("");
+    await screen.findByTestId("trail-summary");
+    expect(summaries()).toHaveLength(1);
+    expect(summaries()[0].params).not.toHaveProperty("accessIds");
   });
 });
