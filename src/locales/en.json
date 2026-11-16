@@ -671,6 +671,7 @@
     "createManagedToggle": "Create an account for someone you look after",
     "createManagedCreated": "Account {{username}} created and selected. Continue when you are ready.",
     "appMessageCaption": "Message from the app",
+    "returnsTo": "Your answer takes you back to {{host}}",
     "choiceHint": "Untick anything you would rather not share. Entries marked as required cannot be unticked.",
     "mismatchWillUpdate": "A different access was already given to this app. Approving will update it.",
     "mismatchWillReplace": "A different access was already given to this app. Approving will replace it.",

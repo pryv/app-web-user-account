@@ -10,6 +10,11 @@
   whole account. Counted by the core's `audit.getSummary` in the browser's time zone; the Kind and
   Action filters apply to the list only. Shown only on a core with that method and an active audit
   trail. Component `src/routes/account/TrailSummary.tsx`, helpers `src/lib/summary.ts`.
+- **`/auth` consent screen: the host the answer goes back to.** When the access request carries a
+  `returnURL` the browser will be sent to (redirect mode), the screen says so under the app's name:
+  "Your answer takes you back to {host}" (the host only, never the path or the query). Nothing is
+  shown for a pop-up or polling-only request, in CLI mode, or for a `returnURL` that is not an
+  http(s) URL. Locale key `consent.returnsTo`.
 
 ### Changed
 
@@ -27,6 +32,11 @@
   methods of the account lowercased (`callbatch`, `getaccessinfo`), and the class of a camelCase name
   (`usernameChanges`, `controlledStatus`, `extIdHolds`, `adminRelease`, `extIdRelease`) was lost, so
   `kind=read` / `kind=write` left those methods out. `classifyMethod` now ignores case.
+- **Sign-in: no "Welcome back" card while a completed sign-in continues** ([#35](https://github.com/pryv/app-web-user-account/issues/35)).
+  After a password sign-in, `/signin` showed the "You are already signed in" card until the
+  operator's sign-in gate had answered and the page had left, for the whole check with a gate doing
+  I/O. The form now stays busy ("Signing in…") until the page leaves; the card shows only for a
+  session found on arrival, and as the fallback when continuing fails.
 
 ## 0.34.0 - 2026-11-13
 

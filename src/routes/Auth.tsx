@@ -57,6 +57,7 @@ import { isSessionRejected } from "../lib/sessionErrors";
 import { loggableError, platformError } from "../lib/apiError";
 import { hasUsableEmail, missingEmailErrorKey, readAccountEmail, readsAccountEmail, setAccountEmail } from "../lib/accountEmail";
 import { maskUrlCredentials } from "../lib/maskCredentials";
+import { httpUrlOrNull } from "../lib/safeRedirect";
 import {
   claimExternalId,
   externalIdOf,
@@ -147,6 +148,18 @@ function updatesInPlace(
       ? childDelegateUsername(mismatching)?.toLowerCase() === delegate.toLowerCase()
       : !isDelegatedChild(mismatching);
   return lineageKept && sameClientData(mismatching.clientData, state.clientData);
+}
+
+/**
+ * The host the browser is sent to once the request is answered, for the
+ * consent screen to show; null when `closeOrRedirect` does not leave for the
+ * request's `returnURL` (CLI mode, a pop-up or polling-only request without
+ * one, or one that is not an http(s) URL). The host only, never the URL.
+ */
+function returnUrlHost(state: AccessState, cli: boolean): string | null {
+  const returnURL = state.returnURL;
+  if (cli || !returnURL || returnURL === "false") return null;
+  return httpUrlOrNull(returnURL)?.host || null;
 }
 
 interface AuthQuery {
@@ -1735,6 +1748,7 @@ function AuthFlow({
   // screen: mandatory rows locked, opt-in rows open unticked.
   if (check && check.checkedPermissions) {
     const consentMsg = consentMessage(accessState.clientData);
+    const returnHost = returnUrlHost(accessState, query.cli);
     // An access the app already holds is shown as it is, all rows locked.
     const panelEntries = reuse != null
       ? consentEntries(
@@ -1843,6 +1857,15 @@ function AuthFlow({
             icon: requestingApp?.icon,
             description: requestingApp?.description,
           }}
+          appNote={
+            // Where the answer sends the browser: the request's own returnURL,
+            // which is followed whatever the operator's return policy says.
+            returnHost != null && (
+              <p data-testid="consent-return-host" className="mb-2 text-xs text-muted break-all">
+                {tNodes("consent.returnsTo", { host: <strong>{returnHost}</strong> })}
+              </p>
+            )
+          }
           consentText={
             consentMsg != null && (
               // The app's own explanation comes before the technical breakdown.

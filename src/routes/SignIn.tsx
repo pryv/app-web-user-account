@@ -91,15 +91,20 @@ export default function SignIn() {
     };
   }, [connection]);
 
-  function completeSignedIn(conn: PryvConnection) {
-    continueSignedIn(conn, signedInTarget(search, conn.endpoint), navigate).catch((err: unknown) =>
-      console.warn("signin: could not continue after sign-in:", loggableError(err)),
+  /** Continue where the sign-in was going. True when the page is leaving, false when continuing failed. */
+  function completeSignedIn(conn: PryvConnection): Promise<boolean> {
+    return continueSignedIn(conn, signedInTarget(search, conn.endpoint), navigate).then(
+      () => true,
+      (err: unknown) => {
+        console.warn("signin: could not continue after sign-in:", loggableError(err));
+        return false;
+      },
     );
   }
 
   function continueAs() {
     if (!connection) return;
-    completeSignedIn(connection);
+    void completeSignedIn(connection);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -107,6 +112,9 @@ export default function SignIn() {
     setError(null);
     setBusy(true);
     let userId = username;
+    // Set once the page is on its way out: the form stays busy until it has
+    // left, so the signed-in card never shows for a sign-in that continues.
+    let leaving = false;
     try {
       const { appId, serviceInfoUrl } = parseAuthParams(search);
       const service = getService(search);
@@ -121,7 +129,7 @@ export default function SignIn() {
       // every account-side <Navigate> can preserve it from useLocation().search
       // without depending on localStorage state (which gets cleared when
       // setConnection(null) runs, racing AccountLayout's re-render).
-      completeSignedIn(connection);
+      leaving = await completeSignedIn(connection);
     } catch (err: unknown) {
       if (isMfaRequired(err)) {
         navigate("/mfa-challenge", {
@@ -131,11 +139,13 @@ export default function SignIn() {
       }
       setError(err instanceof Error ? err.message : t("signin.failed"));
     } finally {
-      setBusy(false);
+      if (!leaving) setBusy(false);
     }
   }
 
-  if (connection) {
+  // While a sign-in continues, the form stays (busy); the card is shown for a
+  // session found on arrival, and as the fallback when continuing failed.
+  if (connection && !busy) {
     return (
       <Card>
         <h1 className="mb-1 text-2xl">{t("signin.welcomeBack")}</h1>

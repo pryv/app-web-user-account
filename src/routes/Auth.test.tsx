@@ -500,6 +500,40 @@ describe("[AUCP] /auth consent panel", () => {
     expect(flow.createAppAccess.mock.calls[0][2].permissions).toEqual(OFFER);
   });
 
+  /** The state of [AUC4], with the given returnURL. */
+  function stateReturningTo(returnURL: unknown) {
+    return {
+      status: "NEED_SIGNIN",
+      requestingAppId: "test-app",
+      requestedPermissions: OFFER,
+      serviceInfo: { api: "https://{username}.core.test/", register: "https://core.test/" },
+      returnURL,
+    };
+  }
+
+  it("[AUC12] a redirect request shows the host its answer goes back to, never the full URL", async () => {
+    await renderAndSignIn(stateReturningTo("https://app.example:8443/cb?session=secret#x"));
+    const note = screen.getByTestId("consent-return-host");
+    expect(note.textContent).toBe("Your answer takes you back to app.example:8443");
+    expect(document.body.textContent).not.toContain("session=secret");
+  });
+
+  it("[AUC13] no host is shown without a returnURL (pop-up or polling-only request)", async () => {
+    for (const returnURL of [undefined, null, false, "false"]) {
+      await renderAndSignIn(stateReturningTo(returnURL));
+      expect(screen.queryByTestId("consent-return-host")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("[AUC14] no host is shown for a returnURL that is not an http(s) URL", async () => {
+    for (const returnURL of ["not a url", "javascript:alert(1)", "https://"]) {
+      await renderAndSignIn(stateReturningTo(returnURL));
+      expect(screen.queryByTestId("consent-return-host")).toBeNull();
+      cleanup();
+    }
+  });
+
   const OWN_INFO = { register: "https://own.test/reg/", api: "https://{username}.own.test/" };
 
   it("[AUPG] a restricted deployment refuses a request on another platform before fetching it", async () => {
