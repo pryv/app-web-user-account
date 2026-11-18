@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.36.0 - 2026-11-18
+
+The OAuth consent screen shown again to an app already allowed lists the streams it keeps outside the
+request apart, and explains the core's new `request-no-reach` refusal (open-pryv.io 2.0.0-rc.87 or
+later; with an older core the list is shown as before).
 
 ### Changed
 
