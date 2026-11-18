@@ -212,7 +212,8 @@ describe("[SICN] continuing after a sign-in", () => {
     continuing.failWith = new Error("cannot continue");
     await signIn();
     expect(await screen.findByText("Welcome back")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Continue as alice" })).toBeTruthy();
+    // The card renders before the username resolves: wait for the named button.
+    expect(await screen.findByRole("button", { name: "Continue as alice" })).toBeTruthy();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
