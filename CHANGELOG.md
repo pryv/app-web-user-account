@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.35.0 - 2026-11-18
+
+An Activity chart on the Audit trail tab and a complete 7-day chart on the access page, both counted
+by the core (`audit.getSummary`, open-pryv.io 2.0.0-rc.86 or later; older cores fall back as before),
+the host the answer returns to on the `/auth` consent screen, and the sign-in fix of issue #35.
 
 ### Added
 
