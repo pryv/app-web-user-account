@@ -33,13 +33,16 @@ export type LocalizableText = Record<string, string>;
  *   `currentLevel`  : on a held stream entry, the level the app holds today
  *                     (`level` is then what it will hold: today's level joined
  *                     with what it asks for).
+ *   `requested: true`: on a composed screen, a stream entry the request
+ *                     names (asked now). A held stream entry without it stays
+ *                     allowed but is not part of the access the app gets now.
  * All are display-layer only: they never travel on a grant, and the
  * server strips them before minting an access.
  */
 export type OfferPermission = (
   | { streamId: string; level: string; defaultName?: string; name?: string }
   | { feature: string; setting: string }
-) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean; currentLevel?: string };
+) & { mandatory?: boolean; optIn?: boolean; currentlyGranted?: boolean; currentLevel?: string; requested?: boolean };
 
 /**
  * Display model for one consent-screen row.
@@ -56,6 +59,8 @@ export type OfferPermission = (
  * feature restriction, which reads as one on its own).
  * `heldLevel`: on a held stream entry whose level changes, the level the app
  * holds today (null when it already holds the level shown, or holds nothing).
+ * `heldOutsideRequest`: a held stream entry the request does not name (only
+ * known when the core marks the requested ones, see `requested`).
  */
 export interface ConsentEntry {
   permission: OfferPermission;
@@ -65,6 +70,7 @@ export interface ConsentEntry {
   initiallyTicked: boolean;
   currentlyGranted: boolean;
   heldLevel: string | null;
+  heldOutsideRequest: boolean;
 }
 
 /**
@@ -102,6 +108,8 @@ export function consentEntries(
   opts: { allowUserChoice?: boolean } & LabelSources = {},
 ): ConsentEntry[] {
   const allowUserChoice = opts.allowUserChoice === true;
+  // A core that marks the requested entries marks every one of them.
+  const marked = permissions.some((p) => p.requested === true);
   return permissions.map((p) => {
     const restriction = isFeatureRestriction(p);
     const locked = !allowUserChoice || p.mandatory === true || restriction;
@@ -124,6 +132,7 @@ export function consentEntries(
       initiallyTicked: locked || currentlyGranted || p.optIn !== true,
       currentlyGranted,
       heldLevel,
+      heldOutsideRequest: marked && currentlyGranted && "streamId" in p && p.requested !== true,
     };
   });
 }
@@ -197,7 +206,7 @@ export function grantedPermissions(
 ): OfferPermission[] {
   return entries
     .filter((e, i) => e.locked || flags[i])
-    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, currentLevel: _l, ...p } }) => p as OfferPermission);
+    .map(({ permission: { mandatory: _m, optIn: _o, currentlyGranted: _c, currentLevel: _l, requested: _r, ...p } }) => p as OfferPermission);
 }
 
 /** Catalog key of each access level's verb (what the row lets the app do). */
@@ -355,13 +364,15 @@ export interface ConsentGroupView {
 /**
  * Where each entry of the flat list is rendered: entries no group names
  * first (offer order), then the groups (the offer's order, each with its
- * entries in offer order), then the feature restrictions no group names.
- * Indices always point into the flat list, so ticks, element ids and the
- * grant stay those of the flat list.
+ * entries in offer order), then the streams the app holds outside this
+ * request that no group names (`held`), then the feature restrictions no
+ * group names. Indices always point into the flat list, so ticks, element
+ * ids and the grant stay those of the flat list.
  */
 export interface ConsentLayout {
   ungrouped: number[];
   groups: ConsentGroupView[];
+  held: number[];
   restrictions: number[];
 }
 
@@ -370,15 +381,17 @@ export interface ConsentLayout {
  * its exact key, else the group naming its level-less key; the first group
  * naming a key wins (a key in two groups is refused by the platform, this
  * keeps the screen deterministic should one get through). A group with no
- * entry on this screen is not rendered. Returns null when no group is
- * rendered at all: the screen then shows the flat list.
+ * entry on this screen is not rendered. A held stream outside the request
+ * that no group names goes to `held`. Returns null when neither a group nor
+ * `held` is rendered: the screen then shows the flat list.
  */
 export function consentLayout(
   entries: ConsentEntry[],
   groups: readonly OfferEntryGroup[] | null | undefined,
   lang: string,
 ): ConsentLayout | null {
-  if (groups == null || groups.length === 0) return null;
+  if (groups == null || groups.length === 0) groups = [];
+  if (groups.length === 0 && !entries.some((e) => e.heldOutsideRequest)) return null;
   const groupOf = new Map<string, number>();
   groups.forEach((g, gi) => {
     for (const key of g.entries) {
@@ -388,19 +401,21 @@ export function consentLayout(
   });
   const members: number[][] = groups.map(() => []);
   const ungrouped: number[] = [];
+  const held: number[] = [];
   const restrictions: number[] = [];
   entries.forEach((e, i) => {
     const [exact, levelless] = entryKeys(e.permission);
     const gi = groupOf.get(exact) ?? groupOf.get(levelless);
     if (gi != null) members[gi].push(i);
     else if (isFeatureRestriction(e.permission)) restrictions.push(i);
+    else if (e.heldOutsideRequest) held.push(i);
     else ungrouped.push(i);
   });
   const views = groups
     .map((g, gi) => ({ key: g.key, label: pickText(g.label, lang) || g.key, indices: members[gi] }))
     .filter((g) => g.indices.length > 0);
-  if (views.length === 0) return null;
-  return { ungrouped, groups: views, restrictions };
+  if (views.length === 0 && held.length === 0) return null;
+  return { ungrouped, groups: views, held, restrictions };
 }
 
 /**

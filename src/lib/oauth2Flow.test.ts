@@ -614,6 +614,8 @@ describe("[OACP] composed offer once signed in", () => {
     expect(consentRefusalKey(mk(400, "keep at least one stream", "keep-one-stream"))).toBeNull();
     expect(consentRefusalKey(mk(500, "x", "consent-widens-offer"))).toBeNull();
     expect(consentRefusalKey(null)).toBeNull();
+    // Nothing ticked is part of what the app asks for now.
+    expect(consentRefusalKey(mk(400, "the consent keeps none of the streams", "request-no-reach"))).toBe("oauth.errorRequestNoReach");
   });
 
   it("[OACP11] the owner's address used by another app gets the page's own copy; the shared mismatch keeps the core's message", () => {

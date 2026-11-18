@@ -14,7 +14,9 @@ import { PermissionRow } from "./PermissionList";
 /**
  * The permission list in the groups the offer declares (see `consentLayout`):
  * entries no group names first, then one fieldset per group, then the
- * feature restrictions no group names.
+ * streams the app already holds outside this request (a section of their
+ * own: they stay allowed but are not part of the access it gets now), then
+ * the feature restrictions no group names.
  *
  * Each group's legend states its label and every count the decision needs,
  * so nothing lives only in a collapsed group. A group of more than one entry
@@ -70,8 +72,57 @@ export function GroupedPermissionList({
           {rows(g.indices)}
         </EntryGroup>
       ))}
+      {layout.held.length > 0 && (
+        <HeldSection baseId={`${groupIdPrefix}-held`} count={layout.held.length} allowUserChoice={allowUserChoice}>
+          {rows(layout.held)}
+        </HeldSection>
+      )}
       {layout.restrictions.length > 0 && <ul className="mb-2 space-y-1">{rows(layout.restrictions)}</ul>}
     </div>
+  );
+}
+
+/** Held rows above this count open collapsed (a re-consent may carry many). */
+const HELD_OPEN_MAX = 3;
+
+/** The streams the app already holds outside this request, with the same toggle as a group. */
+function HeldSection({
+  baseId,
+  count,
+  allowUserChoice,
+  children,
+}: {
+  baseId: string;
+  count: number;
+  allowUserChoice: boolean;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(count <= HELD_OPEN_MAX);
+  const listId = `${baseId}-entries`;
+  return (
+    <section id={baseId} aria-labelledby={`${baseId}-title`} className="mb-2 rounded border border-divider px-3 py-2">
+      <p id={`${baseId}-title`} className="font-medium">
+        {t("consent.heldOutsideRequest")}{" "}
+        <span className="text-xs font-normal text-muted">{t("consent.groupEntries", { count })}</span>
+      </p>
+      <p className="mb-1 text-xs text-muted">
+        {t(allowUserChoice ? "consent.heldOutsideRequestHintChoice" : "consent.heldOutsideRequestHint")}
+      </p>
+      <button
+        id={`${baseId}-toggle`}
+        type="button"
+        className="mb-1 text-xs underline"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen(!open)}
+      >
+        {t(open ? "consent.groupHide" : "consent.groupShow", { count })}
+      </button>
+      <ul id={listId} className="space-y-1" hidden={!open}>
+        {children}
+      </ul>
+    </section>
   );
 }
 

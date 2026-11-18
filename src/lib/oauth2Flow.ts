@@ -367,12 +367,14 @@ export function isAddressAliasHeldError(err: unknown): boolean {
  * `permission-level-conflict`, `keep-one-stream`). `consent-widens-offer`: an
  * unticked entry sits under one kept, so it would be reached anyway; a core
  * that sends no `reason` is recognised by its wording. `address-alias-held`:
- * the address is the account's own, used by another app.
+ * the address is the account's own, used by another app. `request-no-reach`:
+ * nothing ticked is part of what the app asks for now.
  */
 export function consentRefusalKey(err: unknown): string | null {
   if (isAddressAliasHeldError(err)) return "oauth.errorAddressAliasHeld";
   const e = err as OAuthFlowError | null;
   if (e == null || e.status !== 400) return null;
+  if (e.reason === "request-no-reach") return "oauth.errorRequestNoReach";
   const widens = e.reason != null
     ? e.reason === "consent-widens-offer"
     : /widen the offer under the stream hierarchy/i.test(e.message ?? "");

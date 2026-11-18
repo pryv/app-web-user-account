@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **OAuth consent shown again to an app the user already allowed: the streams it holds outside
+  this request are listed apart**, under "Already allowed, not asked for now", after the entries
+  it asks for (a stream an offer group names stays in its group; more than 3 open collapsed). The
+  core then gives the app access to what it asks for only and keeps the others allowed for later.
+  A consent keeping none of the entries asked now is refused by the core (`request-no-reach`); the
+  page says to tick one of them or refuse. Needs an open-pryv.io core that marks the requested
+  entries (`requested: true` on the composed offer); with an older core the list is shown as
+  before. The flag never travels on the grant.
+
 ## 0.35.0 - 2026-11-18
 
 An Activity chart on the Audit trail tab and a complete 7-day chart on the access page, both counted

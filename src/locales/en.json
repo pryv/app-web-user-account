@@ -649,6 +649,9 @@
     "groupShow_other": "Show the {{count}} entries",
     "groupHide_one": "Hide the entry",
     "groupHide_other": "Hide the entries",
+    "heldOutsideRequest": "Already allowed, not asked for now",
+    "heldOutsideRequestHint": "The app keeps these allowed. The access it gets now covers what it asks for above, and what lies inside it.",
+    "heldOutsideRequestHintChoice": "The app keeps these allowed. The access it gets now covers what it asks for above, and what lies inside it. Untick one to take it away from the app.",
     "expiresAfterLabel": "Expires after:",
     "expiresAfterSeconds": "{{seconds}}s",
     "errorNoSessionToken": "Sign-in did not return a session token.",
@@ -745,7 +748,8 @@
     "errorAddressAliasHeld": "This address is already used by another app. Give this app another of your addresses, or free this one in your account.",
     "errorConsentOutOfDate": "This consent screen is out of date: the app's access changed since it was shown. Go back to the app and start the authorization again.",
     "backToApp": "Back to the app",
-    "errorWidensOffer": "One of the entries you unticked sits inside an entry you kept, so the app would still reach it through that one. Untick the containing entry too, or keep this one ticked."
+    "errorWidensOffer": "One of the entries you unticked sits inside an entry you kept, so the app would still reach it through that one. Untick the containing entry too, or keep this one ticked.",
+    "errorRequestNoReach": "None of the entries you kept is part of what the app asks for now. Tick at least one of them, or refuse."
   },
   "cmc": {
     "approveTitle": "Approve request",

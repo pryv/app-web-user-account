@@ -426,8 +426,30 @@ describe("[CGRP] entry groups: layout, legend counts, the group's box", () => {
         // No label: the key is the legend text. `s|hr` was already in vitals.
         { key: "activity", label: "activity", indices: [4, 6] },
       ],
+      held: [],
       restrictions: [2],
     });
+  });
+
+  it("[CGR9] a composed screen: held streams the request does not name get a section of their own, grouped ones stay in their group", () => {
+    const composed = consentEntries([
+      { streamId: "a", level: "read", requested: true, currentlyGranted: true }, // 0 asked, held
+      { streamId: "b", level: "read", currentlyGranted: true },                  // 1 held outside the request
+      { streamId: "c", level: "read", requested: true },                         // 2 asked, new
+      { streamId: "d", level: "read", currentlyGranted: true },                  // 3 held outside, grouped
+      { feature: "webhooks", setting: "forbidden", currentlyGranted: true },     // 4 restriction
+    ], { allowUserChoice: true });
+    expect(composed.map((e) => e.heldOutsideRequest)).toEqual([false, true, false, true, false]);
+    expect(consentLayout(composed, null, "en")).toEqual({ ungrouped: [0, 2], groups: [], held: [1, 3], restrictions: [4] });
+    expect(consentLayout(composed, [{ key: "g", label: null, entries: ["s|d"] }], "en")).toEqual({
+      ungrouped: [0, 2], groups: [{ key: "g", label: "g", indices: [3] }], held: [1], restrictions: [4],
+    });
+    // A core that marks nothing: no split, the flat list.
+    const unmarked = consentEntries([{ streamId: "a", level: "read", currentlyGranted: true }, { streamId: "c", level: "read" }]);
+    expect(unmarked.some((e) => e.heldOutsideRequest)).toBe(false);
+    expect(consentLayout(unmarked, null, "en")).toBeNull();
+    // The flag never travels on the grant.
+    expect(grantedPermissions(composed, composed.map(() => true))[0]).toEqual({ streamId: "a", level: "read" });
   });
 
   it("[CGR2] the exact key wins over a level-less one named by an earlier group", () => {

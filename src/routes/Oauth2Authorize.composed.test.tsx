@@ -343,6 +343,54 @@ describe("[OACS] Oauth2Authorize composed consent", () => {
     ]);
   });
 
+  it("[OACS18] streams held outside the request are listed apart, and still posted when ticked", async () => {
+    const fetchMock = mockFetch(composingCore({
+      offer: {
+        ...COMPOSED,
+        allowUserChoice: true,
+        permissions: [
+          { streamId: "pressure", level: "read", requested: true, currentlyGranted: true, currentLevel: "read" },
+          { streamId: "diary", level: "contribute", currentlyGranted: true, currentLevel: "contribute" },
+        ],
+      },
+    }));
+    renderPage();
+    await signInToConsent();
+    const section = document.getElementById("oauthGroup-held");
+    expect(section).toBeTruthy();
+    expect(section?.textContent).toContain("Already allowed, not asked for now");
+    expect(section?.textContent).toContain("diary");
+    expect(section?.textContent).not.toContain("pressure");
+    // One held row: shown open.
+    expect((document.getElementById("oauthGroup-held-entries") as HTMLElement).hidden).toBe(false);
+    fireEvent.click(acceptButton());
+    await waitFor(() => expect(nav.navigateTo).toHaveBeenCalledTimes(1));
+    const [accept] = bodiesOf(fetchMock, "/oauth2/authorize/accept");
+    expect(accept.grantedPermissions).toEqual([
+      { streamId: "pressure", level: "read" },
+      { streamId: "diary", level: "contribute" },
+    ]);
+  });
+
+  it("[OACS19] many held streams outside the request open collapsed, with their count", async () => {
+    mockFetch(composingCore({
+      offer: {
+        ...COMPOSED,
+        permissions: [
+          { streamId: "pressure", level: "read", requested: true },
+          ...["h1", "h2", "h3", "h4"].map((streamId) => ({ streamId, level: "read", currentlyGranted: true, currentLevel: "read" })),
+        ],
+      },
+    }));
+    renderPage();
+    await signInToConsent();
+    expect(document.getElementById("oauthGroup-held-title")?.textContent).toContain("4 entries");
+    const list = document.getElementById("oauthGroup-held-entries") as HTMLElement;
+    expect(list.hidden).toBe(true);
+    fireEvent.click(document.getElementById("oauthGroup-held-toggle") as HTMLElement);
+    expect(list.hidden).toBe(false);
+  });
+
   it("[OACS13] the hierarchy refusal reads as what to change on the screen", async () => {
     mockFetch(composingCore({}, () => ({
       status: 400,
