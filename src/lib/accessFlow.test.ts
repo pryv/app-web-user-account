@@ -306,6 +306,17 @@ describe("consent form + accept-result shaping", () => {
     expect(without.consent).toBeUndefined();
   });
 
+  it("[AFC4] reads the poll URL with authPage=1, keeping its own query, and posts to it unchanged", async () => {
+    const fn = stubFetch(201, { status: "NEED_SIGNIN", requestedPermissions: [] });
+    const urlOfCall = (i: number) => (fn.mock.calls[i] as unknown[])[0];
+    await loadAccessState(POLL);
+    expect(urlOfCall(0)).toBe(POLL + "?authPage=1");
+    await loadAccessState(POLL + "?x=1");
+    expect(urlOfCall(1)).toBe(POLL + "?x=1&authPage=1");
+    await updateAccessState(POLL, { status: "REFUSED" });
+    expect(urlOfCall(2)).toBe(POLL);
+  });
+
   it("[AFC2] surfaces the refusal reason, and tells a bad grant from an unavailable check", async () => {
     stubFetch(400, {
       error: {

@@ -134,9 +134,25 @@ export class AccessStateLoadError extends Error {
   }
 }
 
+/**
+ * The poll URL as this page reads it: with `authPage=1`, which tells the core
+ * that the auth page (not the app polling for the outcome) has opened the
+ * request. A core with `access.openedOnlyByAuthPage` on gives the request its
+ * full lifetime only on such a read; other cores ignore the parameter.
+ */
+export function authPagePollUrl(pollUrl: string): string {
+  try {
+    const url = new URL(pollUrl);
+    url.searchParams.set("authPage", "1");
+    return url.toString();
+  } catch {
+    return pollUrl;
+  }
+}
+
 /** Fetch the access-state JSON from the registration server's poll URL. */
 export async function loadAccessState(pollUrl: string): Promise<AccessState> {
-  const res = await fetch(pollUrl, { headers: { Accept: "application/json" } });
+  const res = await fetch(authPagePollUrl(pollUrl), { headers: { Accept: "application/json" } });
   if (!res.ok) throw new AccessStateLoadError(res.status);
   return (await res.json()) as AccessState;
 }
