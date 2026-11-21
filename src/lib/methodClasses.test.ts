@@ -27,6 +27,7 @@ const FIXTURE: Array<[string, string]> = [
   ["webhooks.test", "write"],
   ["account.requestPasswordReset", "write"],
   ["account.transferClaim", "write"],
+  ["webhooks.rotateSecret", "write"],
   ["auth.login", "session"],
   ["auth.logout", "session"],
   ["mfa.verify", "session"],
@@ -39,8 +40,9 @@ describe("[MCLS] classifyMethod", () => {
     for (const [method, cls] of FIXTURE) expect([method, classifyMethod(method)]).toEqual([method, cls]);
   });
 
-  it("[MCL2] write extras: deactivate, erase, adminRelease, extIdRelease", () => {
+  it("[MCL2] write extras: deactivate, erase, rotate, adminRelease, extIdRelease", () => {
     expect(classifyMethod("system.deactivateMfa")).toBe("write");
+    expect(classifyMethod("webhooks.rotateSecret")).toBe("write");
     expect(classifyMethod("system.extIdRelease")).toBe("write");
     expect(classifyMethod("account.externalIds.adminRelease")).toBe("write");
     expect(classifyMethod("account.autoDeletion.erase")).toBe("write");

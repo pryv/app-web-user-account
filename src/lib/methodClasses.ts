@@ -14,8 +14,8 @@
  * 4. `write` when `last` starts with `create`, `update`, `delete`, `set`,
  *    `replace`, `claim`, `release`, `change`, `accept`, `refuse`, `cancel`,
  *    `detach`, `dismiss`, `issue`, `notify`, `request`, `reset`, `verify`,
- *    `test`, `transfer`, `deactivate` or `erase`, or is `adminRelease` or
- *    `extIdRelease`.
+ *    `test`, `transfer`, `deactivate`, `erase` or `rotate`, or is
+ *    `adminRelease` or `extIdRelease`.
  * 5. Anything else is `other`.
  *
  * A failed call keeps its method's class: an error is a row type
@@ -57,6 +57,7 @@ const WRITE_PREFIXES = [
   "transfer",
   "deactivate",
   "erase",
+  "rotate",
 ];
 const WRITE_NAMES = new Set(["adminrelease", "extidrelease"]);
 
