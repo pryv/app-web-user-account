@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The auth page reads the access request with `?authPage=1`.** A core with
+  `access.openedOnlyByAuthPage` on (open-pryv.io, the release after 2.0.0-rc.87) then gives the request
+  its full lifetime only when this page opens it, not when the app polls; other cores ignore the
+  parameter.
+
+### Changed
+
+- **Usage charts count `webhooks.rotateSecret` as a write** (`rotate` joins the write prefixes, same
+  rule as the core).
+- Tests: page-render tests get a 15 s timeout (they overran 5 s at random on a loaded machine).
+
 ## 0.36.0 - 2026-11-18
 
 The OAuth consent screen shown again to an app already allowed lists the streams it keeps outside the
