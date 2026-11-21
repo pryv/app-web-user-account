@@ -11,6 +11,9 @@
 
 ### Changed
 
+- **The registration email code field takes 10 symbols, shown `XXXXX-XXXXX`** (it cut the input at 8). A core from
+  the release after open-pryv.io 2.0.0-rc.87 mints 10-symbol codes: deploy this app version before or with that
+  core. Codes of 8 symbols from an older core still go through.
 - **Usage charts count `webhooks.rotateSecret` as a write** (`rotate` joins the write prefixes, same
   rule as the core).
 - Tests: page-render tests get a 15 s timeout (they overran 5 s at random on a loaded machine).

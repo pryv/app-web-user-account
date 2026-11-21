@@ -46,20 +46,23 @@ export function emailBadge(view: EmailView): EmailBadge {
   return "unconfirmed";
 }
 
-/** Uppercase, keep only the server's alphabet (A-Z minus I/O, 2-9), max 8 chars. */
+/**
+ * Uppercase, keep only the server's alphabet (A-Z minus I/O, 2-9), max 10
+ * chars: a core mints 10-symbol codes (8 before; an 8-symbol code still fits).
+ */
 export function normalizeCodeInput(raw: string): string {
   return raw
     .toUpperCase()
     .split("")
     .filter((c) => /[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/.test(c))
     .join("")
-    .slice(0, 8);
+    .slice(0, 10);
 }
 
-/** 'ABCDEFGH' -> 'ABCD-EFGH' for display. */
+/** 'ABCDEFGHJK' -> 'ABCDE-FGHJK' for display (the server's own grouping). */
 export function formatCodeInput(code: string): string {
-  if (code.length <= 4) return code;
-  return code.slice(0, 4) + "-" + code.slice(4);
+  if (code.length <= 5) return code;
+  return code.slice(0, 5) + "-" + code.slice(5);
 }
 
 interface ServiceInfoFeatures {

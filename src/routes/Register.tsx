@@ -355,7 +355,7 @@ export default function Register() {
                         label={t("emailVerification.codeLabel")}
                         autoComplete="one-time-code"
                         inputMode="text"
-                        placeholder="XXXX-XXXX"
+                        placeholder="XXXXX-XXXXX"
                         value={formatCodeInput(code)}
                         onChange={(e) => setCode(normalizeCodeInput(e.target.value))}
                       />

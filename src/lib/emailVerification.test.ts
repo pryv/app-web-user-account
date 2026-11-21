@@ -57,8 +57,10 @@ describe("emailBadge", () => {
 });
 
 describe("code input", () => {
-  it("uppercases, drops characters outside the server alphabet and caps at 8", () => {
-    expect(normalizeCodeInput(" abcd-efgh1 ")).toBe("ABCDEFGH");
+  it("uppercases, drops characters outside the server alphabet and caps at 10", () => {
+    expect(normalizeCodeInput(" abcde-fghjk2 ")).toBe("ABCDEFGHJK");
+    // An 8-symbol code from an older core still goes through whole.
+    expect(normalizeCodeInput(" abcd-efgh ")).toBe("ABCDEFGH");
   });
 
   it("drops the ambiguous letters the server never mints", () => {
@@ -67,8 +69,9 @@ describe("code input", () => {
     expect(normalizeCodeInput("01")).toBe("");
   });
 
-  it("formats in two groups only once there is a second group", () => {
-    expect(formatCodeInput("ABCDEFGH")).toBe("ABCD-EFGH");
+  it("formats in two groups of five only once there is a second group", () => {
+    expect(formatCodeInput("ABCDEFGHJK")).toBe("ABCDE-FGHJK");
+    expect(formatCodeInput("ABCDE")).toBe("ABCDE");
     expect(formatCodeInput("ABC")).toBe("ABC");
   });
 });
