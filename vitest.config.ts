@@ -9,5 +9,8 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["node_modules", "dist", "e2e"],
     setupFiles: ["src/test/setup.ts"],
+    // Route tests render whole pages in jsdom: on a loaded machine a few took
+    // over the 5 s default and failed at random. 15 s still catches a hang.
+    testTimeout: 15000,
   },
 });
