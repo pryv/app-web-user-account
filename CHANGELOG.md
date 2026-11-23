@@ -16,6 +16,9 @@
   core. Codes of 8 symbols from an older core still go through.
 - **Usage charts count `webhooks.rotateSecret` as a write** (`rotate` joins the write prefixes, same
   rule as the core).
+- Docs: the README `returnPolicy` and `appCatalogUrl` rows say where to restrict an access request's own
+  `returnURL`: on the core (`access.returnOrigins`, open-pryv.io, the release after 2.0.0-rc.87), not in this
+  app's settings.
 - Tests: page-render tests get a 15 s timeout (they overran 5 s at random on a loaded machine).
 
 ## 0.36.0 - 2026-11-18
