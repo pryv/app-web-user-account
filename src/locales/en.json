@@ -364,6 +364,7 @@
         "recordCancelled_owner_activity": "The transfer was cancelled because you used your account.",
         "recordCancelled_delegate_activity": "The transfer was cancelled because your delegate used your account.",
         "recordCancelled_owner_change": "The transfer was cancelled because you changed this setting.",
+        "recordCancelled_operator": "The transfer was cancelled by your platform's support.",
         "recordLapsed": "{{email}} did not take over your account in time.",
         "recordFallbackDelete": "{{email}} did not take over your account in time: it is deleted, as you chose.",
         "recordFailedClaims_one": "{{count}} attempt to take over your account used a wrong link (last on {{date}}). It was refused; your beneficiary's link still works.",

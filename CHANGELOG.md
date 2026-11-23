@@ -8,6 +8,9 @@
   `access.openedOnlyByAuthPage` on (open-pryv.io, the release after 2.0.0-rc.87) then gives the request
   its full lifetime only when this page opens it, not when the app polls; other cores ignore the
   parameter.
+- **Account deletion card: a transfer the platform's support cancelled says so** (`closedReason: "operator"`,
+  written by the administrator's reset of a schedule in open-pryv.io, the release after 2.0.0-rc.87; it showed the
+  generic "cancelled" line).
 
 ### Changed
 

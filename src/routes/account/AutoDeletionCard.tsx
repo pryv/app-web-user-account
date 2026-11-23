@@ -817,7 +817,7 @@ function transferLines(record: TransferRecord, t: TFunction): string[] {
       break;
     case "cancelled": {
       const reason = record.closedReason;
-      const known = reason === "owner-activity" || reason === "delegate-activity" || reason === "owner-change";
+      const known = reason === "owner-activity" || reason === "delegate-activity" || reason === "owner-change" || reason === "operator";
       lines.push(t(k + (known ? "recordCancelled_" + reason.replace("-", "_") : "recordCancelled")));
       break;
     }

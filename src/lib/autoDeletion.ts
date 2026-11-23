@@ -87,7 +87,7 @@ export interface TransferRecord {
   /** When the holder was told the transfer started. */
   ownerNotifiedAt?: number | null;
   closedAt?: number | null;
-  closedReason?: "owner-activity" | "delegate-activity" | "owner-change" | "declined" | null;
+  closedReason?: "owner-activity" | "delegate-activity" | "owner-change" | "operator" | "declined" | null;
 }
 
 /** `account.getAutoDeletion`. */

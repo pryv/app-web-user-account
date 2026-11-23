@@ -541,6 +541,15 @@ describe("[ADCD] automatic deletion card", () => {
       expect((await screen.findByTestId("auto-deletion-status")).textContent).toContain(
         "The transfer was cancelled because you used your account.",
       );
+      cleanup();
+
+      state.autoDeletion = withTransfer({
+        transfer: { status: "cancelled", email: "bob@example.test", closedAt: NOW, closedReason: "operator" },
+      });
+      renderCard();
+      expect((await screen.findByTestId("auto-deletion-status")).textContent).toContain(
+        "The transfer was cancelled by your platform's support.",
+      );
     });
 
     it("[ADC25] a refused beneficiary email is explained", async () => {
