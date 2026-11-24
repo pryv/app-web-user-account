@@ -6,6 +6,7 @@ import { useSession } from "../../lib/useSession";
 import { emailBadge, verificationOnAccount, type EmailView } from "../../lib/emailVerification";
 import { LANGUAGE_OPTIONS } from "../../lib/languages";
 import ProfileExtensions from "../../extensions/ProfileExtensions";
+import UsernameCard from "./UsernameCard";
 import i18n, { syncLocaleFromAccount } from "../../i18n";
 
 interface AccountInfo {
@@ -185,10 +186,10 @@ export default function Profile() {
           <Alert>{error}</Alert>
         </div>
       )}
-      <Card>
-        <div className="text-xs uppercase tracking-wide text-muted">{t("profile.username")}</div>
-        <div className="text-lg">{info?.username ?? "…"}</div>
-      </Card>
+      <UsernameCard
+        username={info?.username}
+        onChanged={(username) => setInfo((prev) => (prev ? { ...prev, username } : prev))}
+      />
       {connection && info?.username && (
         <ProfileExtensions connection={connection} username={info.username} />
       )}

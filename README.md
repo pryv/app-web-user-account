@@ -7,9 +7,10 @@ It covers the user-facing flows around a Pryv account:
 - **Authentication** — sign-in / authorize, registration, password reset & change.
 - **MFA challenge** — a multi-factor challenge screen, usable both inside the app
   and launched standalone (e.g. from a CLI that needs the user to complete MFA).
-- **Account management** (signed-in subject) — profile & emails, security (MFA,
-  active sessions), connected apps (review scopes, revoke access), and data
-  rights (export, account deletion).
+- **Account management** (signed-in subject) — profile (username change, emails),
+  security (MFA, active sessions), connected apps (review scopes, revoke access,
+  see which apps know the account by an alias), and data rights (export, account
+  deletion).
 - **Cross-account approval** — a page to review and approve a request coming from
   an app that does not hold a personal token.
 

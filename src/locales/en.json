@@ -211,7 +211,26 @@
     "errLoadProfile": "Could not load profile.",
     "errRetryAfter": "Please wait {{seconds}} seconds.",
     "errUpdateLanguage": "Could not update language.",
-    "emailVerificationUnavailable": "Email verification is not available on this platform."
+    "emailVerificationUnavailable": "Email verification is not available on this platform.",
+    "usernameChange": {
+      "edit": "Change",
+      "label": "New username",
+      "explain": "Your new username becomes the name you sign in with. Apps you already connected keep working: your current username stays reserved for your account and still leads to it.",
+      "submit": "Change username",
+      "confirm": "Change your username from {{from}} to {{to}}? Sign in with {{to}} from now on.",
+      "done": "Your username is now {{username}}. Use it to sign in.",
+      "warningsIntro": "The change is done, but some steps did not complete:",
+      "left_one": "{{count}} username change left",
+      "left_other": "{{count}} username changes left",
+      "none": "No username changes left",
+      "errTaken": "This username is already taken.",
+      "errReserved": "This username is reserved.",
+      "errLimit": "You have no username changes left.",
+      "errSame": "This is already your username.",
+      "errFormat": "This username does not follow the rules below the field.",
+      "errPersonal": "Changing your username needs a session opened with your password.",
+      "errFailed": "Could not change the username."
+    }
   },
   "apps": {
     "errLoad": "Could not load connected apps.",
@@ -504,6 +523,9 @@
     "never": "Never expires",
     "expired": "expired",
     "removed": "removed",
+    "aliasBadge": "alias",
+    "aliasHint": "This app does not see your username",
+    "aliasLine": "Knows your account as {{alias}}, not by your username",
     "clientData": "Client data",
     "details": "Details"
   },

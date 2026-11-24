@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Change your username from the profile.** The username card shows how many changes are left
+  (`account.usernameChanges`; the operator's `auth.usernameChangeLimit`, 2 by default) and, while some
+  are, a form calling `account.changeUsername` after a confirmation in the app's own dialog. Taken,
+  reserved and badly formed names are refused with a message in words, and steps the core reports as
+  not completed are listed. The session then moves to the endpoint of the new name (same token); the
+  former name keeps leading to the account, so connected apps keep working. Not offered while acting
+  for another account, in a delegate's session, or with a core that does not answer the counts
+  (username changes need open-pryv.io 2.0.0-rc.6 or later).
+- **Connected apps: an access created with `randomAlias` is marked**, with the name the app knows the
+  account by (`alias`) instead of the username.
+
 - **The auth page reads the access request with `?authPage=1`.** A core with
   `access.openedOnlyByAuthPage` on (open-pryv.io, the release after 2.0.0-rc.87) then gives the request
   its full lifetime only when this page opens it, not when the app polls; other cores ignore the

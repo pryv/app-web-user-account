@@ -117,4 +117,19 @@ describe("[ACRD] access card", () => {
     renderCard({ access: { id: "a1", name: "plain", type: "app" } });
     expect(screen.queryByText("Client data")).toBeNull();
   });
+
+  it("[ACR8] an aliased access: badge and the name the app knows the account by", () => {
+    renderCard({ access: { id: "a1", name: "study", type: "shared", alias: "r-k7m2q9xa" } });
+    const card = screen.getByTestId("access-card");
+    expect(within(card).getByText("alias").getAttribute("title")).toBe("This app does not see your username");
+    expect(screen.getByTestId("access-card-alias").textContent).toBe(
+      "Knows your account as r-k7m2q9xa, not by your username",
+    );
+  });
+
+  it("[ACR9] no alias, no alias badge or line", () => {
+    renderCard({ access: { id: "a1", name: "plain", type: "app", alias: null } });
+    expect(screen.queryByText("alias")).toBeNull();
+    expect(screen.queryByTestId("access-card-alias")).toBeNull();
+  });
 });

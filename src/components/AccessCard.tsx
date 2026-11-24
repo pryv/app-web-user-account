@@ -23,6 +23,11 @@ export interface AccessCardAccess extends OAuthAccessLike {
   clientData?: Record<string, unknown> | null;
   /** Set on a removed access (a deletion record). */
   deleted?: number;
+  /**
+   * The name the app addresses the account by, instead of the username, when
+   * the access was created with `randomAlias` (an `r-` name).
+   */
+  alias?: string | null;
 }
 
 const BADGE = "ml-2 rounded px-1.5 py-0.5 text-xs font-normal";
@@ -59,6 +64,7 @@ export function AccessCard({
   const custom = useAccessNaming(connection, entry);
   const naming = custom ?? entryNaming(entry);
   const rows = clientDataRows(access.clientData);
+  const alias = typeof access.alias === "string" && access.alias.length > 0 ? access.alias : null;
 
   const meta = [
     kindLabel ?? access.type ?? t("accessCard.typeApp"),
@@ -90,8 +96,18 @@ export function AccessCard({
               {access.deleted != null && (
                 <span className={`${BADGE} bg-danger/10 text-danger`}>{t("accessCard.removed")}</span>
               )}
+              {alias != null && (
+                <span className={`${BADGE} bg-info/10 text-info`} title={t("accessCard.aliasHint")}>
+                  {t("accessCard.aliasBadge")}
+                </span>
+              )}
             </div>
             <div className="text-xs text-muted">{meta.join(" · ")}</div>
+            {alias != null && (
+              <div className="text-xs text-muted" data-testid="access-card-alias">
+                {t("accessCard.aliasLine", { alias })}
+              </div>
+            )}
             <div className="text-xs text-muted" data-testid="access-card-dates">
               {access.created != null && <>{t("accessCard.created", { date: formatDate(access.created) })} · </>}
               {access.lastUsed
