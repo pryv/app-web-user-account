@@ -116,6 +116,27 @@ describe("[SIUH] username sign-in hint", () => {
   });
 });
 
+describe("[SIST] sign-in subtitle", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("[SIST1] names no app when none is asking", async () => {
+    service.apiEndpointFor.mockRejectedValue(new Error("no service info"));
+    renderAt("/signin");
+    expect(await screen.findByText("Sign in to your account.")).toBeTruthy();
+    expect(screen.queryByText(/requesting app/)).toBeNull();
+  });
+
+  it("[SIST2] names the requesting app while an access request is pending", async () => {
+    service.apiEndpointFor.mockRejectedValue(new Error("no service info"));
+    renderAt("/signin?poll=" + encodeURIComponent("https://core.example.com/reg/access/abc"));
+    expect(await screen.findByText("Sign in to grant access to the requesting app.")).toBeTruthy();
+    expect(screen.queryByText("Sign in to your account.")).toBeNull();
+  });
+});
+
 describe("[SISP] third-party sign-in probe", () => {
   /** A fresh fetch stub per test, answering an empty provider list. */
   function stubFetch() {

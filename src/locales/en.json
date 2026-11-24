@@ -62,6 +62,7 @@
   "signin": {
     "title": "Sign in",
     "subtitle": "Sign in to grant access to the requesting app.",
+    "subtitleNoRequest": "Sign in to your account.",
     "usernameLabel": "Username or email",
     "signInButton": "Sign in",
     "signingInButton": "Signing in…",

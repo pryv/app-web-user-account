@@ -23,6 +23,12 @@
   written by the administrator's reset of a schedule in open-pryv.io, the release after 2.0.0-rc.87; it showed the
   generic "cancelled" line).
 
+### Fixed
+
+- **The sign-in page names a requesting app only when one is asking** (a pending access request); opened
+  directly it says "Sign in to your account." (new text `signin.subtitleNoRequest`; `signin.subtitle` is
+  unchanged).
+
 ### Changed
 
 - **The registration email code field takes 10 symbols, shown `XXXXX-XXXXX`** (it cut the input at 8). A core from

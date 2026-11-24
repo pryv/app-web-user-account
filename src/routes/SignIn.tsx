@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Card, Button, Field, Alert } from "../components/ui";
 import { getService, isMfaRequired, resolveUserId } from "../lib/service";
-import { parseAuthParams } from "../lib/authParams";
+import { hasPendingAccessRequest, parseAuthParams } from "../lib/authParams";
 import { signedInTarget } from "../lib/signInCompletion";
 import { continueSignedIn } from "../lib/accountActsGate";
 import { loggableError } from "../lib/apiError";
@@ -175,7 +175,7 @@ export default function SignIn() {
     <Card>
       <h1 className="mb-1 text-2xl">{t("signin.title")}</h1>
       <p className="mb-6 text-sm text-muted">
-        {t("signin.subtitle")}
+        {t(hasPendingAccessRequest(search) ? "signin.subtitle" : "signin.subtitleNoRequest")}
       </p>
       {error && <Alert>{error}</Alert>}
       <form onSubmit={onSubmit}>
