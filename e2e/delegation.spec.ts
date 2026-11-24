@@ -394,7 +394,7 @@ test.describe("[GFC] /auth: create the managed account from the grant-for step",
       }),
     );
     const posted: Array<Record<string, unknown>> = [];
-    await page.route(POLL, (route) => {
+    await page.route((url) => url.origin + url.pathname === POLL, (route) => {
       if (route.request().method() === "POST") {
         posted.push(route.request().postDataJSON() as Record<string, unknown>);
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "ACCEPTED" }) });

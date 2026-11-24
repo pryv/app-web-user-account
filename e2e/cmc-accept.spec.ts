@@ -345,7 +345,7 @@ test.describe("[CHN] /auth continues to /cmc-accept in the same window", () => {
   const PERMS = [{ streamId: "diary", defaultName: "Diary", level: "read" }];
 
   async function mockAccessRequest(context: BrowserContext, posted: Array<Record<string, unknown>>) {
-    await context.route(POLL, (route) => {
+    await context.route((url) => url.origin + url.pathname === POLL, (route) => {
       if (route.request().method() === "POST") {
         posted.push(route.request().postDataJSON() as Record<string, unknown>);
         return json(route, { status: "ACCEPTED" });
@@ -539,7 +539,7 @@ test.describe("[ACI] /auth with consent invites", () => {
     });
     const posted: Array<Record<string, unknown>> = [];
     const order: string[] = [];
-    await context.route(POLL, (route) => {
+    await context.route((url) => url.origin + url.pathname === POLL, (route) => {
       if (route.request().method() === "POST") {
         posted.push(route.request().postDataJSON() as Record<string, unknown>);
         return json(route, { status: "ACCEPTED" });

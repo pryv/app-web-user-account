@@ -54,7 +54,7 @@ test.describe("smoke — new routes (consent-track placeholders + scope-update +
 
   test("/auth with `poll` shows the sign-in form after loading the access state", async ({ page }) => {
     // Mock the poll URL response so we don't need a live server.
-    await page.route("**/reg.example.test/access/abc", (route) =>
+    await page.route((url) => url.origin + url.pathname === "https://reg.example.test/access/abc", (route) =>
       route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({

@@ -17,7 +17,7 @@ const SVC = "https://reg.example.test/service/info";
 const BACK = "https://app.example.test/back";
 
 async function mockPlatform(context: BrowserContext, posted: unknown[]) {
-  await context.route("**/reg.example.test/access/win1", async (route) => {
+  await context.route((url) => url.origin + url.pathname === POLL, async (route) => {
     if (route.request().method() === "POST") {
       posted.push(route.request().postDataJSON());
       return route.fulfill({ contentType: "application/json", body: JSON.stringify({ status: "REFUSED" }) });
