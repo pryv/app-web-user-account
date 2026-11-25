@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasUsableEmail, readsAccountEmail, missingEmailErrorKey } from "./accountEmail";
+import { hasUsableEmail, readsAccountEmail, emailRefusal } from "./accountEmail";
 import type { OfferPermission } from "./consent";
 
 const perms = (...p: unknown[]) => p as OfferPermission[];
@@ -37,9 +37,16 @@ describe("[AEML] account email helpers", () => {
   it("[AEM3] a failed add: the address is taken, or anything else", () => {
     const apiError = (id: string) =>
       Object.assign(new Error("API error"), { innerObject: { id, message: "m" } });
-    expect(missingEmailErrorKey(apiError("item-already-exists"))).toBe("consent.emailTaken");
-    expect(missingEmailErrorKey(Object.assign(new Error("x"), { id: "item-already-exists" }))).toBe("consent.emailTaken");
-    expect(missingEmailErrorKey(apiError("invalid-parameters-format"))).toBe("consent.emailAddFailed");
-    expect(missingEmailErrorKey(new TypeError("Failed to fetch"))).toBe("consent.emailAddFailed");
+    expect(emailRefusal(apiError("item-already-exists"), "f").taken).toBe(true);
+    expect(emailRefusal(Object.assign(new Error("x"), { id: "item-already-exists" }), "f").taken).toBe(true);
+    expect(emailRefusal(apiError("invalid-parameters-format"), "f")).toEqual({
+      taken: false, retryAfterSeconds: null, limited: false, message: "m",
+    });
+    expect(emailRefusal(new TypeError("Failed to fetch"), "f").taken).toBe(false);
+    expect(emailRefusal(new Error("could not reach https://tok@alice.core.test/"), "f").message).not.toContain("tok@");
+    const limited = Object.assign(new Error("API error"), {
+      innerObject: { id: "too-many-attempts", message: "m", data: { retryAfterSeconds: 30 } },
+    });
+    expect(emailRefusal(limited, "f")).toEqual({ taken: false, retryAfterSeconds: 30, limited: true, message: "m" });
   });
 });

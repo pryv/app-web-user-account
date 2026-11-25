@@ -86,13 +86,19 @@ export function declinedMandatory(invites: readonly CmcInvite[], decisions: Read
 }
 
 /**
- * Indexes of the invites to accept, mandatory ones first (each group in the
- * request's order), so a mandatory failure stops the flow before any optional
- * invite is accepted.
+ * Indexes of the invites to accept: mandatory ones first, so a mandatory
+ * failure stops the flow before any optional invite is accepted. In each group,
+ * those whose offer requires a verified email come first (`requiresProof`; the
+ * platform may still refuse one), then the request's order.
  */
-export function acceptOrder(invites: readonly CmcInvite[], decisions: ReadonlyArray<InviteDecision | null>): number[] {
+export function acceptOrder(
+  invites: readonly CmcInvite[],
+  decisions: ReadonlyArray<InviteDecision | null>,
+  requiresProof: (i: number) => boolean = () => false,
+): number[] {
   const approved = invites.map((_, i) => i).filter((i) => decisions[i] === "approve");
-  return [...approved.filter((i) => invites[i].mandatory), ...approved.filter((i) => !invites[i].mandatory)];
+  const rank = (i: number) => (invites[i].mandatory ? 0 : 2) + (requiresProof(i) ? 0 : 1);
+  return approved.sort((a, b) => rank(a) - rank(b) || a - b);
 }
 
 /** A reason the core accepts in an outcome: non-empty, at most 256 characters. */

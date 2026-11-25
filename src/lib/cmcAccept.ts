@@ -11,6 +11,12 @@ import { GRANT_REQUIRES_OWNER_ID, grantRequiresOwnerMessage, isGrantRequiresOwne
 /** Catalog key of the text shown when the offer behind the link cannot be read (invalid or expired link, network). */
 export const OFFER_UNREADABLE_KEY = "cmc.acceptOfferUnreadable";
 
+/**
+ * The platform's id for an offer that requires a verified email, approved by an
+ * account without one. A literal: the client library's list gets it later.
+ */
+export const VERIFIED_EMAIL_REQUIRED = "cmc-verified-email-required";
+
 type Tone = "danger" | "info";
 
 interface Outcome {
@@ -41,6 +47,8 @@ const OUTCOMES: Record<string, Outcome> = {
     switchKey: "cmc.acceptSelfForbiddenSwitch",
     tone: "danger",
   },
+  // The link stays usable: the person verifies the address, then approves again.
+  [VERIFIED_EMAIL_REQUIRED]: { key: "cmc.acceptVerifiedEmailRequired", tone: "danger" },
 };
 
 export interface InviteFailure {

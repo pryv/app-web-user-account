@@ -12,6 +12,16 @@
   former name keeps leading to the account, so connected apps keep working. Not offered while acting
   for another account, in a delegate's session, or with a core that does not answer the counts
   (username changes need open-pryv.io 2.0.0-rc.6 or later).
+- **Consent offers requiring a verified email** (`requireVerifiedEmail: true` on a `consent/request-cmc`
+  request, pryv/open-pryv.io#173). On `/auth` (consent invites) and `/cmc-accept`, such an offer can be
+  approved only once the primary address of the account that answers it is proved; declining stays
+  possible. The page mails the verification link (or takes a new address, makes it primary once
+  verified and drops the placeholder it replaces) and updates by itself when the link is opened. With
+  `for: "target"` on a managed account, the managed account's own address counts. A refusal by the
+  platform (`cmc-verified-email-required`) has its own message: `/cmc-accept` stays open and sends the
+  app no outcome, `/auth` stays open for a mandatory invite while nothing was accepted yet. Read with a
+  `@pryv/cmc` newer than 3.23.0 (with an older one, only the platform's refusal is handled); enforced
+  by an open-pryv.io release newer than 2.0.0-rc.87.
 - **Connected apps: an access created with `randomAlias` is marked**, with the name the app knows the
   account by (`alias`) instead of the username.
 
@@ -25,12 +35,17 @@
 
 ### Fixed
 
+- **Adding a missing email on a consent screen works where registration requires a verified address**: the
+  form set the address directly, which such a platform refuses. It now adds it, mails the link, and makes
+  it the account's address once verified. Other platforms are unchanged.
 - **The sign-in page names a requesting app only when one is asking** (a pending access request); opened
   directly it says "Sign in to your account." (new text `signin.subtitleNoRequest`; `signin.subtitle` is
   unchanged).
 
 ### Changed
 
+- `/auth` accepts mandatory consent invites first, as before; in each group, those requiring a verified email
+  now come first.
 - **The registration email code field takes 10 symbols, shown `XXXXX-XXXXX`** (it cut the input at 8). A core from
   the release after open-pryv.io 2.0.0-rc.87 mints 10-symbol codes: deploy this app version before or with that
   core. Codes of 8 symbols from an older core still go through.

@@ -13,11 +13,12 @@ import { ReturnNotice } from "../components/consent/ReturnNotice";
 import { signInLinkFor } from "../lib/handoffReturn";
 import { useApprovingAccount } from "../lib/useApprovingAccount";
 import { ApprovingAccountBlocked, ApprovingAccountLine } from "../components/consent/ApprovingAccount";
-import { inviteFailure, OFFER_UNREADABLE_KEY, type InviteFailure } from "../lib/cmcAccept";
-import { loggableError, platformError } from "../lib/apiError";
-import { hasUsableEmail, missingEmailErrorKey, readsAccountEmail } from "../lib/accountEmail";
-import { maskUrlCredentials } from "../lib/maskCredentials";
-import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
+import { inviteFailure, OFFER_UNREADABLE_KEY, VERIFIED_EMAIL_REQUIRED, type InviteFailure } from "../lib/cmcAccept";
+import { loggableError } from "../lib/apiError";
+import { readsAccountEmail } from "../lib/accountEmail";
+import type { ServiceInfoFeatures } from "../lib/emailVerification";
+import { useVerifiedEmail } from "../lib/useVerifiedEmail";
+import { VerifiedEmailNotice } from "../components/consent/VerifiedEmailNotice";
 import { useStreamLabels } from "../lib/useConsentDisplay";
 
 /**
@@ -66,11 +67,6 @@ function membershipsLink(capabilityUrl: string, search: string): string {
   const platform = new URLSearchParams(search).get("pryvServiceInfoUrl");
   if (platform) q.set("pryvServiceInfoUrl", platform);
   return "/account/memberships?" + q.toString();
-}
-
-/** A failed call's result row as an error carrying the platform's id (read by `platformError`). */
-function rowError(error: { id?: string; message?: string }, fallback: string): Error {
-  return Object.assign(new Error(error.message ?? fallback), { id: error.id });
 }
 
 /**
@@ -138,6 +134,7 @@ export default function CmcApprove() {
   // Always try to read the offer (anonymous read via the capability access).
   useEffect(() => {
     if (!params.capabilityUrl) return;
+    setRefusedUnverified(false);
     setLoadingOffer(true);
     cmc
       .readOffer(params.capabilityUrl)
@@ -149,58 +146,47 @@ export default function CmcApprove() {
       .finally(() => setLoadingOffer(false));
   }, [params.capabilityUrl]);
 
-  // An offer that reads the account's email, on an account with no address
-  // someone receives: said on the block, with a way to add one (best-effort:
-  // when the account cannot be read, nothing is said).
-  const [emailState, setEmailState] = useState<MissingEmailState | null>(null);
-  const offerReadsEmail = offer != null && readsAccountEmail(offer.requestedPermissions);
-  const accountEndpoint = connection?.apiEndpoint ?? null;
+  // The address of the account that answers, when the offer reads it or
+  // requires a verified one (the offer says so, or the platform refused the
+  // approval for it): see lib/useVerifiedEmail.
+  const [refusedUnverified, setRefusedUnverified] = useState(false);
+  const requiresVerifiedEmail = offer != null && (offer.requireVerifiedEmail === true || refusedUnverified);
+  const emailEndpoint =
+    offer != null && connection != null && (requiresVerifiedEmail || readsAccountEmail(offer.requestedPermissions))
+      ? connection.apiEndpoint
+      : null;
+  const [serviceInfo, setServiceInfo] = useState<ServiceInfoFeatures | null>(null);
   useEffect(() => {
-    setEmailState(null);
-    if (!connection || !offerReadsEmail) return;
+    setServiceInfo(null);
+    if (connection == null || emailEndpoint == null) return;
     let cancelled = false;
     void (async () => {
+      let info: ServiceInfoFeatures = {};
       try {
-        const [res] = (await connection.api([{ method: "account.get", params: {} }])) as Array<{
-          account?: { email?: string | null };
-          error?: { id?: string; message?: string };
-        }>;
-        if (res?.error) throw rowError(res.error, "account.get failed");
-        if (!cancelled && !hasUsableEmail(res?.account)) setEmailState({ kind: "missing" });
+        info = await connection.service.info();
       } catch (err: unknown) {
-        console.warn("cmc-accept: could not read the account's email:", loggableError(err));
+        console.warn("cmc-accept: could not read the platform's information:", loggableError(err));
       }
+      if (!cancelled) setServiceInfo(info);
     })();
     return () => {
       cancelled = true;
     };
-    // The session's account (its endpoint) and the offer decide; the object identity does not.
+    // The session's account (its endpoint) decides; the object identity does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offerReadsEmail, accountEndpoint]);
+  }, [emailEndpoint]);
+  const email = useVerifiedEmail(
+    emailEndpoint != null ? [{ endpoint: emailEndpoint, required: requiresVerifiedEmail }] : [],
+    serviceInfo,
+    "cmc-accept",
+  );
+  const emailState = email.stateOf(emailEndpoint, requiresVerifiedEmail);
+  const emailGate = requiresVerifiedEmail && emailState.kind !== "proved";
 
   // The account that answers: whichever session this browser holds, which is
   // not necessarily the person the invite was meant for.
   const who = useApprovingAccount("/cmc-accept");
   const { signedInAs, mayAnswer, switchAccount } = who;
-
-  async function addEmail(email: string) {
-    if (!connection) return;
-    setEmailState({ kind: "adding" });
-    try {
-      const [res] = (await connection.api([
-        { method: "account.update", params: { update: { email } } },
-      ])) as Array<{ account?: { email?: string }; error?: { id?: string; message?: string } }>;
-      if (res?.error) throw rowError(res.error, "account.update failed");
-      setEmailState({ kind: "added", email: res?.account?.email ?? email });
-    } catch (err: unknown) {
-      console.warn("cmc-accept: could not add the account's email:", loggableError(err));
-      const key = missingEmailErrorKey(err);
-      setEmailState({
-        kind: "error",
-        message: key === "consent.emailTaken" ? t(key) : maskUrlCredentials(platformError(err, t(key)).message),
-      });
-    }
-  }
 
   if (!params.capabilityUrl) {
     return (
@@ -254,6 +240,13 @@ export default function CmcApprove() {
       const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), { username: signedInAs, canSwitchAccount: true });
       const { reason: _reason, ...shown } = failure;
       setError(shown);
+      if (failure.reason === VERIFIED_EMAIL_REQUIRED) {
+        // Not an answer: the link stays usable, so the app is told nothing and
+        // the person can verify the address here, then approve again.
+        setRefusedUnverified(true);
+        await email.recheck(emailEndpoint);
+        return;
+      }
       deliver({ ok: false, reason: failure.reason });
     } finally {
       setWorking(null);
@@ -328,7 +321,7 @@ export default function CmcApprove() {
         labelFor={labelFor}
         busy={working}
         disabled={!offer || !mayAnswer}
-        approveDisabled={emailState?.kind === "adding"}
+        approveDisabled={emailGate || email.adding}
         onApprove={() => void approve()}
         onDecline={() => void decline()}
         actionsBlocked={actionsBlocked}
@@ -351,12 +344,16 @@ export default function CmcApprove() {
                 />
               </p>
             )}
-            {offer != null && emailState != null && (
-              <MissingEmailNotice
+            {offer != null && emailEndpoint != null && (
+              <VerifiedEmailNotice
                 username={actingAs?.username ?? null}
                 appName={offer.requester.username ? `${offer.requester.username}@${offer.requester.host}` : t("cmc.unidentifiedRequester")}
                 state={emailState}
-                onAdd={addEmail}
+                required={requiresVerifiedEmail}
+                onAdd={(value) => void email.add(emailEndpoint, value)}
+                onSend={() => void email.send(emailEndpoint)}
+                onChange={() => email.change(emailEndpoint)}
+                onRetry={() => void email.recheck(emailEndpoint)}
                 disabled={working !== null}
               />
             )}

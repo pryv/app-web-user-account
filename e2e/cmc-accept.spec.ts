@@ -63,6 +63,8 @@ interface CoreCall {
 interface Mock {
   /** Every call the accepter's core received, in order. */
   accepterCalls: CoreCall[];
+  /** Whether the accepter's primary address is verified, as its core answers now. */
+  emailProved: boolean;
 }
 
 interface MockOptions {
@@ -76,6 +78,8 @@ interface MockOptions {
   offerOriginStreamId?: string;
   /** Merged into the offer's `request` (e.g. `accessType`, `membership`). Default: none. */
   offerRequest?: Record<string, unknown>;
+  /** The accepter's core refuses an accept while the primary address is not verified. */
+  refuseUnproved?: boolean;
 }
 
 /** The offer event the capability host serves, with the spec's options applied. */
@@ -108,7 +112,7 @@ function completedTrigger(id: string, type: string, status: string) {
 }
 
 async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}): Promise<Mock> {
-  const mock: Mock = { accepterCalls: [] };
+  const mock: Mock = { accepterCalls: [], emailProved: false };
 
   // Registered first so every specific route below wins: anything this spec
   // did not mock is refused instead of reaching the network.
@@ -117,7 +121,9 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
   await context.route("**/settings.json", (route) =>
     opts.settings ? json(route, opts.settings) : route.fulfill({ status: 404, body: "" }),
   );
-  await context.route("**/service/info", (route) => json(route, SERVICE_INFO));
+  await context.route("**/service/info", (route) =>
+    json(route, { ...SERVICE_INFO, features: { emailVerification: { atRegistration: false, onAccount: true } } }),
+  );
   await context.route("https://app.example.test/**", (route) =>
     route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>done</title>" }),
   );
@@ -160,6 +166,15 @@ async function mockCmcPlatform(context: BrowserContext, opts: MockOptions = {}):
         return {
           event: completedTrigger(id, String(c.params.type), "pending"),
         };
+      }
+      if (c.method === "events.getOne" && opts.refuseUnproved && !mock.emailProved) {
+        const event = completedTrigger(String(c.params.id), "consent/accept-cmc", "failed");
+        return { event: { ...event, content: { ...event.content, failure: { reason: "cmc-verified-email-required" } } } };
+      }
+      if (c.method === "account.get" || c.method === "account.update") {
+        const verificationMethod = mock.emailProved ? "email-link" : "registration";
+        const email = { value: "alice@example.test", primary: true, status: "verified", verifiedAt: null, verificationMethod };
+        return { account: { username: "alice", email: email.value, emails: [email] } };
       }
       if (c.method === "events.getOne") {
         return {
@@ -477,6 +492,40 @@ test.describe("/cmc-accept without opener or returnUrl", () => {
     await expect(alert).toBeVisible();
     await expect(alert).toHaveClass(/bg-info/);
     await expect(page.getByRole("button", { name: "Approve" })).toBeVisible();
+  });
+});
+
+test.describe("/cmc-accept: an offer that requires a verified email", () => {
+  test("[RVQC] refused, the link is mailed and opened elsewhere, the page notices, approving works", async ({ page, context }) => {
+    const mock = await mockCmcPlatform(context, {
+      refuseUnproved: true,
+      offerRequest: { permissions: [{ streamId: ":system:email", level: "read" }], requireVerifiedEmail: true },
+    });
+    await page.goto(acceptPath({ mode: "redirect", returnUrl: RETURN_URL }));
+    await expectOfferShown(page);
+    const approve = page.getByRole("button", { name: "Approve" });
+    // A client that does not read the requirement learns it from the platform's refusal.
+    if (await approve.isEnabled()) {
+      await approve.click();
+      await expect(page.getByRole("alert").filter({ hasText: "requires a verified email address on the account that approves it" })).toBeVisible();
+    }
+    const notice = page.getByTestId("verified-email");
+    await expect(notice).toHaveAttribute("data-state", "unproved");
+    await expect(approve).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Decline" })).toBeEnabled();
+    expect(page.url()).toContain("/cmc-accept");
+
+    await page.getByRole("button", { name: "Send the verification email" }).click();
+    await expect(notice).toHaveAttribute("data-state", "waiting");
+    expect(mock.accepterCalls.find((c) => c.method === "account.update")?.params).toEqual({
+      update: { emails: { resend: ["alice@example.test"] } },
+    });
+
+    mock.emailProved = true;
+    await expect(notice).toHaveAttribute("data-state", "proved", { timeout: 15_000 });
+    await approve.click();
+    await page.waitForURL("https://app.example.test/done?**");
+    expect(landingResult(page)).toEqual({ ok: true, acceptEventId: ACCEPT_EVENT_ID });
   });
 });
 

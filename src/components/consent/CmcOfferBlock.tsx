@@ -24,6 +24,11 @@ export interface CmcOfferView {
    * the block reads as a membership request, not as a data grant.
    */
   membership?: boolean;
+  /**
+   * The offer can be approved only by an account whose primary email address is
+   * verified. Absent from older clients, which reads as not required.
+   */
+  requireVerifiedEmail?: boolean;
 }
 
 export interface CmcOfferBlockProps {

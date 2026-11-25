@@ -32,6 +32,12 @@ vi.mock("pryv", () => ({
       async username() {
         return new URL(this.apiEndpoint).hostname.split(".")[0];
       }
+      async apiOne(method: string, params: unknown, key: string) {
+        net.calls.push(this.apiEndpoint + " " + method);
+        const res = (await net.answer(this.apiEndpoint, method, params)) as Record<string, unknown>;
+        if (res.error != null) throw Object.assign(new Error("API error"), { innerObject: res.error });
+        return res[key];
+      }
       async api(calls: Array<{ method: string; params: unknown }>) {
         const out = [];
         for (const c of calls) {
