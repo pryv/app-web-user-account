@@ -357,7 +357,8 @@ Every route accepts these query parameters:
   - refuses the request when a **mandatory** invite was declined: `REFUSED`
     with `reasonId: "REFUSED_MANDATORY_CONSENT"`, before anything else is
     written (no invite accepted, no access created);
-  - accepts every approved invite (mandatory ones first) with `@pryv/cmc`
+  - accepts every approved invite (mandatory ones first, and in each group
+    those whose offer requires a verified email first) with `@pryv/cmc`
     `acceptInvite`, on the scope the requester stamped on its offer
     (`originStreamId`, else `:_cmc:apps:<its app id>`), with the entry's
     `accessName` when it has one: `for: "self"` with
@@ -547,7 +548,31 @@ Every route accepts these query parameters:
   created without one hold a placeholder) and lets them add one before
   approving. Approving without one is still possible; read the address you
   get as "none" when it is not one you can reach. `/cmc-accept` does the same
-  for the offer it shows.
+  for the offer it shows. Where the platform asks for a verified address at
+  registration, the address is added and mailed a verification link, and
+  becomes the account's once verified.
+
+  **Consent offers requiring a verified email.** When an offer carries
+  `requireVerifiedEmail: true` (a `consent/request-cmc` request, needs an
+  open-pryv.io release newer than 2.0.0-rc.87 to be enforced by the platform),
+  `/auth` (for each invite of `cmcInvites`) and `/cmc-accept` offer Approve only
+  once the primary address of the account that answers is proved: the
+  signed-in person's own for `for: "self"`, the managed account's own for
+  `for: "target"` on a managed account. Decline stays available, and declining
+  a mandatory invite refuses the request as always. The page helps on the spot:
+  it mails the verification link of the account's address, or takes a new
+  address, mails it, makes it the primary one once verified and removes the
+  placeholder it replaces; it updates by itself when the link is opened on
+  another device. The proof is the account's: a person who comes back to a new
+  request later finds it. On a platform that does not mail verification links
+  (`features.emailVerification.onAccount`), an address that is not proved yet
+  cannot be, and the page says so. `/auth` reads the account again right before
+  it writes anything. If the platform still refuses an accept
+  (`cmc-verified-email-required`), `/cmc-accept` sends the app no outcome and
+  stays open, the link being still usable; `/auth` does so for a mandatory
+  invite while nothing was accepted yet (declined invites were answered
+  already, and stay declined), and otherwise reports or refuses as above. The
+  page reads the field with a `@pryv/cmc` newer than 3.23.0.
 - `/oauth2-authorize` — the OAuth2 (RFC 6749) consent page. Don't link it
   directly either: your app starts at the core's `GET /oauth2/authorize`
   (with `client_id`, `redirect_uri`, PKCE challenge, `scope`, `state`), and

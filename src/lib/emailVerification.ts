@@ -65,7 +65,8 @@ export function formatCodeInput(code: string): string {
   return code.slice(0, 5) + "-" + code.slice(5);
 }
 
-interface ServiceInfoFeatures {
+/** The part of the service info these flows read. */
+export interface ServiceInfoFeatures {
   features?: {
     emailVerification?: { atRegistration?: boolean; onAccount?: boolean };
   };

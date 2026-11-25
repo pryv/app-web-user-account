@@ -23,6 +23,7 @@ describe("[CMAF] inviteFailure", () => {
       [errorIds.CAPABILITY_INVALIDATED, /withdrawn/, "danger"],
       [errorIds.CAPABILITY_ALREADY_ACCEPTED_BY_YOU, /already approved/, "info"],
       [errorIds.CAPABILITY_TIMEOUT, /still processing/, "info"],
+      ["cmc-verified-email-required", /requires a verified email address/, "danger"],
     ];
     for (const [id, text, tone] of cases) {
       const f = inviteFailure(cmcError(id), "Could not approve.");

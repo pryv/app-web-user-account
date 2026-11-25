@@ -48,6 +48,10 @@ describe("[ACI13] consent invites: pure helpers", () => {
     expect(declinedMandatory(invites, ["approve", "approve", "decline"])).toBe(2);
     expect(acceptOrder(invites, ["approve", "approve", "approve"])).toEqual([1, 2, 0]);
     expect(acceptOrder(invites, ["approve", "decline", "approve"])).toEqual([2, 0]);
+    // Mandatory first whatever the offers require; in a group, those requiring a verified email first.
+    expect(acceptOrder(invites, ["approve", "approve", "approve"], (i) => i === 0)).toEqual([1, 2, 0]);
+    expect(acceptOrder(invites, ["approve", "approve", "approve"], (i) => i !== 1)).toEqual([2, 1, 0]);
+    expect(acceptOrder(invites, ["approve", "approve", "decline"], () => true)).toEqual([1, 0]);
   });
 
   it("outcomes stay within what the core accepts", () => {

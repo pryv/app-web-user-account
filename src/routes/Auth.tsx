@@ -27,7 +27,7 @@ import {
   type GrantLike,
   type InviteDecision,
 } from "../lib/cmcInvites";
-import { inviteFailure, OFFER_UNREADABLE_KEY } from "../lib/cmcAccept";
+import { inviteFailure, OFFER_UNREADABLE_KEY, VERIFIED_EMAIL_REQUIRED } from "../lib/cmcAccept";
 import { isValidUsername } from "../lib/username";
 import {
   consentEntries,
@@ -54,9 +54,10 @@ import { useRequestingApp, useStreamLabels } from "../lib/useConsentDisplay";
 import { Delegation } from "../lib/pryvClient";
 import { runFlow, delegationErrorMessage, formatSince } from "../lib/delegation";
 import { isSessionRejected } from "../lib/sessionErrors";
-import { loggableError, platformError } from "../lib/apiError";
-import { hasUsableEmail, missingEmailErrorKey, readAccountEmail, readsAccountEmail, setAccountEmail } from "../lib/accountEmail";
-import { maskUrlCredentials } from "../lib/maskCredentials";
+import { loggableError } from "../lib/apiError";
+import { readsAccountEmail } from "../lib/accountEmail";
+import type { ServiceInfoFeatures } from "../lib/emailVerification";
+import { useVerifiedEmail, type EmailRequest } from "../lib/useVerifiedEmail";
 import { httpUrlOrNull } from "../lib/safeRedirect";
 import {
   claimExternalId,
@@ -71,7 +72,7 @@ import {
   type ExternalIdLinkAnswer,
   type ExternalIdLinkQuestion,
 } from "../components/consent/ExternalIdLinkDialog";
-import { MissingEmailNotice, type MissingEmailState } from "../components/consent/MissingEmailNotice";
+import { VerifiedEmailNotice } from "../components/consent/VerifiedEmailNotice";
 import { CreateManagedAccount, type CreatedAccount } from "../components/delegation/CreateManagedAccount";
 import {
   offersTargets,
@@ -402,8 +403,14 @@ function AuthFlow({
   // its own (the invites still need an answer): it is kept and handed over
   // after them.
   const [reuse, setReuse] = useState<ReusedAccess | null>(null);
-  // The decisions as they stand (see `settledDecisions`): what Continue and the flow go by.
-  const decisions = settledDecisions(inviteDecisions, inviteViews);
+  // Invites the platform refused because their offer requires a verified email
+  // (known from the refusal when the offer, as read here, does not say so).
+  const [refusedUnverified, setRefusedUnverified] = useState<ReadonlySet<number>>(new Set());
+  // Declined invites whose refusal was sent already, on a run that then stayed
+  // on the page: not sent again, and no longer open to a change of mind.
+  const [refusalsSent, setRefusalsSent] = useState<ReadonlySet<number>>(new Set());
+  // The platform's information, read with the session signed in (null: not read yet).
+  const [platformInfo, setPlatformInfo] = useState<ServiceInfoFeatures | null>(null);
 
   // "Who is this for?": offered after sign-in when the platform runs account
   // delegation, the app allows it, and the user controls other accounts (or,
@@ -509,6 +516,8 @@ function AuthFlow({
     if (invites == null || !consentStepReached) return;
     let cancelled = false;
     setInviteDecisions(invites.map(() => null));
+    setRefusedUnverified(new Set());
+    setRefusalsSent(new Set());
     setInviteViews(
       invites.map((inv) =>
         inv.capabilityUrl === ""
@@ -565,70 +574,90 @@ function AuthFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invites, consentStepReached]);
 
-  // Consents that read the account's email, on an account with no address
-  // someone receives (see lib/accountEmail): said on the block, with a way to
-  // add one. Keyed by the token-bearing endpoint of the account each consent
-  // applies to (the app's rows: the account granted on; an invite: the one it
-  // is answered with), so blocks on the same account share one read and one
-  // add. Best-effort: an account that cannot be read gets no notice (each
-  // endpoint is read once, a failed read is not retried).
-  const [emailStates, setEmailStates] = useState<Record<string, MissingEmailState | null>>({});
-  const emailReads = useRef(new Set<string>());
+  // The address of the accounts whose consents read it, or require a verified
+  // one (see lib/useVerifiedEmail). Keyed by the token-bearing endpoint of the
+  // account each consent applies to (the app's rows: the account granted on;
+  // an invite: the one it is answered with), so blocks on the same account
+  // share one read, one add and one proof.
+  /** Whether invite `i`'s offer requires a verified address: it says so, or the platform refused its accept for it. */
+  function inviteRequiresProof(i: number): boolean {
+    const view = inviteViews[i];
+    if (view?.offer == null || view.given != null) return false;
+    return view.offer.requireVerifiedEmail === true || refusedUnverified.has(i);
+  }
   /** The endpoint whose email the app's own rows concern, when they read it (nothing for an access already held). */
   const rowsEmailEndpoint =
     consentStepReached && reuse == null && apiEndpoint && personalToken && readsAccountEmail(rowPermissions as OfferPermission[])
       ? buildApiEndpointWithToken(apiEndpoint, personalToken)
       : null;
-  /** The endpoint whose email invite `i` concerns, when its offer reads it (nothing for a consent already given). */
-  function inviteEmailEndpoint(i: number): string | null {
-    const view = inviteViews[i];
-    if (view?.offer == null || view.given != null || !readsAccountEmail(view.offer.requestedPermissions)) return null;
+  /** The endpoint invite `i` is answered with (token-bearing). */
+  function inviteEndpoint(i: number): string | null {
     const { credentials } = inviteCredentials(i);
     return credentials == null ? null : buildApiEndpointWithToken(credentials.endpoint, credentials.token);
   }
-  const emailEndpoints = [rowsEmailEndpoint, ...(invites ?? []).map((_, i) => inviteEmailEndpoint(i))].filter(
-    (e): e is string => e != null,
-  );
-  const emailEndpointsKey = [...new Set(emailEndpoints)].sort().join(" ");
-  useEffect(() => {
-    for (const endpoint of emailEndpointsKey === "" ? [] : emailEndpointsKey.split(" ")) {
-      if (emailReads.current.has(endpoint)) continue;
-      emailReads.current.add(endpoint);
-      readAccountEmail(endpoint)
-        .then((email) => {
-          if (!hasUsableEmail({ email })) setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "missing" } }));
-        })
-        .catch((err: unknown) => {
-          console.warn("auth: could not read the account's email:", loggableError(err));
-        });
-    }
-  }, [emailEndpointsKey]);
-  const emailAdding = Object.values(emailStates).some((st) => st?.kind === "adding");
-
-  /** Make `email` the address of the account behind `endpoint`; every block on that account follows. */
-  async function addEmail(endpoint: string, email: string) {
-    setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "adding" } }));
-    try {
-      const stored = await setAccountEmail(endpoint, email);
-      setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "added", email: stored } }));
-    } catch (err: unknown) {
-      console.warn("auth: could not add the account's email:", loggableError(err));
-      const key = missingEmailErrorKey(err);
-      const message = key === "consent.emailTaken" ? t(key) : maskUrlCredentials(platformError(err, t(key)).message);
-      setEmailStates((prev) => ({ ...prev, [endpoint]: { kind: "error", message } }));
-    }
+  /** The endpoint whose email invite `i` concerns, when its offer reads or requires it (nothing for a consent already given). */
+  function inviteEmailEndpoint(i: number): string | null {
+    const view = inviteViews[i];
+    if (view?.offer == null || view.given != null) return null;
+    return inviteRequiresProof(i) || readsAccountEmail(view.offer.requestedPermissions) ? inviteEndpoint(i) : null;
   }
+  const emailRequests: EmailRequest[] = [];
+  if (rowsEmailEndpoint != null) emailRequests.push({ endpoint: rowsEmailEndpoint, required: false });
+  (invites ?? []).forEach((_, i) => {
+    const endpoint = inviteEmailEndpoint(i);
+    if (endpoint != null) emailRequests.push({ endpoint, required: inviteRequiresProof(i) });
+  });
+  // Signed in without a session of the client library (no endpoint in the
+  // answer): the platform's information was not read on the way here.
+  const needsPlatformInfo = emailRequests.length > 0 && platformInfo == null;
+  useEffect(() => {
+    if (!needsPlatformInfo) return;
+    let cancelled = false;
+    void (async () => {
+      let info: ServiceInfoFeatures = {};
+      try {
+        info = (await makeService().info()) as ServiceInfoFeatures;
+      } catch (err: unknown) {
+        console.warn("auth: could not read the platform's information:", loggableError(err));
+      }
+      if (!cancelled) setPlatformInfo(info);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsPlatformInfo]);
+  const email = useVerifiedEmail(emailRequests, platformInfo, "auth");
+  /** Whether invite `i` waits for its account's address to be verified: it cannot be approved until then. */
+  function inviteGated(i: number): boolean {
+    return inviteRequiresProof(i) && !email.proved(inviteEmailEndpoint(i));
+  }
+  // The decisions as they stand (see `settledDecisions`): what Continue and the
+  // flow go by. An approval whose account is not (or no longer) proved does not count.
+  const decisions = settledDecisions(inviteDecisions, inviteViews).map((d, i) =>
+    d === "approve" && inviteGated(i) ? null : d,
+  );
 
   /** The notice for the account behind `endpoint`, when there is something to say. */
-  function emailNotice(endpoint: string | null, accountName: string | null, appName: string) {
-    const state = endpoint != null ? emailStates[endpoint] : null;
-    if (endpoint == null || state == null) return undefined;
+  function emailNotice(
+    endpoint: string | null,
+    accountName: string | null,
+    appName: string,
+    required = false,
+    mandatory = false,
+  ) {
+    if (endpoint == null) return undefined;
     return (
-      <MissingEmailNotice
+      <VerifiedEmailNotice
         username={accountName}
         appName={appName}
-        state={state}
-        onAdd={(email) => addEmail(endpoint, email)}
+        state={email.stateOf(endpoint, required)}
+        required={required}
+        mandatory={mandatory}
+        onAdd={(value) => void email.add(endpoint, value)}
+        onSend={() => void email.send(endpoint)}
+        onChange={() => email.change(endpoint)}
+        onRetry={() => void email.recheck(endpoint)}
         disabled={finishing !== null}
       />
     );
@@ -924,6 +953,7 @@ function AuthFlow({
       } catch {
         info = null;
       }
+      setPlatformInfo(info as ServiceInfoFeatures | null);
       offers = info == null ? null : offersTargets(info as { features?: { delegation?: unknown } }, accessState.actAs);
       if (offers) {
         client = Delegation.fromConnection(connection, { pryv: Pryv });
@@ -1294,14 +1324,6 @@ function AuthFlow({
   }
 
   /**
-   * Accept the approved consent invites, mandatory ones first, and return one
-   * outcome per invite in the request's order. A mandatory invite that cannot
-   * be accepted refuses the request instead: returns null, nothing granted.
-   * `for: 'target'` invites are accepted on the account the access is granted
-   * for, with the delegate token; without such an account, with the person's
-   * own token, and the outcome says so.
-   */
-  /**
    * The credentials an invite is answered with: `for: 'target'` with the
    * delegate token on the account the access is granted for, when there is
    * one; otherwise the person's own (the owner's while granting for a
@@ -1331,7 +1353,7 @@ function AuthFlow({
   async function refuseDeclinedInvites(): Promise<void> {
     if (invites == null) return;
     for (let i = 0; i < invites.length; i++) {
-      if (decisions[i] !== "decline") continue;
+      if (decisions[i] !== "decline" || refusalsSent.has(i)) continue;
       const scope = inviteViews[i]?.scope;
       const { credentials } = inviteCredentials(i);
       // Unreadable or without a scope: nothing to answer with.
@@ -1339,23 +1361,61 @@ function AuthFlow({
       try {
         const conn = new Pryv.Connection(buildApiEndpointWithToken(credentials.endpoint, credentials.token));
         await cmc.refuseInvite(conn, invites[i].capabilityUrl, { scopeStreamId: scope });
+        setRefusalsSent((prev) => new Set(prev).add(i));
       } catch (err: unknown) {
         console.warn("auth: could not send a consent invite's refusal:", loggableError(err));
       }
     }
   }
 
-  async function acceptInvites(): Promise<CmcInviteOutcome[] | null> {
+  /**
+   * The approved invites whose offer requires a verified email, when the
+   * account they are answered with has none any more: read again right before
+   * anything is written, since the proof may be older than this page.
+   */
+  async function approvedWithoutProof(): Promise<number[]> {
+    const approved = (invites ?? []).map((_, i) => i).filter((i) => decisions[i] === "approve" && inviteRequiresProof(i));
+    const reads = new Map<string | null, Promise<boolean>>();
+    const proved = await Promise.all(
+      approved.map((i) => {
+        const endpoint = inviteEmailEndpoint(i);
+        const read = reads.get(endpoint) ?? email.recheck(endpoint);
+        reads.set(endpoint, read);
+        return read;
+      }),
+    );
+    return approved.filter((_, n) => !proved[n]);
+  }
+
+  /** Back to the person: invites that need a verified email first are to be decided again. */
+  function undecide(indices: readonly number[]) {
+    setInviteDecisions((prev) => prev.map((d, j) => (indices.includes(j) ? null : d)));
+  }
+
+  /**
+   * Accept the approved consent invites and return one outcome per invite in
+   * the request's order: mandatory ones first, and among them those whose offer
+   * requires a verified email (see `acceptOrder`). A mandatory invite that
+   * cannot be accepted refuses the request instead: "refused", nothing
+   * granted. One refused for want of a verified email, with nothing accepted
+   * yet, leaves the person on the page to verify it: "stay".
+   * `for: 'target'` invites are accepted on the account the access is granted
+   * for, with the delegate token; without such an account, with the person's
+   * own token, and the outcome says so.
+   */
+  async function acceptInvites(): Promise<CmcInviteOutcome[] | "refused" | "stay"> {
     // Unreachable (accept() checks the same), but an empty list would be
     // refused by the core: take the refusal path rather than post it.
-    if (invites == null || !apiEndpoint || !personalToken) return null;
+    if (invites == null || !apiEndpoint || !personalToken) return "refused";
     // A consent already given is reported from the grant in place; nothing is written.
     const outcomes: Array<CmcInviteOutcome | null> = invites.map((invite, i) => {
       if (decisions[i] === "decline") return { declined: true };
       const given = decisions[i] === "given" ? inviteViews[i]?.given : null;
       return given != null ? givenOutcome(given, invite.for === "target" && !invitesAsTarget(i)) : null;
     });
-    const order = acceptOrder(invites, decisions);
+    const order = acceptOrder(invites, decisions, inviteRequiresProof);
+    // Set once an accept went through (or may have: the wait for it ended).
+    let acceptedAny = false;
     // Every invite must end with an outcome: one that is neither declined,
     // given nor to be accepted stops the flow before anything is written.
     if (outcomes.some((o, i) => o == null && !order.includes(i))) throw new Error(t("consent.errorCouldNotAccept"));
@@ -1373,6 +1433,7 @@ function AuthFlow({
           scopeStreamId: scope,
           ...(invite.accessName != null ? { accessName: invite.accessName } : {}),
         });
+        acceptedAny = true;
         outcomes[i] = acceptedOutcome(res, invite.for === "target" && !asTarget);
       } catch (err: unknown) {
         // Named after the account that answered (see `inviteCredentials`). No
@@ -1383,6 +1444,16 @@ function AuthFlow({
         const failure = inviteFailure(err, t("cmc.errorCouldNotApprove"), {
           username: isValidUsername(answering) ? answering : null,
         });
+        if (failure.reason === VERIFIED_EMAIL_REQUIRED && invite.mandatory && !acceptedAny) {
+          // Nothing was accepted: the person can verify the address here, then
+          // approve again (the link stays usable).
+          setError(failure.message);
+          setRefusedUnverified((prev) => new Set(prev).add(i));
+          undecide([i]);
+          await email.recheck(inviteEndpoint(i));
+          return "stay";
+        }
+        if (failure.reason === cmcErrorIds.CAPABILITY_TIMEOUT) acceptedAny = true;
         // A wait that ended before the platform recorded the outcome is not a
         // failure: the accept usually completes moments later. Reported, and
         // the requester learns the truth from its inbox.
@@ -1393,7 +1464,7 @@ function AuthFlow({
             "A consent invite the app marked as mandatory could not be accepted (invite " +
               (i + 1) + ": " + boundedReason(failure.reason) + ")",
           );
-          return null;
+          return "refused";
         }
         outcomes[i] = { reason: boundedReason(failure.reason) };
       }
@@ -1441,11 +1512,19 @@ function AuthFlow({
       // Accept: every approved invite, before the app access is written.
       let inviteOutcomes: CmcInviteOutcome[] | null = null;
       if (invites != null) {
-        inviteOutcomes = await acceptInvites();
-        if (inviteOutcomes == null) {
+        const unproved = await approvedWithoutProof();
+        if (unproved.length > 0) {
+          setError(t("cmc.acceptVerifiedEmailRequired"));
+          undecide(unproved);
+          return;
+        }
+        const answered = await acceptInvites();
+        if (answered === "stay") return;
+        if (answered === "refused") {
           handedOver = true;
           return;
         }
+        inviteOutcomes = answered;
       }
       // Grant: the access the app already holds is handed over as it is.
       if (reuse != null) {
@@ -1790,7 +1869,7 @@ function AuthFlow({
       if (invites == null) return null;
       const invite = invites[i];
       const view = inviteViews[i];
-      const decision = inviteDecisions[i];
+      const decision = decisions[i];
       const Heading = inGroup ? "h3" : "h2";
       return (
         <section
@@ -1818,11 +1897,11 @@ function AuthFlow({
             labelFor={labelFor}
             busy={null}
             disabled={finishing !== null || view == null || view.loading}
-            approveDisabled={view?.offer == null || view.scope == null}
+            approveDisabled={view?.offer == null || view.scope == null || inviteGated(i)}
             onApprove={() => decide(i, "approve")}
             onDecline={() => decide(i, "decline")}
             decided={decision === "approve" || decision === "decline" ? decision : null}
-            onChange={() => decide(i, null)}
+            onChange={refusalsSent.has(i) ? undefined : () => decide(i, null)}
             given={
               view?.given != null
                 ? view.given.created != null
@@ -1836,6 +1915,8 @@ function AuthFlow({
               view?.offer?.requester.username
                 ? `${view.offer.requester.username}@${view.offer.requester.host}`
                 : t("cmc.unidentifiedRequester"),
+              inviteRequiresProof(i),
+              invite.mandatory,
             )}
           />
         </section>
@@ -1911,7 +1992,7 @@ function AuthFlow({
             requestingApp?.name ?? accessState.requestingAppId ?? t("consent.theRequestingApp"),
           )}
           busy={finishing}
-          acceptDisabled={invitesPending || emailAdding}
+          acceptDisabled={invitesPending || email.adding}
           labels={invites != null ? { accept: t("consent.continue") } : undefined}
           onAccept={() => void accept()}
           onRefuse={() => void refuse()}

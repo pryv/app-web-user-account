@@ -15,6 +15,8 @@
 
 import { Pryv } from "./pryvClient";
 import { platformError } from "./apiError";
+import { maskUrlCredentials } from "./maskCredentials";
+import { emailBadge, type EmailView } from "./emailVerification";
 import type { OfferPermission } from "./consent";
 
 /** The address this app and the legacy auth app invent when the email is left empty at registration. */
@@ -46,20 +48,87 @@ export function hasUsableEmail(account: { email?: string | null } | null | undef
   return trimmed !== "" && !PLACEHOLDER_EMAIL.test(trimmed);
 }
 
-/** The account's email, through `account.get` (a personal or delegate token). Throws when it cannot be read. */
-export async function readAccountEmail(apiEndpoint: string): Promise<string | null> {
+/** The account's addresses: the one a requester reading the email gets, and every one it holds. */
+export interface AccountEmails {
+  email: string | null;
+  emails: EmailView[];
+}
+
+/**
+ * The addresses of an `account.get` / `account.update` answer. A core that does
+ * not list them (`emails`) is shown as holding the one address, not proved, as
+ * on the profile page.
+ */
+function accountEmailsOf(account: unknown): AccountEmails {
+  const { email, emails } = (account ?? {}) as { email?: unknown; emails?: unknown };
+  const primary = typeof email === "string" ? email : null;
+  if (Array.isArray(emails)) {
+    return { email: primary, emails: emails.filter((e): e is EmailView => typeof (e as EmailView | null)?.value === "string") };
+  }
+  const only: EmailView[] =
+    primary != null && primary !== ""
+      ? [{ value: primary, primary: true, status: "verified", verifiedAt: null, verificationMethod: "registration" }]
+      : [];
+  return { email: primary, emails: only };
+}
+
+/** The account's primary address, if any. */
+export function primaryEmailOf(account: AccountEmails): EmailView | null {
+  return account.emails.find((e) => e.primary === true) ?? account.emails.find((e) => e.value === account.email) ?? null;
+}
+
+/** The account's entry for an address, whatever its case. */
+export function emailEntry(account: AccountEmails, email: string): EmailView | null {
+  return account.emails.find((e) => e.value.toLowerCase() === email.toLowerCase()) ?? null;
+}
+
+/** Whether the holder proved this address (see `emailBadge`). */
+export function isProvedEmail(view: EmailView): boolean {
+  return emailBadge(view) === "verified";
+}
+
+/** The account's addresses, through `account.get` (a personal or delegate token). Throws when they cannot be read. */
+export async function readAccountEmails(apiEndpoint: string): Promise<AccountEmails> {
   const conn = new Pryv.Connection(apiEndpoint);
   // The client library types `account.get` params as `null`; the API expects an
   // (empty) object, as the profile page sends.
-  const account = (await conn.apiOne("account.get", {} as unknown as null, "account")) as { email?: unknown } | null;
-  return typeof account?.email === "string" ? account.email : null;
+  return accountEmailsOf(await conn.apiOne("account.get", {} as unknown as null, "account"));
+}
+
+type EmailsOperations = { add: string[] } | { resend: string[] } | { setPrimary: string } | { remove: string[] };
+
+async function updateEmails(apiEndpoint: string, emails: EmailsOperations): Promise<AccountEmails> {
+  const conn = new Pryv.Connection(apiEndpoint);
+  // The client library types the legacy fields only.
+  const params = { update: { emails } } as unknown as { update: { email?: string } };
+  return accountEmailsOf(await conn.apiOne("account.update", params, "account"));
+}
+
+/** Add an address, not verified yet: the platform mails it a verification link. */
+export function addAccountEmail(apiEndpoint: string, email: string): Promise<AccountEmails> {
+  return updateEmails(apiEndpoint, { add: [email] });
+}
+
+/** Mail the verification link of one of the account's addresses again. */
+export function resendVerificationEmail(apiEndpoint: string, email: string): Promise<AccountEmails> {
+  return updateEmails(apiEndpoint, { resend: [email] });
+}
+
+/** Make one of the account's verified addresses its primary one. */
+export function setPrimaryEmail(apiEndpoint: string, email: string): Promise<AccountEmails> {
+  return updateEmails(apiEndpoint, { setPrimary: email });
+}
+
+/** Remove one of the account's addresses (never the primary one). */
+export function removeAccountEmail(apiEndpoint: string, email: string): Promise<AccountEmails> {
+  return updateEmails(apiEndpoint, { remove: [email] });
 }
 
 /**
  * Make `email` the account's address (`account.update`), the one a requester
  * reading the email gets. Unverified until the person confirms it from their
  * profile. Returns the address the account now holds. Throws on failure (see
- * `missingEmailErrorKey`).
+ * `emailRefusal`).
  */
 export async function setAccountEmail(apiEndpoint: string, email: string): Promise<string> {
   const conn = new Pryv.Connection(apiEndpoint);
@@ -68,7 +137,27 @@ export async function setAccountEmail(apiEndpoint: string, email: string): Promi
   return typeof account?.email === "string" ? account.email : email;
 }
 
-/** The message key for a failed add: the address is taken, or anything else. */
-export function missingEmailErrorKey(err: unknown): string {
-  return platformError(err, "").id === "item-already-exists" ? "consent.emailTaken" : "consent.emailAddFailed";
+/** A refused call on the account's addresses: what the page acts on, and a message it may show. */
+export interface EmailRefusal {
+  /** Another account holds the address. */
+  taken: boolean;
+  /** When the platform says how long to wait before the next mail. */
+  retryAfterSeconds: number | null;
+  /** The limit is one the platform counts on the account, not one mail just sent. */
+  limited: boolean;
+  /** The platform's message, credentials masked. */
+  message: string;
+}
+
+/** What a refused call on the account's addresses says. */
+export function emailRefusal(err: unknown, fallback: string): EmailRefusal {
+  const { id, message } = platformError(err, fallback);
+  const data = (err as { innerObject?: { data?: { retryAfterSeconds?: unknown } } } | null)?.innerObject?.data;
+  const wait = data?.retryAfterSeconds;
+  return {
+    taken: id === "item-already-exists",
+    retryAfterSeconds: typeof wait === "number" && Number.isFinite(wait) && wait > 0 ? wait : null,
+    limited: id === "too-many-attempts",
+    message: maskUrlCredentials(message),
+  };
 }

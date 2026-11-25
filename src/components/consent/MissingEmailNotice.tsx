@@ -16,8 +16,60 @@ export interface MissingEmailNoticeProps {
   appName: string;
   state: MissingEmailState;
   /** Make the typed address the account's email; the page moves `state` along. */
-  onAdd: (email: string) => Promise<void>;
+  onAdd: (email: string) => void;
   disabled?: boolean;
+}
+
+/** The one-field form adding an address, shared by the consent screens' email notices. */
+export function AddEmailForm({
+  testId,
+  initialValue = "",
+  adding,
+  error,
+  onAdd,
+  disabled = false,
+}: {
+  testId: string;
+  initialValue?: string;
+  adding: boolean;
+  /** Why the last address was refused. */
+  error: string | null;
+  onAdd: (email: string) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const id = useId();
+  const [value, setValue] = useState(initialValue);
+  const errorId = id + "-error";
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    const email = value.trim();
+    if (email === "" || adding || disabled) return;
+    onAdd(email);
+  }
+  return (
+    <form onSubmit={submit} className="mb-4" data-testid={testId}>
+      <Field
+        id={id + "-email"}
+        type="email"
+        required
+        label={t("consent.missingEmailLabel")}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={adding || disabled}
+        aria-invalid={error != null ? true : undefined}
+        aria-describedby={error != null ? errorId : undefined}
+      />
+      {error != null && (
+        <div id={errorId}>
+          <Alert>{error}</Alert>
+        </div>
+      )}
+      <Button type="submit" variant="ghost" className="w-auto" disabled={adding || disabled}>
+        {adding ? t("consent.missingEmailAdding") : t("consent.missingEmailAdd")}
+      </Button>
+    </form>
+  );
 }
 
 /**
@@ -29,8 +81,6 @@ export interface MissingEmailNoticeProps {
  */
 export function MissingEmailNotice({ username, appName, state, onAdd, disabled = false }: MissingEmailNoticeProps) {
   const { t } = useTranslation();
-  const id = useId();
-  const [value, setValue] = useState("");
 
   if (state.kind === "added") {
     return (
@@ -38,15 +88,6 @@ export function MissingEmailNotice({ username, appName, state, onAdd, disabled =
         <Alert tone="success">{t("consent.missingEmailAdded", { email: state.email })}</Alert>
       </div>
     );
-  }
-
-  const adding = state.kind === "adding";
-  const errorId = id + "-error";
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    const email = value.trim();
-    if (email === "" || adding || disabled) return;
-    void onAdd(email);
   }
 
   return (
@@ -59,27 +100,13 @@ export function MissingEmailNotice({ username, appName, state, onAdd, disabled =
         </p>
         <p className="mt-1">{t("consent.missingEmailAddHint")}</p>
       </Alert>
-      <form onSubmit={submit} className="mb-4" data-testid="missing-email-form">
-        <Field
-          id={id + "-email"}
-          type="email"
-          required
-          label={t("consent.missingEmailLabel")}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          disabled={adding || disabled}
-          aria-invalid={state.kind === "error" ? true : undefined}
-          aria-describedby={state.kind === "error" ? errorId : undefined}
-        />
-        {state.kind === "error" && (
-          <div id={errorId}>
-            <Alert>{state.message}</Alert>
-          </div>
-        )}
-        <Button type="submit" variant="ghost" className="w-auto" disabled={adding || disabled}>
-          {adding ? t("consent.missingEmailAdding") : t("consent.missingEmailAdd")}
-        </Button>
-      </form>
+      <AddEmailForm
+        testId="missing-email-form"
+        adding={state.kind === "adding"}
+        error={state.kind === "error" ? state.message : null}
+        onAdd={onAdd}
+        disabled={disabled}
+      />
     </div>
   );
 }
