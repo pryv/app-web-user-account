@@ -48,7 +48,8 @@ describe("[APIL] errors as they are logged", () => {
     for (const text of hostile) {
       const start = performance.now();
       redactUrls(text);
-      expect(performance.now() - start, text.slice(0, 4)).toBeLessThan(50);
+      // About 20 ms alone; the bound leaves room for a loaded runner, a quadratic pattern takes seconds here.
+      expect(performance.now() - start, text.slice(0, 4)).toBeLessThan(500);
     }
     expect(redactUrls("CMC accept failed: https://tok@alice.core.test/ " + "x".repeat(200_000))).toMatch(/^CMC accept failed: <url> x+$/);
   });
