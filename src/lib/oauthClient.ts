@@ -9,6 +9,10 @@
  *   the host next to the name, never the name alone.
  * - `{ name?, origin: "operator" }`: a client the operator registered; the
  *   name is the one the operator registered.
+ * - `{ name?, origin: "developer" }`: a client a developer registered on the
+ *   platform (the name is the registered one, as for an operator's client).
+ *
+ * Stamps may also carry `validation: { level }` (shown as a client data row).
  *
  * Accesses made before a core stamped them carry none until the next
  * consent (grant) or refresh (session).
@@ -21,7 +25,7 @@ export const OAUTH_SESSION_PREFIX = "oauth:";
 
 export type OAuthClientStamp =
   | { kind: "metadata-document"; name?: string; host: string }
-  | { kind: "operator"; name?: string };
+  | { kind: "operator" | "developer"; name?: string };
 
 export interface OAuthAccessLike {
   id?: string;
@@ -46,7 +50,7 @@ export function oauthClientOf(access: OAuthAccessLike | null | undefined): OAuth
   const name = nonEmpty(c.name);
   const host = nonEmpty(c.host);
   if (host != null) return { kind: "metadata-document", host, ...(name != null ? { name } : {}) };
-  if (c.origin === "operator") return { kind: "operator", ...(name != null ? { name } : {}) };
+  if (c.origin === "operator" || c.origin === "developer") return { kind: c.origin, ...(name != null ? { name } : {}) };
   return null;
 }
 
@@ -97,7 +101,7 @@ export function accessNaming(access: OAuthAccessLike): AccessNaming {
   if (client?.kind === "metadata-document") {
     return client.name != null ? { label: client.name, host: client.host } : { label: client.host };
   }
-  if (client?.kind === "operator" && client.name != null) return { label: client.name };
+  if ((client?.kind === "operator" || client?.kind === "developer") && client.name != null) return { label: client.name };
   const clientId = oauthClientIdOf(access);
   // A metadata-document client's row key (`url~…`) is no name: keep the access name.
   if (clientId != null && !clientId.startsWith("url~")) return { label: clientId };

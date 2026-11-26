@@ -298,6 +298,50 @@ describe("[OANM] the requesting app's name on the OAuth2 sign-in", () => {
     expect(document.getElementById("oauthValidation")).toBeNull();
   });
 
+  it("[OANM15] a client known by its metadata document: its host next to the name on the sign-in and the consent screen, plain text", async () => {
+    mockCore(() => ({
+      status: 200,
+      body: {
+        client: {
+          clientId: CLIENT_ID, clientName: "Example agent", origin: "metadata-document",
+          metadataUrl: "https://xn--bcher-kva.example/c.json", metadataHost: "xn--bcher-kva.example", metadataHostUnicode: "bücher.example",
+        },
+        offer: OFFER,
+      },
+    }));
+    renderPage();
+    await screen.findByText("Example agent");
+    const promptHost = document.getElementById("oauthAppPromptHost") as HTMLElement;
+    expect(promptHost.textContent).toBe("(xn--bcher-kva.example)");
+    expect(promptHost.getAttribute("title")).toBe("bücher.example");
+    await signIn();
+    const host = document.getElementById("consentAppHost") as HTMLElement;
+    expect(host.textContent).toBe("xn--bcher-kva.example");
+    expect(host.getAttribute("title")).toBe("bücher.example");
+    expect(host.closest("a")).toBeNull();
+    expect(document.getElementById("oauthClientIdText")?.textContent).toBe("Example agent");
+  });
+
+  it("[OANM16] a metadata-document client without a name is named by its host alone; any other client shows no host", async () => {
+    mockCore(() => ({
+      status: 200,
+      body: { client: { clientId: CLIENT_ID, origin: "metadata-document", metadataHost: "client.example" }, offer: OFFER },
+    }));
+    renderPage();
+    await waitFor(() => expect(signInButton().disabled).toBe(false));
+    expect(prompt().textContent).toMatch(/^client\.example wants to access your/);
+    await signIn();
+    expect(document.getElementById("oauthClientIdText")?.textContent).toBe("client.example");
+    expect(document.getElementById("consentAppHost")).toBeNull();
+    cleanup();
+    mockCore(() => ({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "Registry app" }, offer: OFFER } }));
+    renderPage();
+    await screen.findByText("Registry app");
+    expect(document.getElementById("oauthAppPromptHost")).toBeNull();
+    await signIn();
+    expect(document.getElementById("consentAppHost")).toBeNull();
+  });
+
   it("[OANM13] a blank registered name counts as none: the id is shown marked", async () => {
     mockCore(() => ({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "   ", name: { en: " " } }, offer: OFFER } }));
     renderPage();

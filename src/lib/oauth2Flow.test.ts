@@ -446,6 +446,18 @@ describe("[OAFR] offer by reference", () => {
       .toEqual({ level: "publisherValidated", publisher: { name: null, validated: false }, validatedAt: null });
   });
 
+  it("[OAFR8] reads a metadata-document client's host (ASCII, and its Unicode form); none for another client", async () => {
+    mockFetchOnce(200, {
+      client: { clientId: "https://xn--bcher-kva.example/c.json", metadataHost: "xn--bcher-kva.example", metadataHostUnicode: "bücher.example" },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect([r.client.metadataHost, r.client.metadataHostUnicode]).toEqual(["xn--bcher-kva.example", "bücher.example"]);
+    mockFetchOnce(200, { client: { clientId: "reg-app", metadataHostUnicode: "x.example" }, offer: { permissions: [{ streamId: "a", level: "read" }] } });
+    const o = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect([o.client.metadataHost, o.client.metadataHostUnicode]).toEqual([null, null]);
+  });
+
   it("[OAFR4] refuses an answer without a usable offer", async () => {
     mockFetchOnce(200, { offer: { permissions: [] } });
     await expect(oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).rejects.toThrow(/no consent offer/);

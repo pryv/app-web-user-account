@@ -14,6 +14,12 @@ export interface ConsentPanelProps {
   app: { name: ReactNode; icon?: CatalogIcon | null; description?: string | null };
   /** Element id on the app name (for pages that expose it). */
   appNameId?: string;
+  /**
+   * The host the app is known by (an OAuth2 client known by its metadata
+   * document): shown in its own element next to the name, plain text, never
+   * a link; `unicode` (its Unicode form) at most as a tooltip.
+   */
+  appHost?: { host: string; unicode?: string | null } | null;
   /** Small print right under the app name (e.g. the app's identifier). */
   appNote?: ReactNode;
   /**
@@ -66,6 +72,7 @@ export interface ConsentPanelProps {
 export function ConsentPanel({
   app,
   appNameId,
+  appHost,
   appNote,
   validation,
   title,
@@ -96,6 +103,15 @@ export function ConsentPanel({
       <h1 className="mb-2 flex items-center gap-2 text-2xl">
         <AppIcon icon={app.icon ?? null} />
         <strong id={appNameId}>{app.name}</strong>
+        {appHost != null && (
+          <span
+            id="consentAppHost"
+            className="text-base font-normal text-muted break-all"
+            title={appHost.unicode != null && appHost.unicode !== appHost.host ? appHost.unicode : undefined}
+          >
+            {appHost.host}
+          </span>
+        )}
       </h1>
       {appNote}
       <ValidationBadge validation={validation} />

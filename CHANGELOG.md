@@ -12,7 +12,19 @@
   does not send it (older cores) shows no badge and no error. Needs the open-pryv.io release that adds the
   validation levels.
 - **The level stamped at consent** (`clientData.oauth.client.validation.level`) is a row of its own on the access
-  card and the access page, labelled "Validation at consent", its value in words.
+  card and the access page, labelled "Validation at consent", its value in words. The core sends the badge and
+  the stamped level on every platform (also when the operator keeps `oauth.clientRegistration.mode: curated`):
+  additive fields, and existing grants are stamped with the level at their next consent.
+- **A developer's client is named by its registered name** on the access card (stamp `origin: "developer"`), as
+  an operator's client is.
+
+### Fixed
+
+- **The OAuth2 consent page shows the host of a client known by its metadata document** (`client.metadataHost` of
+  the core's offer) next to its name, on the sign-in and on the consent screen, as plain text in its own element
+  (`#oauthAppPromptHost`, `#consentAppHost`; the Unicode form as a tooltip only), and the host alone when the
+  client has no name. Before, only the name was shown, which the core's documentation forbids (the name is the
+  document's own claim, the host is what is checked). `ConsentPanelProps` gains `appHost`.
 
 ## 0.37.0 - 2026-11-26
 

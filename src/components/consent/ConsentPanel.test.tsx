@@ -115,6 +115,17 @@ describe("[CPNL] ConsentPanel", () => {
     );
   });
 
+  it("[CPN8] the app's host, when given, sits next to its name in its own element, never a link", () => {
+    render(
+      <ConsentPanel app={{ name: "Agent" }} appHost={{ host: "client.example" }} entries={entries} busy={null} onAccept={() => {}} onRefuse={() => {}} />,
+    );
+    const host = document.getElementById("consentAppHost") as HTMLElement;
+    expect(host.textContent).toBe("client.example");
+    expect(host.parentElement?.tagName).toBe("H1");
+    expect(host.getAttribute("title")).toBeNull();
+    expect(document.querySelector("h1 a")).toBeNull();
+  });
+
   it("[CPN3] shows expiry and the mismatch notice, and disables both actions while busy", () => {
     const onAccept = vi.fn();
     render(

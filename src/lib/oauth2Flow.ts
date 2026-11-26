@@ -182,6 +182,14 @@ export interface OAuthClientDisplay {
   tosUri: string | null;
   /** Who vouches for the app, as the core decided it; null from a core that does not say (no badge). */
   validation: ClientValidation | null;
+  /**
+   * A client known by its metadata document: the host its document came from
+   * (ASCII form), which the page shows next to the name, never the name alone;
+   * `metadataHostUnicode` its Unicode form, when it has one (a tooltip only).
+   * Null for any other client.
+   */
+  metadataHost: string | null;
+  metadataHostUnicode: string | null;
 }
 
 /** The validation levels a core answers (its badge on the consent screen). */
@@ -321,6 +329,8 @@ export async function oauth2FetchOffer(opts: {
       policyUri: httpsUrlOrNull(str(c.policyUri)),
       tosUri: httpsUrlOrNull(str(c.tosUri)),
       validation: parseClientValidation(c.validation),
+      metadataHost: str(c.metadataHost),
+      metadataHostUnicode: str(c.metadataHost) != null ? str(c.metadataHostUnicode) : null,
     },
     composed:
       shownDigest == null

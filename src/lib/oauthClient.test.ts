@@ -19,6 +19,16 @@ describe("[OACN] OAuth access naming", () => {
     expect(oauthClientOf(null)).toBeNull();
   });
 
+  it("[OACN6] a developer's client stamp (with its validation level) is named by its registered name", () => {
+    const stamp = { name: "Dev app", origin: "developer", validation: { level: "nonValidated" } };
+    expect(oauthClientOf({ clientData: { oauth: { client: stamp } } })).toEqual({ kind: "developer", name: "Dev app" });
+    expect(accessNaming({ name: "oauth-grant:dev-app", clientData: { oauth: { client: stamp } } })).toEqual({ label: "Dev app" });
+    expect(accessNaming({ name: "oauth-grant:dev-app", clientData: { oauth: { client: { origin: "developer" } } } })).toEqual({ label: "dev-app" });
+    // A level on a metadata-document stamp leaves the host beside the name.
+    expect(accessNaming({ name: "oauth-grant:url~abc", clientData: { oauth: { client: { ...META, validation: { level: "nonValidated" } } } } }))
+      .toEqual({ label: "Agent", host: "client.example" });
+  });
+
   it("[OACN2] the client id and the grant of an OAuth access", () => {
     expect(oauthClientIdOf({ name: "oauth-grant:clinic" })).toBe("clinic");
     expect(oauthClientIdOf({ name: "oauth:clinic" })).toBe("clinic");

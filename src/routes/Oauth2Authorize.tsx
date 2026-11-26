@@ -207,7 +207,13 @@ export default function Oauth2Authorize() {
   // (never by anything the authorization request or the URL carries). With
   // neither, the client id is shown, marked as an identifier.
   const catalogApp = useRequestingApp(oauthState?.clientId, platformUrl);
-  const registeredName = fetched != null ? clientDisplayName(fetched.client, lang) : null;
+  // A client known by its metadata document: its host is shown next to the
+  // name (never the name alone), and alone when it has no name.
+  const metadataHost = fetched?.client.metadataHost ?? null;
+  const registeredName = fetched != null ? clientDisplayName(fetched.client, lang) ?? metadataHost : null;
+  const appHost = metadataHost != null && (catalogApp != null || registeredName !== metadataHost)
+    ? { host: metadataHost, unicode: fetched?.client.metadataHostUnicode ?? null }
+    : null;
   const requestingApp = catalogApp ?? (fetched != null && registeredName != null
     ? {
         name: registeredName,
@@ -489,6 +495,7 @@ export default function Oauth2Authorize() {
             description: requestingApp?.description,
           }}
           appNameId="oauthClientIdText"
+          appHost={appHost}
           validation={fetched?.client.validation ?? null}
           appNote={
             <>
@@ -612,7 +619,25 @@ export default function Oauth2Authorize() {
           {requestingApp != null && <AppIcon icon={requestingApp.icon ?? null} />}
           <span>
             {requestingApp != null
-              ? tNodes("oauth.appPromptLine", { app: <strong>{requestingApp.name}</strong> })
+              ? tNodes("oauth.appPromptLine", {
+                  app: (
+                    <>
+                      <strong>{requestingApp.name}</strong>
+                      {appHost != null && (
+                        <>
+                          {" "}
+                          <span
+                            id="oauthAppPromptHost"
+                            className="text-muted"
+                            title={appHost.unicode != null && appHost.unicode !== appHost.host ? appHost.unicode : undefined}
+                          >
+                            ({appHost.host})
+                          </span>
+                        </>
+                      )}
+                    </>
+                  ),
+                })
               : offerPending
                 ? t("oauth.appPromptPending")
                 : tNodes("oauth.appPromptLineId", { id: <code>{oauthState.clientId}</code> })}
