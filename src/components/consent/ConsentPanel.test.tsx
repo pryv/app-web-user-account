@@ -63,6 +63,58 @@ describe("[CPNL] ConsentPanel", () => {
     expect(onAccept).toHaveBeenCalledWith([true, false]);
   });
 
+  it("[CPN5] no validation block (an older core): no badge, no caution", () => {
+    render(
+      <ConsentPanel app={{ name: "My App" }} entries={entries} busy={null} onAccept={() => {}} onRefuse={() => {}} />,
+    );
+    expect(document.getElementById("oauthValidation")).toBeNull();
+    render(
+      <ConsentPanel app={{ name: "My App" }} validation={null} entries={entries} busy={null} onAccept={() => {}} onRefuse={() => {}} />,
+    );
+    expect(document.getElementById("oauthValidation")).toBeNull();
+  });
+
+  it("[CPN6] the badge of each level, its explanation, and a caution for a Non-Validated app only", () => {
+    const cases = [
+      { level: "appValidated" as const, badge: "App Validated", explain: /operator reviewed this application/, caution: false },
+      { level: "publisherValidated" as const, badge: "Publisher Validated", explain: /verified who publishes this application/, caution: false },
+      { level: "nonValidated" as const, badge: "Non-Validated", explain: /reviewed neither this application nor its publisher/, caution: true },
+    ];
+    for (const c of cases) {
+      render(
+        <ConsentPanel
+          app={{ name: "My App" }}
+          validation={{ level: c.level, publisher: null, validatedAt: null }}
+          entries={entries}
+          busy={null}
+          onAccept={() => {}}
+          onRefuse={() => {}}
+        />,
+      );
+      expect(document.getElementById("oauthValidation")?.getAttribute("data-level")).toBe(c.level);
+      expect(document.getElementById("oauthValidationBadge")?.textContent).toBe(c.badge);
+      expect(document.getElementById("oauthValidationExplain")?.textContent).toMatch(c.explain);
+      expect(document.getElementById("oauthValidationCaution") != null).toBe(c.caution);
+      cleanup();
+    }
+  });
+
+  it("[CPN7] a Publisher Validated app names its publisher", () => {
+    render(
+      <ConsentPanel
+        app={{ name: "My App" }}
+        validation={{ level: "publisherValidated", publisher: { name: "Acme Health", validated: true }, validatedAt: null }}
+        entries={entries}
+        busy={null}
+        onAccept={() => {}}
+        onRefuse={() => {}}
+      />,
+    );
+    expect(document.getElementById("oauthValidationExplain")?.textContent).toBe(
+      "Published by Acme Health, verified by the platform operator; the application itself was not reviewed.",
+    );
+  });
+
   it("[CPN3] shows expiry and the mismatch notice, and disables both actions while busy", () => {
     const onAccept = vi.fn();
     render(

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { ClientDataRow } from "../lib/clientDataView";
-import { clientDataLabel } from "../lib/clientDataLabels";
+import { clientDataLabel, clientDataValueText } from "../lib/clientDataLabels";
 
 /**
  * Client data rows (`lib/clientDataView.ts`) as a definition list: the label
@@ -20,7 +20,7 @@ export function ClientDataList({ rows }: { rows: ClientDataRow[] }) {
             {value === null ? (
               <span className="text-muted">{t("clientData.none")}</span>
             ) : typeof value === "string" ? (
-              <span className="break-all">{value}</span>
+              <span className="break-all">{clientDataValueText(path, value)}</span>
             ) : Array.isArray(value) ? (
               <ul className="list-inside list-disc">
                 {value.map((v, i) => (

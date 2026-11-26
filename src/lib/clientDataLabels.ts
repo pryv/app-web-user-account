@@ -13,6 +13,7 @@ export const BUILT_IN_CLIENT_DATA_LABELS: Readonly<Record<string, string>> = {
   "oauth.client.host": "clientData.labels.oauthClientHost",
   "oauth.client.url": "clientData.labels.oauthClientUrl",
   "oauth.client.origin": "clientData.labels.oauthClientOrigin",
+  "oauth.client.validation.level": "clientData.labels.oauthClientValidationLevel",
   "oauth.dataGrantId": "clientData.labels.oauthDataGrantId",
   "oauth.exchange": "clientData.labels.oauthExchange",
   "delegation.kind": "clientData.labels.delegationKind",
@@ -41,4 +42,19 @@ export function clientDataLabel(path: string): string {
   const builtIn = BUILT_IN_CLIENT_DATA_LABELS[path];
   if (builtIn != null) return translate(builtIn);
   return path;
+}
+
+/** Values shown in words: the validation levels the platform stamps (`oauth.client.validation.level`). */
+const VALUE_TEXTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "oauth.client.validation.level": {
+    appValidated: "oauth.validation.appValidated",
+    publisherValidated: "oauth.validation.publisherValidated",
+    nonValidated: "oauth.validation.nonValidated",
+  },
+};
+
+/** The text to show for the string value of the row at `path` (a known value in words, else the value). */
+export function clientDataValueText(path: string, value: string): string {
+  const key = VALUE_TEXTS[path]?.[value];
+  return key != null ? translate(key) : value;
 }

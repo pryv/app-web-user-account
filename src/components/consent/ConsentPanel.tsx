@@ -6,6 +6,8 @@ import type { CatalogIcon } from "../../lib/appCatalog";
 import type { ConsentEntry } from "../../lib/consent";
 import { PermissionList } from "./PermissionList";
 import { ConsentActions } from "./ConsentActions";
+import { ValidationBadge } from "./ValidationBadge";
+import type { ClientValidation } from "../../lib/oauth2Flow";
 
 export interface ConsentPanelProps {
   /** The requesting app: name and icon from the operator's catalog when it knows the app. */
@@ -14,6 +16,12 @@ export interface ConsentPanelProps {
   appNameId?: string;
   /** Small print right under the app name (e.g. the app's identifier). */
   appNote?: ReactNode;
+  /**
+   * Who vouches for the app, as the core answered it (OAuth2 offers by
+   * reference): shown as a badge with a one-line explanation, plus a caution
+   * for a Non-Validated app. Absent or null: no badge (an older core).
+   */
+  validation?: ClientValidation | null;
   /** Extra heading under the app (e.g. an OAuth2 offer title and description). */
   title?: ReactNode;
   /** Line introducing the list (default: the catalog's "is requesting permission:"). */
@@ -59,6 +67,7 @@ export function ConsentPanel({
   app,
   appNameId,
   appNote,
+  validation,
   title,
   requesting,
   consentText,
@@ -89,6 +98,7 @@ export function ConsentPanel({
         <strong id={appNameId}>{app.name}</strong>
       </h1>
       {appNote}
+      <ValidationBadge validation={validation} />
       {app.description != null && <p className="mb-2 text-sm text-muted">{app.description}</p>}
       {title}
       <p className="mb-2 text-sm">{requesting ?? t("common.requestingPermission")}</p>

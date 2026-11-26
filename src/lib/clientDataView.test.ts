@@ -14,7 +14,7 @@ vi.mock("../extensions/clientDataLabels", () => ({
 }));
 
 import { clientDataRows, MAX_INLINE_CHARS } from "./clientDataView";
-import { clientDataLabel } from "./clientDataLabels";
+import { clientDataLabel, clientDataValueText } from "./clientDataLabels";
 
 afterEach(() => {
   ext.label = () => null;
@@ -46,6 +46,23 @@ describe("[CDVW] clientDataRows", () => {
       { path: "none", value: null },
       { path: "n", value: "3" },
     ]);
+  });
+
+  it("[CDV6] the validation level stamped at consent is a row of its own, its value in words", () => {
+    const rows = clientDataRows({ oauth: { client: { name: "Clinic", origin: "developer", validation: { level: "nonValidated" } } } });
+    expect(rows).toEqual([
+      { path: "oauth.client.name", value: "Clinic" },
+      { path: "oauth.client.origin", value: "developer" },
+      { path: "oauth.client.validation.level", value: "nonValidated" },
+    ]);
+    expect(clientDataLabel("oauth.client.validation.level")).toBe("Validation at consent");
+    expect(clientDataValueText("oauth.client.validation.level", "nonValidated")).toBe("Non-Validated");
+    expect(clientDataValueText("oauth.client.validation.level", "appValidated")).toBe("App Validated");
+    // An unknown level (a newer core), or another path: the value as it is.
+    expect(clientDataValueText("oauth.client.validation.level", "superValidated")).toBe("superValidated");
+    expect(clientDataValueText("oauth.client.name", "appValidated")).toBe("appValidated");
+    // Only that path goes one level deeper.
+    expect(clientDataRows({ a: { b: { c: { d: 1 } } } })).toEqual([{ path: "a.b.c", value: { raw: { d: 1 } } }]);
   });
 
   it("[CDV3] the consent message key is left out (its own block renders it)", () => {

@@ -6,7 +6,8 @@
  *   counterparty endpoint carries its token in the URL's user part.
  * - `app-web-auth:description` is left out: the consent message block renders it.
  * - Plain objects flatten to dotted paths, down to three segments
- *   (`oauth.client.host`). Anything deeper, an array holding objects, an empty
+ *   (`oauth.client.host`; `oauth.client.validation.level`, the level stamped
+ *   at consent, is the one path of four). Anything deeper, an array holding objects, an empty
  *   object, or a string longer than {@link MAX_INLINE_CHARS} characters is kept
  *   whole as `{ raw }`, shown in a collapsed "Raw" view.
  * - An array of plain values is a list; `null` reads "none".
@@ -19,6 +20,12 @@ import { maskCredentials } from "./maskCredentials";
 
 /** Paths are flattened down to this many segments. */
 export const MAX_DEPTH = 3;
+/**
+ * Objects the platform writes at that depth and that are flattened one level
+ * further: the client's validation level stamped at consent
+ * (`oauth.client.validation.level`).
+ */
+const FLATTENED_DEEPER: ReadonlySet<string> = new Set(["oauth.client.validation"]);
 /** A longer string is shown in the raw view. */
 export const MAX_INLINE_CHARS = 200;
 
@@ -63,7 +70,7 @@ export function clientDataRows(data: Record<string, unknown> | null | undefined)
       if (depth === 1 && key === CONSENT_KEY) continue;
       if (v === undefined) continue;
       const path = prefix ? prefix + "." + key : key;
-      if (isPlainObject(v) && Object.keys(v).length > 0 && depth < MAX_DEPTH) {
+      if (isPlainObject(v) && Object.keys(v).length > 0 && (depth < MAX_DEPTH || (depth === MAX_DEPTH && FLATTENED_DEEPER.has(path)))) {
         walk(v, path, depth + 1);
       } else {
         rows.push({ path, value: valueOf(v) });

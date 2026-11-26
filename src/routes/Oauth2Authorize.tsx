@@ -489,6 +489,7 @@ export default function Oauth2Authorize() {
             description: requestingApp?.description,
           }}
           appNameId="oauthClientIdText"
+          validation={fetched?.client.validation ?? null}
           appNote={
             <>
               {/* Under a name, the id in small print: two apps with similar

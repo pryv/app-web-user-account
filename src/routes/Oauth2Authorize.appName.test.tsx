@@ -280,6 +280,24 @@ describe("[OANM] the requesting app's name on the OAuth2 sign-in", () => {
     expect(screen.queryByRole("link", { name: "Privacy policy" })).toBeNull();
   });
 
+  it("[OANM14] the consent screen shows the badge the core answered, with the caution for a Non-Validated app; none from an older core", async () => {
+    mockCore(() => ({
+      status: 200,
+      body: { client: { clientId: CLIENT_ID, clientName: "Registry app", validation: { level: "nonValidated" } }, offer: OFFER },
+    }));
+    renderPage();
+    await screen.findByText("Registry app");
+    await signIn();
+    expect(document.getElementById("oauthValidationBadge")?.textContent).toBe("Non-Validated");
+    expect(document.getElementById("oauthValidationCaution")?.textContent).toMatch(/only if you know and trust who made it/);
+    cleanup();
+    mockCore(() => ({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "Registry app" }, offer: OFFER } }));
+    renderPage();
+    await screen.findByText("Registry app");
+    await signIn();
+    expect(document.getElementById("oauthValidation")).toBeNull();
+  });
+
   it("[OANM13] a blank registered name counts as none: the id is shown marked", async () => {
     mockCore(() => ({ status: 200, body: { client: { clientId: CLIENT_ID, clientName: "   ", name: { en: " " } }, offer: OFFER } }));
     renderPage();

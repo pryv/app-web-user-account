@@ -180,6 +180,44 @@ export interface OAuthClientDisplay {
   clientUri: string | null;
   policyUri: string | null;
   tosUri: string | null;
+  /** Who vouches for the app, as the core decided it; null from a core that does not say (no badge). */
+  validation: ClientValidation | null;
+}
+
+/** The validation levels a core answers (its badge on the consent screen). */
+export type ValidationLevel = "nonValidated" | "publisherValidated" | "appValidated";
+
+/**
+ * Who vouches for the app (`client.validation` of the core's /offer answer):
+ * its level, and for an app a developer registered, its publisher and when
+ * its review was passed. Decided by the core only; the page shows it.
+ */
+export interface ClientValidation {
+  level: ValidationLevel;
+  publisher: { name: string | null; validated: boolean } | null;
+  validatedAt: number | null;
+}
+
+const VALIDATION_LEVELS: readonly string[] = ["nonValidated", "publisherValidated", "appValidated"];
+
+/** A validation block read tolerantly: an unknown level (a newer core) or a malformed block is no badge. */
+export function parseClientValidation(v: unknown): ClientValidation | null {
+  if (typeof v !== "object" || v == null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.level !== "string" || !VALIDATION_LEVELS.includes(o.level)) return null;
+  let publisher: ClientValidation["publisher"] = null;
+  if (typeof o.publisher === "object" && o.publisher != null && !Array.isArray(o.publisher)) {
+    const p = o.publisher as Record<string, unknown>;
+    publisher = {
+      name: typeof p.name === "string" && p.name.trim() !== "" ? p.name.trim() : null,
+      validated: p.validated === true,
+    };
+  }
+  return {
+    level: o.level as ValidationLevel,
+    publisher,
+    validatedAt: typeof o.validatedAt === "number" && Number.isFinite(o.validatedAt) ? o.validatedAt : null,
+  };
 }
 
 /** A display text in the UI language (`pickText` rules for a map), or null when empty. */
@@ -282,6 +320,7 @@ export async function oauth2FetchOffer(opts: {
       clientUri: httpsUrlOrNull(str(c.clientUri)),
       policyUri: httpsUrlOrNull(str(c.policyUri)),
       tosUri: httpsUrlOrNull(str(c.tosUri)),
+      validation: parseClientValidation(c.validation),
     },
     composed:
       shownDigest == null

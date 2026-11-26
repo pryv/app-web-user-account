@@ -16,6 +16,7 @@ import {
   isAddressAliasHeldError,
   subjectChangeKey,
   wrongCoreOf,
+  parseClientValidation,
   type OAuthFlowError,
 } from "./oauth2Flow";
 
@@ -424,6 +425,25 @@ describe("[OAFR] offer by reference", () => {
     const blank = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
     expect(clientDisplayName(blank.client, "en")).toBeNull();
     expect(clientDescription(blank.client, "en")).toBeNull();
+  });
+
+  it("[OAFR7] reads the client's validation block; an older core (none), an unknown level or a malformed block is no badge", async () => {
+    mockFetchOnce(200, {
+      client: {
+        clientId: "dev-app",
+        validation: { level: "appValidated", publisher: { name: " Acme ", validated: true }, validatedAt: 1700000000000 },
+      },
+      offer: { permissions: [{ streamId: "a", level: "read" }] },
+    });
+    const r = await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" });
+    expect(r.client.validation).toEqual({ level: "appValidated", publisher: { name: "Acme", validated: true }, validatedAt: 1700000000000 });
+    mockFetchOnce(200, { client: { clientId: "old" }, offer: { permissions: [{ streamId: "a", level: "read" }] } });
+    expect((await oauth2FetchOffer({ pryvApi: "https://core.example.com", signedState: "s.t" })).client.validation).toBeNull();
+    expect(parseClientValidation({ level: "nonValidated" })).toEqual({ level: "nonValidated", publisher: null, validatedAt: null });
+    expect(parseClientValidation({ level: "superValidated" })).toBeNull();
+    expect(parseClientValidation("appValidated")).toBeNull();
+    expect(parseClientValidation({ level: "publisherValidated", publisher: { name: 3, validated: "yes" }, validatedAt: "x" }))
+      .toEqual({ level: "publisherValidated", publisher: { name: null, validated: false }, validatedAt: null });
   });
 
   it("[OAFR4] refuses an answer without a usable offer", async () => {
