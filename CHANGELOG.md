@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.37.0 - 2026-11-26
+
+Consent offers can require a verified email address: both consent pages help the person prove the address on
+the spot (open-pryv.io 2.0.0-rc.88 or later enforces it, `@pryv/cmc` 3.24.0 reads it). Also: change your username
+from the profile, 10-symbol registration codes, and the parts listed below that wait for the open-pryv.io release
+after 2.0.0-rc.88.
+
 ### Added
 
 - **Change your username from the profile.** The username card shows how many changes are left
@@ -19,18 +26,18 @@
   verified and drops the placeholder it replaces) and updates by itself when the link is opened. With
   `for: "target"` on a managed account, the managed account's own address counts. A refusal by the
   platform (`cmc-verified-email-required`) has its own message: `/cmc-accept` stays open and sends the
-  app no outcome, `/auth` stays open for a mandatory invite while nothing was accepted yet. Read with a
-  `@pryv/cmc` newer than 3.23.0 (with an older one, only the platform's refusal is handled); enforced
-  by an open-pryv.io release newer than 2.0.0-rc.87.
+  app no outcome, `/auth` stays open for a mandatory invite while nothing was accepted yet. Read with
+  `@pryv/cmc` 3.24.0 or later (with an older one, only the platform's refusal is handled); enforced
+  by open-pryv.io 2.0.0-rc.88 or later.
 - **Connected apps: an access created with `randomAlias` is marked**, with the name the app knows the
   account by (`alias`) instead of the username.
 
 - **The auth page reads the access request with `?authPage=1`.** A core with
-  `access.openedOnlyByAuthPage` on (open-pryv.io, the release after 2.0.0-rc.87) then gives the request
+  `access.openedOnlyByAuthPage` on (open-pryv.io, the release after 2.0.0-rc.88) then gives the request
   its full lifetime only when this page opens it, not when the app polls; other cores ignore the
   parameter.
 - **Account deletion card: a transfer the platform's support cancelled says so** (`closedReason: "operator"`,
-  written by the administrator's reset of a schedule in open-pryv.io, the release after 2.0.0-rc.87; it showed the
+  written by the administrator's reset of a schedule in open-pryv.io, the release after 2.0.0-rc.88; it showed the
   generic "cancelled" line).
 
 ### Fixed
@@ -47,13 +54,14 @@
 - `/auth` accepts mandatory consent invites first, as before; in each group, those requiring a verified email
   now come first.
 - **The registration email code field takes 10 symbols, shown `XXXXX-XXXXX`** (it cut the input at 8). A core from
-  the release after open-pryv.io 2.0.0-rc.87 mints 10-symbol codes: deploy this app version before or with that
+  the release after open-pryv.io 2.0.0-rc.88 mints 10-symbol codes: deploy this app version before or with that
   core. Codes of 8 symbols from an older core still go through.
 - **Usage charts count `webhooks.rotateSecret` as a write** (`rotate` joins the write prefixes, same
   rule as the core).
 - Docs: the README `returnPolicy` and `appCatalogUrl` rows say where to restrict an access request's own
-  `returnURL`: on the core (`access.returnOrigins`, open-pryv.io, the release after 2.0.0-rc.87), not in this
+  `returnURL`: on the core (`access.returnOrigins`, open-pryv.io, the release after 2.0.0-rc.88), not in this
   app's settings.
+- `@pryv/cmc` ^3.24.0 (was ^3.23.1).
 - Tests: page-render tests get a 15 s timeout (they overran 5 s at random on a loaded machine).
 
 ## 0.36.0 - 2026-11-18

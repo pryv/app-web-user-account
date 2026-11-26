@@ -1,7 +1,7 @@
 {
   "name": "app-web-user-account",
   "description": "Pryv user-account web app: authentication flows and self-service account management (profile, security/MFA, connected apps, data rights). Reference implementation, themeable and meant to be self-hosted by operators.",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "license": "BSD-3-Clause",
   "author": "Pryv <info@pryv.com> (https://pryv.com)",
   "type": "module",
@@ -22,7 +22,7 @@
   "dependencies": {
     "@fontsource/roboto": "^5.2.10",
     "@fontsource/roboto-condensed": "^5.2.8",
-    "@pryv/cmc": "^3.23.1",
+    "@pryv/cmc": "^3.24.0",
     "@pryv/delegation": "^3.20.0",
     "@pryv/socket.io": "^3.13.0",
     "events": "^3.3.0",

@@ -553,8 +553,8 @@ Every route accepts these query parameters:
   becomes the account's once verified.
 
   **Consent offers requiring a verified email.** When an offer carries
-  `requireVerifiedEmail: true` (a `consent/request-cmc` request, needs an
-  open-pryv.io release newer than 2.0.0-rc.87 to be enforced by the platform),
+  `requireVerifiedEmail: true` (a `consent/request-cmc` request, needs
+  open-pryv.io 2.0.0-rc.88 or later to be enforced by the platform),
   `/auth` (for each invite of `cmcInvites`) and `/cmc-accept` offer Approve only
   once the primary address of the account that answers is proved: the
   signed-in person's own for `for: "self"`, the managed account's own for
