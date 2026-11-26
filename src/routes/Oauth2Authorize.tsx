@@ -622,13 +622,17 @@ export default function Oauth2Authorize() {
               ? tNodes("oauth.appPromptLine", {
                   app: (
                     <>
-                      <strong>{requestingApp.name}</strong>
+                      <strong className="break-words">
+                        <bdi>{requestingApp.name}</bdi>
+                      </strong>
                       {appHost != null && (
                         <>
                           {" "}
                           <span
                             id="oauthAppPromptHost"
-                            className="text-muted"
+                            dir="ltr"
+                            className="text-muted break-all"
+                            style={{ unicodeBidi: "isolate" }}
                             title={appHost.unicode != null && appHost.unicode !== appHost.host ? appHost.unicode : undefined}
                           >
                             ({appHost.host})

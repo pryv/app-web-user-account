@@ -24,7 +24,9 @@
   the core's offer) next to its name, on the sign-in and on the consent screen, as plain text in its own element
   (`#oauthAppPromptHost`, `#consentAppHost`; the Unicode form as a tooltip only), and the host alone when the
   client has no name. Before, only the name was shown, which the core's documentation forbids (the name is the
-  document's own claim, the host is what is checked). `ConsentPanelProps` gains `appHost`.
+  document's own claim, the host is what is checked). `ConsentPanelProps` gains `appHost`. The name and the
+  publisher's name are isolated for bidirectional text (`<bdi>`) and the host is laid out left to right and
+  isolated, so a right-to-left name never reorders the host; a long name wraps instead of pushing the host out.
 
 ## 0.37.0 - 2026-11-26
 

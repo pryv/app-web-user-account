@@ -100,13 +100,19 @@ export function ConsentPanel({
   const { t } = useTranslation();
   return (
     <>
-      <h1 className="mb-2 flex items-center gap-2 text-2xl">
+      <h1 className="mb-2 flex flex-wrap items-center gap-2 text-2xl">
         <AppIcon icon={app.icon ?? null} />
-        <strong id={appNameId}>{app.name}</strong>
+        {/* The name is isolated for bidirectional text, so a right-to-left
+            name never reorders the host after it; a long name wraps. */}
+        <strong id={appNameId} className="min-w-0 break-words">
+          <bdi>{app.name}</bdi>
+        </strong>
         {appHost != null && (
           <span
             id="consentAppHost"
+            dir="ltr"
             className="text-base font-normal text-muted break-all"
+            style={{ unicodeBidi: "isolate" }}
             title={appHost.unicode != null && appHost.unicode !== appHost.host ? appHost.unicode : undefined}
           >
             {appHost.host}

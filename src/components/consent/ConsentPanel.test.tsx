@@ -126,6 +126,28 @@ describe("[CPNL] ConsentPanel", () => {
     expect(document.querySelector("h1 a")).toBeNull();
   });
 
+  it("[CPN9] a right-to-left name and a numeric host stay apart: the name isolated, the host left-to-right and isolated, the row wraps", () => {
+    render(
+      <ConsentPanel
+        app={{ name: "אפליקציה" }}
+        appNameId="appName"
+        appHost={{ host: "123.456.example" }}
+        validation={{ level: "publisherValidated", publisher: { name: "חברה", validated: true }, validatedAt: null }}
+        entries={entries}
+        busy={null}
+        onAccept={() => {}}
+        onRefuse={() => {}}
+      />,
+    );
+    expect(document.querySelector("#appName > bdi")?.textContent).toBe("אפליקציה");
+    const host = document.getElementById("consentAppHost") as HTMLElement;
+    expect(host.getAttribute("dir")).toBe("ltr");
+    expect(host.style.unicodeBidi).toBe("isolate");
+    expect(document.querySelector("h1")?.className).toMatch(/flex-wrap/);
+    expect(document.querySelector("#appName")?.className).toMatch(/break-words/);
+    expect(document.querySelector("#oauthValidationExplain bdi")?.textContent).toBe("חברה");
+  });
+
   it("[CPN3] shows expiry and the mismatch notice, and disables both actions while busy", () => {
     const onAccept = vi.fn();
     render(

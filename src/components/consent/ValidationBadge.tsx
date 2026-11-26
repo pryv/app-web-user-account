@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { BadgeCheck, ShieldCheck, ShieldAlert } from "lucide-react";
 import type { ClientValidation } from "../../lib/oauth2Flow";
+import { tNodes } from "./tNodes";
 
 const TONE: Record<ClientValidation["level"], string> = {
   appValidated: "border-success/40 bg-success/10 text-success",
@@ -26,9 +27,10 @@ export function ValidationBadge({ validation }: { validation: ClientValidation |
   if (validation == null) return null;
   const { level, publisher } = validation;
   const Icon = ICON[level];
+  // The publisher's name is isolated for bidirectional text inside the sentence.
   const explain =
     level === "publisherValidated" && publisher?.name != null
-      ? t("oauth.validation.publisherValidatedExplainNamed", { name: publisher.name })
+      ? tNodes("oauth.validation.publisherValidatedExplainNamed", { name: <bdi>{publisher.name}</bdi> })
       : t(`oauth.validation.${level}Explain`);
   return (
     <div id="oauthValidation" data-level={level} className="mb-2 text-sm">
