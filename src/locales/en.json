@@ -782,7 +782,12 @@
       "publisherValidatedExplainNamed": "Published by {{name}}, verified by the platform operator; the application itself was not reviewed.",
       "nonValidated": "Non-Validated",
       "nonValidatedExplain": "The platform operator has reviewed neither this application nor its publisher.",
-      "nonValidatedCaution": "Give it access only if you know and trust who made it."
+      "nonValidatedCaution": "Give it access only if you know and trust who made it.",
+      "atConsent": "Validation at consent: {{level}}",
+      "current": "Current validation: {{level}}",
+      "notice_notServed": "The platform no longer serves this application: it cannot renew its access to your data.",
+      "notice_lowered": "This application lost validation since you allowed it.",
+      "notice_raised": "This application was validated further since you allowed it."
     },
     "appVerifying": "The request is being verified with the platform.",
     "clientWebsite": "Website",

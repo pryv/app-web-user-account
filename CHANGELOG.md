@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **The current validation of a connected app, beside the level at consent.** Connected apps (each OAuth app's
+  card) and the access page show "Validation at consent" next to "Current validation", asked once per page at the
+  core of the session (`POST /oauth2/clients/validation`, personal token, at most 50 client ids per request). A
+  notice says when the app lost validation since it was allowed, or when the platform no longer serves it (it can
+  no longer renew its access); a higher level is said as information. The texts are this app's catalog
+  (`oauth.validation.atConsent`, `current`, `notice_*`). A core without the route (404), a token it refuses (a
+  delegate's session) or any failure shows nothing new and no error. Needs the open-pryv.io release that adds the
+  route.
+
 ## 0.38.0 - 2026-11-27
 
 The OAuth2 consent screen shows who vouches for the app (the validation badge of open-pryv.io 2.0.0-rc.91 or

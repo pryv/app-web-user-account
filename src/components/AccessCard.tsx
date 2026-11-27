@@ -9,6 +9,8 @@ import { formatDate, formatDateTime } from "../lib/dates";
 import { maskUrlCredentials } from "../lib/maskCredentials";
 import { AppIcon } from "./AppIcon";
 import { ClientDataList } from "./ClientDataList";
+import { CurrentValidationLine } from "./CurrentValidation";
+import { stampedValidationLevel, type CurrentValidation } from "../lib/currentValidation";
 
 /** The fields of an access the card reads (`accesses.get`). */
 export interface AccessCardAccess extends OAuthAccessLike {
@@ -48,6 +50,7 @@ export function AccessCard({
   kindLabel,
   search,
   connection,
+  currentValidation = null,
 }: {
   access: AccessCardAccess;
   /** OAuth sessions folded under a grant; none for a single access. */
@@ -58,6 +61,8 @@ export function AccessCard({
   /** The current query string, appended to the Details link. */
   search: string;
   connection: PryvConnection | null;
+  /** The app's current validation (Connected apps); none: only the stamped level, in the client data. */
+  currentValidation?: CurrentValidation | null;
 }) {
   const { t } = useTranslation();
   const entry = { access, sessions };
@@ -118,6 +123,10 @@ export function AccessCard({
                 ? t("accessCard.expires", { date: formatDate(access.expires) })
                 : t("accessCard.never")}
             </div>
+            <CurrentValidationLine
+              stamped={stampedValidationLevel(access) ?? stampedValidationLevel(sessions.find((s) => stampedValidationLevel(s) != null))}
+              current={currentValidation}
+            />
           </div>
         </div>
         <Link

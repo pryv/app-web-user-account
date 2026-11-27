@@ -7,9 +7,15 @@ import { AccessCard, type AccessCardAccess } from "../../components/AccessCard";
 import { useSession } from "../../lib/useSession";
 import { subscribeToAccessChanges } from "../../lib/socket";
 import { delegationManagedKind, managedKindLabel } from "../../lib/delegation";
-import { foldOAuthSessions } from "../../lib/oauthClient";
+import { foldOAuthSessions, oauthClientIdOf } from "../../lib/oauthClient";
+import { useCurrentValidation, type CurrentValidation } from "../../lib/currentValidation";
 
 type Access = AccessCardAccess;
+
+function currentFor(current: Map<string, CurrentValidation> | null, access: Access): CurrentValidation | null {
+  const id = oauthClientIdOf(access);
+  return id != null ? (current?.get(id) ?? null) : null;
+}
 
 /**
  * List the account's app accesses. Each row links to the audit-access
@@ -84,6 +90,9 @@ export default function ConnectedApps() {
 
   // One entry per OAuth app: its sessions are folded under its consent grant.
   const apps = accesses != null ? foldOAuthSessions(accesses.filter((a) => delegationManagedKind(a) == null)) : null;
+  // The current validation of the OAuth apps (beside the level stamped at consent).
+  const clientIds = (apps ?? []).map(({ access }) => oauthClientIdOf(access)).filter((id): id is string => id != null);
+  const current = useCurrentValidation(connection, clientIds);
   const managed =
     accesses
       ?.map((access) => ({ access, kind: delegationManagedKind(access) }))
@@ -106,6 +115,7 @@ export default function ConnectedApps() {
             isSelf={a.id === selfAccessId || sessions.some((s) => s.id === selfAccessId)}
             search={search}
             connection={connection}
+            currentValidation={currentFor(current, a)}
           />
         ))}
       </div>

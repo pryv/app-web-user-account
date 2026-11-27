@@ -32,6 +32,9 @@ import { formatDateTime } from "../../lib/dates";
 import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
 import { platformError } from "../../lib/apiError";
 import AccessExtras from "../../extensions/AccessExtras";
+import { oauthClientIdOf } from "../../lib/oauthClient";
+import { stampedValidationLevel, useCurrentValidation } from "../../lib/currentValidation";
+import { CurrentValidationLine } from "../../components/CurrentValidation";
 
 const PAGE_SIZE = 15;
 // One empty list: resetting to it again is no state change (no extra render).
@@ -218,6 +221,9 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
   }
 
   const clientRows = clientDataRows(details?.clientData);
+  // An OAuth app's current validation, beside the level stamped at consent (not for a removed access).
+  const clientId = details != null && details.deleted == null ? oauthClientIdOf(details) : null;
+  const current = useCurrentValidation(connection, clientId != null ? [clientId] : []);
 
   const backLink = (
     <Link
@@ -315,6 +321,11 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
               }
             />
           </dl>
+        )}
+        {details && clientId != null && (
+          <div className="mt-3">
+            <CurrentValidationLine stamped={stampedValidationLevel(details)} current={current?.get(clientId) ?? null} />
+          </div>
         )}
         {details?.permissions && details.permissions.length > 0 && (
           <div className="mt-3">
