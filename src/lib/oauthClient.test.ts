@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { accessNaming, entryNaming, foldOAuthSessions, oauthClientOf, oauthClientIdOf, oauthGrantIdOf } from "./oauthClient";
+import { accessNaming, entryNaming, foldOAuthSessions, oauthClientOf, oauthClientIdOf, oauthGrantIdOf, stampedOAuthClientIdOf } from "./oauthClient";
 
 const META = { name: "Agent", host: "client.example", url: "https://client.example/c.json" };
 
@@ -77,5 +77,19 @@ describe("[OACN] OAuth access naming", () => {
     expect(entryNaming({ access: grant, sessions: [] })).toEqual({ label: "clinic" });
     const stamped = { ...grant, clientData: { oauth: { client: { name: "Grant name", origin: "operator" } } } };
     expect(entryNaming({ access: stamped, sessions: [session] })).toEqual({ label: "Grant name" });
+  });
+
+  it("[OACN6] the client an access was minted for comes from the server-owned stamp only, never from the name", () => {
+    // A grant: its grantOf (whatever its name).
+    expect(stampedOAuthClientIdOf({ name: "oauth-grant:clinic", type: "app", clientData: { oauth: { grantOf: "clinic" } } })).toBe("clinic");
+    expect(stampedOAuthClientIdOf({ name: "renamed", type: "app", clientData: { oauth: { grantOf: "clinic" } } })).toBe("clinic");
+    // A session: an app access named oauth:<id> carrying its dataGrantId.
+    expect(stampedOAuthClientIdOf({ name: "oauth:clinic", type: "app", clientData: { oauth: { dataGrantId: "g1" } } })).toBe("clinic");
+    // Only named after a client: unstamped, a shared access a session created, no dataGrantId.
+    expect(stampedOAuthClientIdOf({ name: "oauth-grant:clinic", type: "app" })).toBeNull();
+    expect(stampedOAuthClientIdOf({ name: "oauth:clinic", type: "app" })).toBeNull();
+    expect(stampedOAuthClientIdOf({ name: "oauth:clinic", type: "shared", clientData: { oauth: { dataGrantId: "g1" } } })).toBeNull();
+    expect(stampedOAuthClientIdOf({ name: "oauth:clinic", type: "app", clientData: { oauth: { client: { origin: "operator" } } } })).toBeNull();
+    expect(stampedOAuthClientIdOf({ name: "oauth:", type: "app", clientData: { oauth: { dataGrantId: "g1" } } })).toBeNull();
   });
 });

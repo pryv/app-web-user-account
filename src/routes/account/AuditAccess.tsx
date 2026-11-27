@@ -32,7 +32,7 @@ import { formatDateTime } from "../../lib/dates";
 import { maskCredentials, maskUrlCredentials } from "../../lib/maskCredentials";
 import { platformError } from "../../lib/apiError";
 import AccessExtras from "../../extensions/AccessExtras";
-import { oauthClientIdOf } from "../../lib/oauthClient";
+import { stampedOAuthClientIdOf } from "../../lib/oauthClient";
 import { stampedValidationLevel, useCurrentValidation } from "../../lib/currentValidation";
 import { CurrentValidationLine } from "../../components/CurrentValidation";
 
@@ -221,8 +221,9 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
   }
 
   const clientRows = clientDataRows(details?.clientData);
-  // An OAuth app's current validation, beside the level stamped at consent (not for a removed access).
-  const clientId = details != null && details.deleted == null ? oauthClientIdOf(details) : null;
+  // An OAuth app's current validation, beside the level stamped at consent (not for a removed access),
+  // for an access the server stamped as minted for a client (never by name).
+  const clientId = details != null && details.deleted == null ? stampedOAuthClientIdOf(details) : null;
   const current = useCurrentValidation(connection, clientId != null ? [clientId] : []);
 
   const backLink = (

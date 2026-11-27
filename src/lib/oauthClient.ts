@@ -68,6 +68,24 @@ export function oauthClientIdOf(access: OAuthAccessLike): string | null {
   return null;
 }
 
+/**
+ * The client an OAuth access was minted for, told by the server-owned stamp
+ * only (`clientData.oauth`, which no caller of the API can write), never by
+ * its name (an app may name an access after any client): a consent grant's
+ * `grantOf`, or a session, an `app` access named `oauth:<clientId>` carrying
+ * its `dataGrantId`. Null for any other access. The core's own rule for the
+ * clients it answers the current validation of.
+ */
+export function stampedOAuthClientIdOf(access: OAuthAccessLike & { type?: string }): string | null {
+  const oauth = oauthOf(access);
+  if (oauth == null) return null;
+  const grantOf = nonEmpty(oauth.grantOf);
+  if (grantOf != null) return grantOf;
+  const name = access.name;
+  if (access.type !== "app" || nonEmpty(oauth.dataGrantId) == null || typeof name !== "string" || !name.startsWith(OAUTH_SESSION_PREFIX)) return null;
+  return nonEmpty(name.slice(OAUTH_SESSION_PREFIX.length)) ?? null;
+}
+
 // An access id's base: the wire id of a grant may carry a serial (`<base>:<n>`),
 // a session names its grant by the base.
 function baseId(id: string): string {

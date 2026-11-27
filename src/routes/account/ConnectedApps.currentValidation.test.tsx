@@ -46,6 +46,9 @@ const ACCESSES = [
     clientData: { oauth: { grantOf: "diary", client: { name: "Diary", origin: "operator", validation: { level: "appValidated" } } } },
   },
   { id: "app-1", name: "plain-app", type: "app", permissions: [] },
+  // Named after held clients, but not stamped by the server as minted for them.
+  { id: "spoof-1", name: "oauth-grant:diary", type: "app", permissions: [] },
+  { id: "spoof-2", name: "oauth:clinic", type: "shared", permissions: [], clientData: { oauth: { dataGrantId: "g-other" } } },
 ];
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -90,6 +93,22 @@ describe("[CAPV] current validation of the connected apps", () => {
     expect(clinic.getByTestId("current-validation-notice").textContent).toBe("This application lost validation since you allowed it.");
     expect(within(cardOf("Diary")).getByTestId("current-validation-notice").textContent).toContain("The platform no longer serves");
     expect(within(cardOf("plain-app")).queryByTestId("current-validation")).toBeNull();
+    // Accesses only named after a held client: no line (the request named the stamped ones only).
+    expect(within(cardOf("diary")).queryByTestId("current-validation")).toBeNull();
+    expect(within(cardOf("clinic")).queryByTestId("current-validation")).toBeNull();
+  });
+
+  it("[CAPV4] the access page of an access only named after a held client: no line, nothing asked", async () => {
+    render(
+      <MemoryRouter initialEntries={["/account/audit-access/spoof-2"]}>
+        <Routes>
+          <Route path="/account/audit-access/:accessId" element={<AuditAccess />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText("spoof-2");
+    expect(screen.queryByTestId("current-validation")).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("[CAPV2] a core without the route: nothing new, no error", async () => {

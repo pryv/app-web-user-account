@@ -8,7 +8,9 @@
   card) and the access page show "Validation at consent" next to "Current validation", asked once per page at the
   core of the session (`POST /oauth2/clients/validation`, personal token, at most 50 client ids per request). A
   notice says when the app lost validation since it was allowed, or when the platform no longer serves it (it can
-  no longer renew its access); a higher level is said as information. The texts are this app's catalog
+  no longer renew its access); a higher level is said as information. The line is shown only on an access the
+  core stamped as minted for the app (a consent grant's `clientData.oauth.grantOf`, or an app session named
+  `oauth:<clientId>` carrying its `dataGrantId`), never on an access merely named after it. The texts are this app's catalog
   (`oauth.validation.atConsent`, `current`, `notice_*`). A core without the route (404), a token it refuses (a
   delegate's session) or any failure shows nothing new and no error. Needs the open-pryv.io release that adds the
   route.
