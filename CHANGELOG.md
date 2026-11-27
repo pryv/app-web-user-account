@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.38.0 - 2026-11-27
+
+The OAuth2 consent screen shows who vouches for the app (the validation badge of open-pryv.io 2.0.0-rc.91 or
+later) and the host of a client known by its metadata document next to its name.
+
 ### Added
 
 - **Who vouches for the app, on the OAuth2 consent screen.** `/oauth2-authorize` shows the badge the core answers
@@ -9,8 +14,7 @@
   core gives one) or "Non-Validated", each with a one-line explanation, and for a Non-Validated app a caution line.
   `ConsentPanelProps` gains `validation`, rendered by the default `ConsentPanel` (a fork replacing the panel gets
   it as a prop); the texts are this app's catalog (`oauth.validation.*`), the level is the core's only. A core that
-  does not send it (older cores) shows no badge and no error. Needs the open-pryv.io release that adds the
-  validation levels.
+  does not send it (older cores) shows no badge and no error. Needs open-pryv.io 2.0.0-rc.91 or later.
 - **The level stamped at consent** (`clientData.oauth.client.validation.level`) is a row of its own on the access
   card and the access page, labelled "Validation at consent", its value in words. The core sends the badge and
   the stamped level on every platform (also when the operator keeps `oauth.clientRegistration.mode: curated`):
