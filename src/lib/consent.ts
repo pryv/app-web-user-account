@@ -11,6 +11,7 @@
  */
 
 import i18n from "../i18n";
+import { isString, pickLocalized } from "./localeMatch";
 import type { StreamLabelResolver } from "./streamLabels";
 
 /** Localized text map: language code → string (e.g. `{ en: "…" }`). */
@@ -241,11 +242,25 @@ const FEATURE_LABEL_KEYS: Record<string, string> = {
 };
 
 /**
+ * Catalog key of this app's own name for the platform's system streams: their
+ * meaning is the platform's, so a name the requester sends does not replace it.
+ */
+const SYSTEM_STREAM_LABEL_KEYS: Record<string, string> = {
+  ":system:email": "consent.streamLabelEmail",
+};
+
+/** This app's name for a system stream, or null for any other stream. */
+export function systemStreamLabel(streamId: string): string | null {
+  return Object.hasOwn(SYSTEM_STREAM_LABEL_KEYS, streamId) ? i18n.t(SYSTEM_STREAM_LABEL_KEYS[streamId]) : null;
+}
+
+/**
  * Human label for one granular permission entry. Stream permissions
  * render as "<level verb> “<stream name>”", the stream named by the first
  * source that knows it: the offer's own label for the entry, the deployment's
- * stream labels, the account's stream name, the request's `name` /
- * `defaultName`, and last the stream id. The level verb always comes from this
+ * stream labels, this app's name for a system stream (`:system:email`), the
+ * account's stream name, the request's `name` / `defaultName`, and last the
+ * stream id. The level verb always comes from this
  * app, never from a label. Known feature permissions get a dedicated wording;
  * unknown ones use the offer's label, else "The app cannot use …" for a
  * restriction and `feature: setting` otherwise.
@@ -259,6 +274,7 @@ export function permissionLabel(p: OfferPermission, sources: LabelSources = {}):
     const name =
       entryLabel ??
       safeLabel(() => sources.labelFor?.(streamId)) ??
+      systemStreamLabel(streamId) ??
       safeLabel(() => sources.accountName?.(streamId)) ??
       p.name ??
       p.defaultName ??
@@ -516,15 +532,14 @@ export function setGroupTicks(
 }
 
 /**
- * Pick the best language variant from a localized text map: `lang` itself,
- * then its base language (`fr-CH` -> `fr`), then `en`, then the first entry.
+ * Pick the best language variant from a localized text map (see
+ * `localeMatch.ts`): `lang` itself (`pt-BR`), its base language (`pt`),
+ * another region of it (`pt-PT`), then English, then the first entry.
  */
 export function pickText(t: LocalizableText | null | undefined, lang = "en"): string {
   if (t == null) return "";
-  if (typeof t[lang] === "string") return t[lang];
-  const base = lang.split("-")[0];
-  if (typeof t[base] === "string") return t[base];
-  if (typeof t.en === "string") return t.en;
+  const picked = pickLocalized(t, lang, isString);
+  if (picked !== undefined) return picked;
   const first = Object.values(t)[0];
   return typeof first === "string" ? first : "";
 }

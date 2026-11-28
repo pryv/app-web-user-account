@@ -353,6 +353,7 @@ export default function CmcApprove() {
                 onAdd={(value) => void email.add(emailEndpoint, value)}
                 onSend={() => void email.send(emailEndpoint)}
                 onChange={() => email.change(emailEndpoint)}
+                onCancel={() => void email.cancel(emailEndpoint)}
                 onRetry={() => void email.recheck(emailEndpoint)}
                 disabled={working !== null}
               />

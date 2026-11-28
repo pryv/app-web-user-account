@@ -308,7 +308,7 @@ describe("useVerifiedEmail", () => {
     await pass(SEND_AGAIN_AFTER_MS);
     expect(result.current.stateOf(ALICE, true)).toMatchObject({ kind: "waiting", canSendAgain: true });
     act(() => result.current.change(ALICE));
-    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "missing", suggested: null });
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "missing", suggested: null, changing: true });
     // The address left is not made primary when its link is opened after all.
     held = account(entry(PLACEHOLDER, true, "registration"), entry("typo@example.com", false, "email-link"));
     await pass(PROOF_POLL_MS * 3);
@@ -402,5 +402,84 @@ describe("useVerifiedEmail", () => {
     rerender({ requests: [{ endpoint: ALICE, required: true }], info: CAN_MAIL });
     await pass();
     expect(result.current.proved(ALICE)).toBe(true);
+  });
+
+  it("[RVF1] not verified, no link asked for here: read again on focus and when visible, never on a timer", async () => {
+    const { result, unmount } = hook();
+    await pass();
+    expect(result.current.stateOf(ALICE, true).kind).toBe("unproved");
+    // No interval.
+    await pass(PROOF_POLL_MS * 10);
+    expect(reads()).toBe(1);
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await pass();
+    expect(reads()).toBe(2);
+    act(() => setVisibility("hidden"));
+    await pass();
+    expect(reads()).toBe(2);
+    act(() => setVisibility("visible"));
+    await pass();
+    expect(reads()).toBe(3);
+    // A re-read that fails keeps the state shown.
+    net.answer = async () => {
+      throw new Error("network down");
+    };
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await pass();
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "unproved", email: "alice@example.com" });
+    // Proved elsewhere (the welcome mail's link): seen on the next return, nothing written.
+    net.answer = async () => account(entry("alice@example.com", true, "email-link"));
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await pass();
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "proved", email: "alice@example.com", here: false });
+    expect(net.calls.every((c) => c === "account.get")).toBe(true);
+    // Proved: no more re-reads.
+    const before = reads();
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await pass();
+    expect(reads()).toBe(before);
+    unmount();
+  });
+
+  it("[RVF2] Use another address, then Cancel: the account is read again and shown as it stands", async () => {
+    const { result } = hook();
+    await pass();
+    act(() => result.current.change(ALICE));
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "missing", suggested: null, changing: true });
+    // A refused address keeps the way back.
+    net.answer = async (_e, method) => {
+      if (method === "account.get") return held;
+      throw apiError("item-already-exists");
+    };
+    await act(async () => result.current.add(ALICE, "bob@example.com"));
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "taken", viaAdd: true, changing: true });
+    const readsBefore = reads();
+    await act(async () => result.current.cancel(ALICE));
+    expect(reads()).toBe(readsBefore + 1);
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "unproved", email: "alice@example.com" });
+    // Cancel outside a change does nothing.
+    await act(async () => result.current.cancel(ALICE));
+    expect(reads()).toBe(readsBefore + 1);
+  });
+
+  it("Cancel after leaving an added address: that address is waited for again", async () => {
+    held = account(entry(PLACEHOLDER, true, "registration"));
+    const { result } = hook();
+    await pass();
+    net.answer = async (_e, method, params) => {
+      const ops = params.update?.emails as { add?: string[] } | undefined;
+      if (method === "account.update" && ops?.add) held = account(entry(PLACEHOLDER, true, "registration"), pending(ops.add[0]));
+      return held;
+    };
+    await act(async () => result.current.add(ALICE, "alice@example.com"));
+    act(() => result.current.change(ALICE));
+    await act(async () => result.current.cancel(ALICE));
+    expect(result.current.stateOf(ALICE, true)).toEqual({
+      kind: "waiting", email: "alice@example.com", viaAdd: true, canSendAgain: true,
+    });
+    // Its link opened: made primary, as before the change.
+    held = account(entry(PLACEHOLDER, true, "registration"), entry("alice@example.com", false, "email-link"));
+    await pass(PROOF_POLL_MS);
+    expect(net.calls).toContain('{"setPrimary":"alice@example.com"}');
   });
 });

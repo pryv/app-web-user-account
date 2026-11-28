@@ -15,6 +15,15 @@ describe("[LGAL] legal links", () => {
     expect(resolveLocalizedUrl(undefined, "en")).toBeNull();
   });
 
+  it("[LGA4] a regional language without its own link takes another region of its base (issue 38)", () => {
+    const map = { en: "https://x.example/en", "pt-BR": "https://x.example/br", "it-IT": "https://x.example/it" };
+    expect(resolveLocalizedUrl(map, "pt")).toBe("https://x.example/br");
+    expect(resolveLocalizedUrl(map, "pt-PT")).toBe("https://x.example/br");
+    expect(resolveLocalizedUrl(map, "it-CH")).toBe("https://x.example/it");
+    // An unsafe link for the language falls through to the next one.
+    expect(resolveLocalizedUrl({ en: "https://x.example/en", fr: "javascript:x" }, "fr")).toBe("https://x.example/en");
+  });
+
   it("[LGA2] never returns a non-http(s) URL", () => {
     expect(resolveLocalizedUrl("javascript:alert(1)", "en")).toBeNull();
     expect(resolveLocalizedUrl({ en: "data:text/html,x" }, "en")).toBeNull();

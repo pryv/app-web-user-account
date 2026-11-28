@@ -246,6 +246,29 @@ describe("permissionLabel + pickText", () => {
     expect(pickText({ de: "Hallo", en: "Hello" }, "fr-CH")).toBe("Hello");
     expect(pickText({ fr: "Bonjour", en: "Hello" }, "en-GB")).toBe("Hello");
   });
+
+  it("[PKTR] pickText: full tag, base, another region of the base, then English (issue 38)", () => {
+    const t = { en: "Hello", "pt-BR": "Olá (BR)", "pt-PT": "Olá (PT)" };
+    expect(pickText(t, "pt-BR")).toBe("Olá (BR)");
+    expect(pickText(t, "pt")).toBe("Olá (BR)");
+    expect(pickText({ en: "Hello", pt: "Olá", "pt-BR": "Olá (BR)" }, "pt-BR")).toBe("Olá (BR)");
+    expect(pickText({ en: "Hello", pt: "Olá", "pt-PT": "Olá (PT)" }, "pt-BR")).toBe("Olá");
+    expect(pickText({ en: "Hello", "it-IT": "Ciao" }, "it-CH")).toBe("Ciao");
+    expect(pickText({ "en-US": "Hi", de: "Hallo" }, "it")).toBe("Hi");
+    expect(pickText({ en: "Hello", "pt-br": "Olá" }, "pt-BR")).toBe("Olá");
+  });
+
+  it("[CSSE] the account's email stream has a name of this app's, never its raw id (issue 37)", () => {
+    expect(permissionLabel({ streamId: ":system:email", level: "read" })).toBe("Read “Email address”");
+    // The platform's stream: a requester's name does not replace it, a deployment's label does.
+    expect(permissionLabel({ streamId: ":system:email", level: "read", defaultName: "Contact" })).toBe(
+      "Read “Email address”",
+    );
+    expect(permissionLabel({ streamId: ":system:email", level: "read" }, { labelFor: () => "E-mail" })).toBe(
+      "Read “E-mail”",
+    );
+    expect(permissionLabel({ streamId: ":system:phone", level: "read" })).toBe("Read “:system:phone”");
+  });
 });
 
 describe("[CSLB] consentEntries with a stream-label resolver", () => {

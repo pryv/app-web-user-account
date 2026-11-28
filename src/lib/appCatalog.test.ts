@@ -115,6 +115,24 @@ describe("[APCL] localizeCatalogText", () => {
     expect(localizeCatalogText({ en: "En", fr: "" }, "fr")).toBe("En");
     expect(localizeCatalogText({ en: "" }, "en")).toBeNull();
   });
+
+  it("[APL3] a regional UI language finds its own text first, then its base, then another region (issue 38)", () => {
+    const d = { en: "Diary", pt: "Diário", "pt-BR": "Diário (BR)", "it-IT": "Diario" };
+    expect(localizeCatalogText(d, "pt-BR")).toBe("Diário (BR)");
+    expect(localizeCatalogText(d, "pt-PT")).toBe("Diário");
+    expect(localizeCatalogText(d, "it-CH")).toBe("Diario");
+    expect(localizeCatalogText(d, "de-CH")).toBe("Diary");
+  });
+
+  it("[APL4] the parser keeps every language of a text, not only en / fr / es", () => {
+    const c = parseCatalog(
+      file([{ ...DIARY, description: { en: "Diary", "pt-BR": "Diário", it: "Diario", de: 3, "not a tag": "x" } }]),
+    );
+    const description = c.get("diary-app")?.description;
+    expect(description).toEqual({ en: "Diary", "pt-BR": "Diário", it: "Diario" });
+    expect(resolveRequestingApp(c, "diary-app", "pt-BR")?.description).toBe("Diário");
+    expect(resolveRequestingApp(c, "diary-app", "it-CH")?.description).toBe("Diario");
+  });
 });
 
 describe("[APCR] resolveRequestingApp", () => {

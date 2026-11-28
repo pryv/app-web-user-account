@@ -17,6 +17,8 @@ export interface MissingEmailNoticeProps {
   state: MissingEmailState;
   /** Make the typed address the account's email; the page moves `state` along. */
   onAdd: (email: string) => void;
+  /** Leave the form for where the account stood (offered only when given). */
+  onCancel?: () => void;
   disabled?: boolean;
 }
 
@@ -27,6 +29,7 @@ export function AddEmailForm({
   adding,
   error,
   onAdd,
+  onCancel,
   disabled = false,
 }: {
   testId: string;
@@ -35,6 +38,8 @@ export function AddEmailForm({
   /** Why the last address was refused. */
   error: string | null;
   onAdd: (email: string) => void;
+  /** Leave the form without adding (a Cancel is shown only when given). */
+  onCancel?: () => void;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
@@ -65,9 +70,16 @@ export function AddEmailForm({
           <Alert>{error}</Alert>
         </div>
       )}
-      <Button type="submit" variant="ghost" className="w-auto" disabled={adding || disabled}>
-        {adding ? t("consent.missingEmailAdding") : t("consent.missingEmailAdd")}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="ghost" className="w-auto" disabled={adding || disabled}>
+          {adding ? t("consent.missingEmailAdding") : t("consent.missingEmailAdd")}
+        </Button>
+        {onCancel != null && (
+          <Button type="button" variant="ghost" className="w-auto" onClick={onCancel} disabled={adding || disabled}>
+            {t("consent.emailFormCancel")}
+          </Button>
+        )}
+      </div>
     </form>
   );
 }
@@ -79,7 +91,7 @@ export function AddEmailForm({
  * right there. Approving stays possible without one: the consent is the
  * person's to give, and ignoring the form is the way to decline it.
  */
-export function MissingEmailNotice({ username, appName, state, onAdd, disabled = false }: MissingEmailNoticeProps) {
+export function MissingEmailNotice({ username, appName, state, onAdd, onCancel, disabled = false }: MissingEmailNoticeProps) {
   const { t } = useTranslation();
 
   if (state.kind === "added") {
@@ -105,6 +117,7 @@ export function MissingEmailNotice({ username, appName, state, onAdd, disabled =
         adding={state.kind === "adding"}
         error={state.kind === "error" ? state.message : null}
         onAdd={onAdd}
+        onCancel={onCancel}
         disabled={disabled}
       />
     </div>

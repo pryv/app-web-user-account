@@ -11,6 +11,7 @@
  * page, where a `javascript:` URL would be the obvious abuse.
  */
 
+import { pickLocalized } from "./localeMatch";
 import { httpUrlOrNull } from "./safeRedirect";
 
 export type LocalizedUrl = string | Record<string, string>;
@@ -26,13 +27,15 @@ export function safeLegalUrl(value: unknown): string | null {
   return httpUrlOrNull(value) ? value : null;
 }
 
-/** Pick the URL for `lang` (`fr-CH` -> `fr`), else `en`, else the first entry. */
+/**
+ * Pick the URL for `lang` (see `localeMatch.ts`: `pt-BR`, then `pt`, then
+ * another `pt-*`, then English), else the first entry.
+ */
 export function resolveLocalizedUrl(value: LocalizedUrl | undefined, lang: string): string | null {
   if (!value) return null;
   if (typeof value === "string") return safeLegalUrl(value);
-  const base = lang.split("-")[0];
-  const candidate = value[lang] ?? value[base] ?? value.en ?? Object.values(value)[0];
-  return safeLegalUrl(candidate);
+  const isSafe = (v: unknown): v is string => safeLegalUrl(v) != null;
+  return pickLocalized(value, lang, isSafe) ?? safeLegalUrl(Object.values(value)[0]);
 }
 
 /** Narrow an unknown `legal` value from settings.json onto the shape above. */

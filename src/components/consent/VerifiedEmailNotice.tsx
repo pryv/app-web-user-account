@@ -18,6 +18,8 @@ export interface VerifiedEmailNoticeProps {
   onAdd: (email: string) => void;
   onSend: () => void;
   onChange: () => void;
+  /** Leave the form "Use another address" opened (shown only then). */
+  onCancel?: () => void;
   onRetry: () => void;
   disabled?: boolean;
 }
@@ -56,15 +58,26 @@ export function VerifiedEmailNotice({
   onAdd,
   onSend,
   onChange,
+  onCancel,
   onRetry,
   disabled = false,
 }: VerifiedEmailNoticeProps) {
   const { t } = useTranslation();
+  const changing = "changing" in state && state.changing === true;
 
   if (!required) {
     const plain = missingEmailState(state, t("consent.emailTaken"));
     if (plain != null) {
-      return <MissingEmailNotice username={username} appName={appName} state={plain} onAdd={onAdd} disabled={disabled} />;
+      return (
+        <MissingEmailNotice
+          username={username}
+          appName={appName}
+          state={plain}
+          onAdd={onAdd}
+          onCancel={changing ? onCancel : undefined}
+          disabled={disabled}
+        />
+      );
     }
     // Only an address being added concerns this consent.
     if (!("viaAdd" in state) || !state.viaAdd) return null;
@@ -122,7 +135,8 @@ export function VerifiedEmailNotice({
   return (
     <div data-testid="verified-email" data-state={state.kind}>
       {(required || status != null) && (
-        <Alert tone="info">
+        // Required and not proved (a proof returned above): Approve is blocked, so a warning.
+        <Alert tone={required ? "warning" : "info"}>
           {required && (
             <p>
               {username != null
@@ -142,6 +156,7 @@ export function VerifiedEmailNotice({
           adding={state.kind === "adding"}
           error={formError}
           onAdd={onAdd}
+          onCancel={changing ? onCancel : undefined}
           disabled={disabled}
         />
       )}

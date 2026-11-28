@@ -9,8 +9,11 @@
  *
  * The proof usually happens on another device (a mailed link): while a link is
  * waited for, the account is read every few seconds as long as the page is
- * visible, and once when it gets the focus back. An account that leaves the
- * page (account switch, unmount) is forgotten, and its late answers dropped.
+ * visible, and once when it gets the focus back. An address not verified yet,
+ * with no link asked for here, may still be proved elsewhere (the welcome
+ * mail's link, one sent earlier): the account is read again when the page gets
+ * the focus back or becomes visible, never on a timer. An account that leaves
+ * the page (account switch, unmount) is forgotten, and its late answers dropped.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -47,7 +50,8 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * Where the address of one account stands. `viaAdd`: the address is one being
- * added to the account, not its primary one.
+ * added to the account, not its primary one. `changing`: the form was opened
+ * by "Use another address", so it can be left for where the account stood.
  */
 export type VerifiedEmailState =
   | { kind: "checking" }
@@ -55,7 +59,7 @@ export type VerifiedEmailState =
   | { kind: "proved"; email: string; here: boolean }
   | { kind: "unproved"; email: string }
   /** `suggested`: an address the account already holds, besides its primary one. */
-  | { kind: "missing"; suggested: string | null }
+  | { kind: "missing"; suggested: string | null; changing?: boolean }
   | { kind: "adding" }
   /** Set without a proof, on a platform that asks for none. */
   | { kind: "added"; email: string }
@@ -63,9 +67,9 @@ export type VerifiedEmailState =
   | { kind: "waiting"; email: string; viaAdd: boolean; canSendAgain: boolean }
   /** `until`: when the next mail can be asked for (epoch seconds). `sent`: one was sent, its link may still come. */
   | { kind: "cooldown"; email: string; viaAdd: boolean; until: number; sent: boolean }
-  | { kind: "taken"; viaAdd: boolean }
+  | { kind: "taken"; viaAdd: boolean; changing?: boolean }
   | { kind: "unavailable" }
-  | { kind: "error"; at: "read" | "send" | "add"; viaAdd: boolean; message: string };
+  | { kind: "error"; at: "read" | "send" | "add"; viaAdd: boolean; message: string; changing?: boolean };
 
 /** One consent's interest in an account's address. */
 export interface EmailRequest {
@@ -88,6 +92,8 @@ export interface VerifiedEmail {
   send(endpoint: string): Promise<void>;
   /** Leave the address being waited for, to type another one. */
   change(endpoint: string): void;
+  /** Leave the form opened by `change`: the account is read again and shown as it stands. */
+  cancel(endpoint: string): Promise<void>;
   /** Read the account again; resolves to whether its address is verified. */
   recheck(endpoint: string | null): Promise<boolean>;
 }
@@ -100,6 +106,10 @@ interface Track {
   target: string | null;
   /** The address became the account's on this page. */
   here: boolean;
+  /** The form was opened by `change` and not left since. */
+  changing: boolean;
+  /** `target` when `change` was asked for, given back by `cancel`. */
+  before: string | null;
   /** The latest read; an older one's answer is dropped. */
   readSeq: number;
   reading: boolean;
@@ -111,6 +121,16 @@ const CHECKING: VerifiedEmailState = { kind: "checking" };
 /** A mailed link may be opened at any moment. */
 function awaitsProof(state: VerifiedEmailState): boolean {
   return state.kind === "waiting" || state.kind === "cooldown";
+}
+
+/** The states of the add-email form, the only ones `changing` is kept through. */
+function isFormState(state: VerifiedEmailState): boolean {
+  return (
+    state.kind === "missing" ||
+    state.kind === "adding" ||
+    state.kind === "taken" ||
+    (state.kind === "error" && state.at === "add")
+  );
 }
 
 /**
@@ -129,10 +149,16 @@ export function useVerifiedEmail(
 
   const isLive = (endpoint: string, track: Track) => tracks.current.get(endpoint) === track;
 
-  function put(endpoint: string, track: Track, state: VerifiedEmailState) {
+  function put(endpoint: string, track: Track, next: VerifiedEmailState) {
     if (!isLive(endpoint, track)) return;
     if (track.timer != null) clearTimeout(track.timer);
     track.timer = null;
+    // Any step out of the form ends a change; within it, the state says it.
+    if (!isFormState(next)) track.changing = false;
+    const state: VerifiedEmailState =
+      track.changing && (next.kind === "missing" || next.kind === "taken" || next.kind === "error")
+        ? { ...next, changing: true }
+        : next;
     track.state = state;
     if (state.kind === "waiting" && !state.canSendAgain) {
       track.timer = setTimeout(() => put(endpoint, track, { ...state, canSendAgain: true }), SEND_AGAIN_AFTER_MS);
@@ -177,6 +203,10 @@ export function useVerifiedEmail(
       // person took meanwhile is left as it is.
       if (track.state.kind !== "checking" && track.state.kind !== "proved") return;
       if (hasUsableEmail(account)) {
+        // Not read yet: a resend cooldown still pending on the address. Once
+        // `account.get` lists it on `emails[]` (the entry of `primary`), an
+        // address in cooldown is put here as `{ kind: "cooldown", sent: true }`
+        // instead, so a reload keeps the notice a click would bring back.
         put(endpoint, track, { kind: "unproved", email: account.email!.trim() });
       } else if (target != null) {
         put(endpoint, track, { kind: "waiting", email: target.value, viaAdd: true, canSendAgain: true });
@@ -188,8 +218,9 @@ export function useVerifiedEmail(
     } catch (err: unknown) {
       if (!current()) return;
       console.warn(`${logLabel}: could not read the account's email:`, loggableError(err));
-      // A missed poll is tried again at the next one.
-      if (awaitsProof(track.state)) return;
+      // A missed poll is tried again at the next one; a missed re-read of an
+      // address not verified yet leaves it as it was shown.
+      if (awaitsProof(track.state) || track.state.kind === "unproved") return;
       put(endpoint, track, {
         kind: "error",
         at: "read",
@@ -312,8 +343,20 @@ export function useVerifiedEmail(
   function change(endpoint: string) {
     const track = tracks.current.get(endpoint);
     if (track == null) return;
+    if (!track.changing) track.before = track.target;
     track.target = null;
+    track.changing = true;
     put(endpoint, track, { kind: "missing", suggested: null });
+  }
+
+  async function cancel(endpoint: string): Promise<void> {
+    const track = tracks.current.get(endpoint);
+    if (track == null || !track.changing) return;
+    // The address waited for before the change is waited for again.
+    track.target = track.before;
+    track.before = null;
+    put(endpoint, track, CHECKING);
+    await read(endpoint, track);
   }
 
   async function recheck(endpoint: string | null): Promise<boolean> {
@@ -337,7 +380,8 @@ export function useVerifiedEmail(
     for (const endpoint of wanted) {
       if (tracks.current.has(endpoint)) continue;
       const track: Track = {
-        state: CHECKING, account: null, target: null, here: false, readSeq: 0, reading: false, timer: null,
+        state: CHECKING, account: null, target: null, here: false, changing: false, before: null,
+        readSeq: 0, reading: false, timer: null,
       };
       tracks.current.set(endpoint, track);
       put(endpoint, track, CHECKING);
@@ -389,6 +433,29 @@ export function useVerifiedEmail(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waitingKey]);
 
+  // Not verified, no link asked for here: read again when the person comes
+  // back to the page (they may have opened a link elsewhere), never on a timer.
+  const unprovedKey = Object.keys(states).filter((e) => states[e].kind === "unproved").sort().join(" ");
+  useEffect(() => {
+    if (unprovedKey === "") return;
+    const reread = () => {
+      for (const endpoint of unprovedKey.split(" ")) {
+        const track = tracks.current.get(endpoint);
+        if (track != null && track.state.kind === "unproved" && !track.reading) void read(endpoint, track);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") reread();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", reread);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", reread);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unprovedKey]);
+
   /** Whether an address added to this account has to be proved before it is the account's. */
   function needsProof(endpoint: string): boolean {
     return (
@@ -407,7 +474,7 @@ export function useVerifiedEmail(
       required && state.kind === "added" ? { kind: "unproved", email: state.email } : state;
     if (required && !canMail && (shown.kind === "unproved" || shown.kind === "missing")) return { kind: "unavailable" };
     if (shown.kind === "missing") {
-      if (!needsProof(endpoint)) return { kind: "missing", suggested: null };
+      if (!needsProof(endpoint)) return { kind: "missing", suggested: null, ...(shown.changing ? { changing: true } : {}) };
       if (!canMail) return { kind: "unavailable" };
     }
     return shown;
@@ -420,6 +487,7 @@ export function useVerifiedEmail(
     add,
     send,
     change,
+    cancel,
     recheck,
   };
 }

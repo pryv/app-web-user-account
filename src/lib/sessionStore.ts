@@ -68,6 +68,15 @@ export function connectionFor(apiEndpoint: string | null): PryvConnection | null
   }
 }
 
+/** Whether a session is stored, possibly by another tab since this page loaded. */
+export function hasStoredSession(): boolean {
+  try {
+    return !!localStorage.getItem(STORE_KEY_API);
+  } catch {
+    return false;
+  }
+}
+
 export function readStored(): PryvConnection | null {
   try {
     return connectionFor(localStorage.getItem(STORE_KEY_API));

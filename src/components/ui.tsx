@@ -65,19 +65,22 @@ export function Alert({
   tone = "danger",
 }: {
   children: ReactNode;
-  tone?: "danger" | "success" | "info";
+  tone?: "danger" | "warning" | "success" | "info";
 }) {
   const styles =
     tone === "danger"
       ? "border-danger/40 bg-danger/10 text-danger"
+      : tone === "warning"
+      ? "border-warning/40 bg-warning/10 text-warning"
       : tone === "success"
       ? "border-success/40 bg-success/10 text-success"
       : "border-info/40 bg-info/10 text-info";
-  const Icon = tone === "danger" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
+  const Icon = tone === "danger" || tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
   return (
     <div
       className={`mb-4 flex gap-2 rounded border px-3 py-2 text-sm ${styles}`}
       role="alert"
+      data-tone={tone}
     >
       <Icon size={16} aria-hidden className="mt-[2px] shrink-0" />
       <div className="min-w-0 flex-1">{children}</div>

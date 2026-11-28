@@ -15,6 +15,22 @@
   delegate's session) or any failure shows nothing new and no error. Needs the open-pryv.io release that adds the
   route.
 
+### Fixed
+
+- **A proof made elsewhere is seen without a reload** on the consent pages requiring a verified email: while the
+  address is not verified, the account is read again when the page gets the focus back or becomes visible (no
+  timer; a failed read keeps what is shown). (#37)
+- **The cooldown notice says the link is in the welcome email.** (#37)
+- **"Use another address" has a Cancel** that leaves the form and reads the account again (an address waited for
+  before is waited for again). (#37)
+- **The "Email verified" page offers "Sign in" only to someone not signed in** (in this tab or another). (#37)
+- **`:system:email` is named "Email address"** on the permission rows (`consent.streamLabelEmail`), instead of its
+  raw id; a deployment's stream labels still win, a requester's name does not. (#37)
+- **The required-verification notice is a warning** (`Alert` gains a `warning` tone) while Approve is blocked. (#37)
+- **Regional UI languages find their texts** (catalogue descriptions, offer texts, legal links): the full tag
+  (`pt-BR`), then its base, then another region of it, then English, through one shared helper
+  (`lib/localeMatch.ts`); the catalogue parser keeps every language of a text, not only `en` / `fr` / `es`. (#38)
+
 ## 0.38.0 - 2026-11-27
 
 The OAuth2 consent screen shows who vouches for the app (the validation badge of open-pryv.io 2.0.0-rc.91 or

@@ -657,6 +657,7 @@ function AuthFlow({
         onAdd={(value) => void email.add(endpoint, value)}
         onSend={() => void email.send(endpoint)}
         onChange={() => email.change(endpoint)}
+        onCancel={() => void email.cancel(endpoint)}
         onRetry={() => void email.recheck(endpoint)}
         disabled={finishing !== null}
       />

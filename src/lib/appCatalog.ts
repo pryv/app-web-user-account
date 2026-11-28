@@ -15,11 +15,12 @@
  * the screen renders with the raw id rather than stalling or erroring.
  *
  * File format (`apps/list.json`, schema v1):
- *   { schemaVersion: 1, apps: [{ id, name, description?: { en, fr?, es? },
+ *   { schemaVersion: 1, apps: [{ id, name, description?: { en, <tag>? … },
  *     icon?: { type: "emoji" | "base64" | "url", value }, provider? }] }
  */
 
 import { getAppCatalogUrl } from "./deployedSettings";
+import { isNonEmptyString, pickLocalized } from "./localeMatch";
 import { httpUrlOrNull } from "./safeRedirect";
 
 /** Highest `schemaVersion` this reader understands. */
@@ -32,10 +33,10 @@ export const MAX_CATALOG_CHARS = 1_000_000;
 /** Largest icon value accepted, per type, in characters. */
 export const MAX_ICON_CHARS = { emoji: 16, url: 2048, base64: 100_000 } as const;
 
+/** A text per language tag (`en`, `fr`, `pt-BR`, …); English is always there. */
 export interface LocalizedText {
   en: string;
-  fr?: string;
-  es?: string;
+  [language: string]: string;
 }
 
 export interface CatalogIcon {
@@ -136,15 +137,19 @@ export function asCatalogApp(raw: unknown): CatalogApp | null {
   };
 }
 
+/** A language tag key: `en`, `pt-BR`, `zh-Hant-TW` (also `pt_BR`). */
+const LANGUAGE_TAG = /^[A-Za-z]{2,8}([-_][A-Za-z0-9]{1,8})*$/;
+
+/** Every language of the text is kept, as long as its key reads as a language tag and its value is a string. */
 function asLocalizedText(v: unknown): LocalizedText | undefined {
-  if (v == null || typeof v !== "object") return undefined;
+  if (v == null || typeof v !== "object" || Array.isArray(v)) return undefined;
   const t = v as Record<string, unknown>;
   if (typeof t.en !== "string") return undefined;
-  return {
-    en: t.en,
-    fr: typeof t.fr === "string" ? t.fr : undefined,
-    es: typeof t.es === "string" ? t.es : undefined,
-  };
+  const out: LocalizedText = { en: t.en };
+  for (const [lang, text] of Object.entries(t)) {
+    if (typeof text === "string" && LANGUAGE_TAG.test(lang)) out[lang] = text;
+  }
+  return out;
 }
 
 /**
@@ -170,18 +175,16 @@ function asIcon(v: unknown): CatalogIcon | undefined {
 }
 
 /**
- * Pick the catalog's localized text for the active UI language, falling back
- * to `en`; an empty string counts as absent.
+ * Pick the catalog's localized text for the active UI language (see
+ * `localeMatch.ts`: `pt-BR`, then `pt`, then another `pt-*`, then `en`); an
+ * empty string counts as absent.
  */
 export function localizeCatalogText(
   text: LocalizedText | undefined,
   language: string,
 ): string | null {
   if (text == null) return null;
-  const base = language.split("-")[0];
-  const byLang = (text as unknown as Record<string, string | undefined>)[base];
-  if (typeof byLang === "string" && byLang !== "") return byLang;
-  return typeof text.en === "string" && text.en !== "" ? text.en : null;
+  return pickLocalized(text, language, isNonEmptyString) ?? null;
 }
 
 /**

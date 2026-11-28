@@ -5,6 +5,8 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { verifyEmailToken, emailVerificationErrorMessage, ApiCallError } from "../lib/emailVerification";
+import { hasStoredSession } from "../lib/sessionStore";
+import { useSession } from "../lib/useSession";
 
 /**
  * Landing page for the verification email.
@@ -13,9 +15,15 @@ import { verifyEmailToken, emailVerificationErrorMessage, ApiCallError } from ".
  * cannot look an account up from an address once emails are stored hashed. The
  * token stays editable so someone who received the mail on another device can
  * type it in here instead of following the link.
+ *
+ * Opening the link only pre-fills the code; the address is verified on the
+ * click on "Verify email", never on load. Mail link scanners (corporate
+ * gateways, previews) open every link of a message: verifying on load would
+ * let them prove an address its holder never acted on.
  */
 export default function VerifyEmail() {
   const { t } = useTranslation();
+  const { connection } = useSession();
   const { search } = useLocation();
   const params = new URLSearchParams(search);
   const usernameFromQuery = params.get("username") ?? "";
@@ -66,6 +74,8 @@ export default function VerifyEmail() {
     onward.delete("verifyToken");
     onward.delete("username");
     const onwardSearch = onward.toString() ? `?${onward.toString()}` : "";
+    // Signed in here or in another tab: "Sign in" would only be in the way.
+    const signedIn = connection != null || hasStoredSession();
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("emailVerification.doneTitle")}</h1>
@@ -74,9 +84,11 @@ export default function VerifyEmail() {
           <Link to={`/account/profile${onwardSearch}`} className="text-primary hover:underline">
             {t("emailVerification.goToAccount")}
           </Link>
-          <Link to={`/signin${onwardSearch}`} className="text-primary hover:underline">
-            {t("emailVerification.goToSignIn")}
-          </Link>
+          {!signedIn && (
+            <Link to={`/signin${onwardSearch}`} className="text-primary hover:underline">
+              {t("emailVerification.goToSignIn")}
+            </Link>
+          )}
         </div>
       </Card>
     );
