@@ -36,6 +36,11 @@
   also on `/oauth2-authorize`). (#37)
 - **The required-verification notice is a warning** (`Alert` gains a `warning` tone: warning frame and icon,
   text in the ink colour for contrast) while Approve is blocked. (#37)
+- **Readable info and warning texts.** The info (`#5bc0de`) and warning (`#f0ad4e`) colours read at about 2:1 on
+  a light card, below the 4.5:1 text minimum: info and warning alerts, the access card's "expired" and alias
+  badges, the "Publisher Validated" badge, the pending email and membership-sweep badges and the current
+  validation's warning line now write their text in the ink colour (about 16:1 in light, 12:1 in dark), the tone
+  colour kept on their frame or icon.
 - **Regional UI languages find their texts** (catalogue descriptions, offer texts, legal links): the full tag
   (`pt-BR`), then its shorter prefixes down to its base, then another region of it, then English, through one
   shared helper

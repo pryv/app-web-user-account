@@ -5,8 +5,14 @@ import { tNodes } from "./tNodes";
 
 const TONE: Record<ClientValidation["level"], string> = {
   appValidated: "border-success/40 bg-success/10 text-success",
-  publisherValidated: "border-info/40 bg-info/10 text-info",
+  // The info colour is too light for text on a light card: frame and icon only.
+  publisherValidated: "border-info/60 bg-info/10 text-ink",
   nonValidated: "border-danger/40 bg-danger/10 text-danger",
+};
+
+/** The icon's own colour, where the badge's text does not carry the tone. */
+const ICON_TONE: Partial<Record<ClientValidation["level"], string>> = {
+  publisherValidated: "text-info",
 };
 
 const ICON = {
@@ -39,7 +45,7 @@ export function ValidationBadge({ validation }: { validation: ClientValidation |
           id="oauthValidationBadge"
           className={`inline-flex items-center gap-1 rounded border px-2 py-[1px] text-xs font-medium ${TONE[level]}`}
         >
-          <Icon size={14} aria-hidden />
+          <Icon size={14} aria-hidden className={ICON_TONE[level]} />
           {t(`oauth.validation.${level}`)}
         </span>
         <span id="oauthValidationExplain" className="text-muted">{explain}</span>

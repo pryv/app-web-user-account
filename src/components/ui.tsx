@@ -70,21 +70,22 @@ export function Alert({
   const styles =
     tone === "danger"
       ? "border-danger/40 bg-danger/10 text-danger"
-      : tone === "warning"
-      ? // The warning colour is too light for body text on a light card: it
-        // marks the frame and the icon, the text stays in the ink colour.
-        "border-warning/60 bg-warning/10 text-ink"
+      : // The warning and info colours are too light for body text on a light
+        // card: they mark the frame and the icon, the text stays in the ink colour.
+        tone === "warning"
+      ? "border-warning/60 bg-warning/10 text-ink"
       : tone === "success"
       ? "border-success/40 bg-success/10 text-success"
-      : "border-info/40 bg-info/10 text-info";
+      : "border-info/60 bg-info/10 text-ink";
   const Icon = tone === "danger" || tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
+  const iconTone = tone === "warning" ? " text-warning" : tone === "info" ? " text-info" : "";
   return (
     <div
       className={`mb-4 flex gap-2 rounded border px-3 py-2 text-sm ${styles}`}
       role="alert"
       data-tone={tone}
     >
-      <Icon size={16} aria-hidden className={`mt-[2px] shrink-0${tone === "warning" ? " text-warning" : ""}`} />
+      <Icon size={16} aria-hidden className={`mt-[2px] shrink-0${iconTone}`} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

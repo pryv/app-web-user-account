@@ -32,6 +32,7 @@ export interface AccessCardAccess extends OAuthAccessLike {
   alias?: string | null;
 }
 
+/** The info and warning colours are too light for text on a light card: they mark the frame, the text stays ink. */
 const BADGE = "ml-2 rounded px-1.5 py-0.5 text-xs font-normal";
 
 /**
@@ -96,13 +97,13 @@ export function AccessCard({
               )}
               {isSelf && <span className={`${BADGE} bg-primary/10 text-primary`}>{t("common.thisSession")}</span>}
               {access.expired === true && (
-                <span className={`${BADGE} bg-warning/10 text-warning`}>{t("accessCard.expired")}</span>
+                <span className={`${BADGE} border border-warning/60 bg-warning/10 text-ink`}>{t("accessCard.expired")}</span>
               )}
               {access.deleted != null && (
                 <span className={`${BADGE} bg-danger/10 text-danger`}>{t("accessCard.removed")}</span>
               )}
               {alias != null && (
-                <span className={`${BADGE} bg-info/10 text-info`} title={t("accessCard.aliasHint")}>
+                <span className={`${BADGE} border border-info/60 bg-info/10 text-ink`} title={t("accessCard.aliasHint")}>
                   {t("accessCard.aliasBadge")}
                 </span>
               )}

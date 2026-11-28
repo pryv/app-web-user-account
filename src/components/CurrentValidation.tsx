@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ValidationLevel } from "../lib/oauth2Flow";
 import { validationChange, type CurrentValidation } from "../lib/currentValidation";
@@ -33,8 +34,14 @@ export function CurrentValidationLine({
         </span>
       </div>
       {change != null && (
-        <p role={warn ? "alert" : undefined} className={warn ? "mt-1 text-warning" : "mt-1 text-muted"} data-testid="current-validation-notice">
-          {t(`oauth.validation.notice_${change}`)}
+        <p
+          role={warn ? "alert" : undefined}
+          className={warn ? "mt-1 flex items-start gap-1 text-ink" : "mt-1 text-muted"}
+          data-testid="current-validation-notice"
+        >
+          {/* The warning colour is too light for text on a light card: the icon carries it. */}
+          {warn && <AlertTriangle size={12} aria-hidden className="mt-[2px] shrink-0 text-warning" />}
+          <span>{t(`oauth.validation.notice_${change}`)}</span>
         </p>
       )}
     </div>

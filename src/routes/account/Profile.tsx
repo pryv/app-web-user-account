@@ -19,7 +19,8 @@ interface AccountInfo {
 
 const BADGE_STYLE: Record<string, string> = {
   verified: "bg-success/10 text-success",
-  pending: "bg-info/10 text-info",
+  // The info colour marks the frame; the text stays ink (contrast on light cards).
+  pending: "border border-info/60 bg-info/10 text-ink",
   unconfirmed: "bg-body text-muted",
 };
 

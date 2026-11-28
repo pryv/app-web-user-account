@@ -546,7 +546,7 @@ function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checki
                 ? "bg-danger/10 text-danger"
                 : state === "done"
                   ? "bg-success/10 text-success"
-                  : "bg-info/10 text-info"
+                  : "border border-info/60 bg-info/10 text-ink"
             }`}
           >
             {t(sweepStateKey(state))}
