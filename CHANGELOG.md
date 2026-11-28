@@ -23,17 +23,22 @@
 - **The cooldown notice says the link is in the welcome email.** (#37)
 - **A verification mail's cooldown survives a reload**: the consent pages read it from the account
   (`emails[].verificationCooldownUntil`) and show the cooldown notice instead of "Send the verification email",
-  for the account's address and for one being added; "Send again" comes back when it ends. A refused resend's
-  `retryAfterSeconds` still decides. Needs a core of the release after open-pryv.io 2.0.0-rc.91; an older core
+  for the account's address and for one being added; "Send again" comes back when it ends. The time is read on
+  the core's clock (the client's measured offset), so a device clock running slow or fast does not move it; a
+  refused resend's `retryAfterSeconds` still decides. Needs a core of the release after open-pryv.io 2.0.0-rc.91; an older core
   (no field) behaves as before. (#37)
-- **"Use another address" has a Cancel** that leaves the form and reads the account again (an address waited for
-  before is waited for again). (#37)
-- **The "Email verified" page offers "Sign in" only to someone not signed in** (in this tab or another). (#37)
+- **"Use another address" has a Cancel** that leaves the form, reads the account again and gives the focus back
+  (an address being added and waited for is waited for again). (#37)
+- **The "Email verified" page offers "Sign in" unless a session of that account is held** (in this tab or another)
+  and still answers; another account's session still gets "Sign in". (#37)
 - **`:system:email` is named "Email address"** on the permission rows (`consent.streamLabelEmail`), instead of its
-  raw id; a deployment's stream labels still win, a requester's name does not. (#37)
-- **The required-verification notice is a warning** (`Alert` gains a `warning` tone) while Approve is blocked. (#37)
+  raw id; a deployment's stream labels still win, no name from the request does (offer entry labels included,
+  also on `/oauth2-authorize`). (#37)
+- **The required-verification notice is a warning** (`Alert` gains a `warning` tone: warning frame and icon,
+  text in the ink colour for contrast) while Approve is blocked. (#37)
 - **Regional UI languages find their texts** (catalogue descriptions, offer texts, legal links): the full tag
-  (`pt-BR`), then its base, then another region of it, then English, through one shared helper
+  (`pt-BR`), then its shorter prefixes down to its base, then another region of it, then English, through one
+  shared helper
   (`lib/localeMatch.ts`); the catalogue parser keeps every language of a text, not only `en` / `fr` / `es`. (#38)
 
 ## 0.38.0 - 2026-11-27

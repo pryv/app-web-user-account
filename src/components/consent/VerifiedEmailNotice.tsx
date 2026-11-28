@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button } from "../ui";
 import { formatDateTime } from "../../lib/dates";
@@ -64,6 +64,23 @@ export function VerifiedEmailNotice({
 }: VerifiedEmailNoticeProps) {
   const { t } = useTranslation();
   const changing = "changing" in state && state.changing === true;
+  // Cancel removes the form and the focused button with it: once the account
+  // is shown again, focus goes back to "Use another address", else the notice.
+  const refocus = useRef(false);
+  const otherRef = useRef<HTMLButtonElement>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!refocus.current || state.kind === "checking") return;
+    refocus.current = false;
+    (otherRef.current ?? noticeRef.current)?.focus();
+  });
+  const cancel =
+    changing && onCancel != null
+      ? () => {
+          refocus.current = true;
+          onCancel();
+        }
+      : undefined;
 
   if (!required) {
     const plain = missingEmailState(state, t("consent.emailTaken"));
@@ -74,7 +91,7 @@ export function VerifiedEmailNotice({
           appName={appName}
           state={plain}
           onAdd={onAdd}
-          onCancel={changing ? onCancel : undefined}
+          onCancel={cancel}
           disabled={disabled}
         />
       );
@@ -86,7 +103,7 @@ export function VerifiedEmailNotice({
   if (state.kind === "checking") return null;
   if (state.kind === "proved") {
     return (
-      <div data-testid="verified-email" data-state="proved">
+      <div data-testid="verified-email" data-state="proved" ref={noticeRef} tabIndex={-1} className="outline-none">
         <Alert tone="success">{t("consent.verifyEmailProved", { email: state.email })}</Alert>
       </div>
     );
@@ -119,7 +136,7 @@ export function VerifiedEmailNotice({
   );
   // Also for the account's own address: one typed wrong cannot be verified.
   const otherButton = (required || ("viaAdd" in state && state.viaAdd)) && (
-    <Button type="button" variant="ghost" className="w-auto" onClick={onChange} disabled={disabled}>
+    <Button ref={otherRef} type="button" variant="ghost" className="w-auto" onClick={onChange} disabled={disabled}>
       {t("consent.verifyEmailOther")}
     </Button>
   );
@@ -133,7 +150,7 @@ export function VerifiedEmailNotice({
     state.kind === "taken" ? t("consent.emailTaken") : state.kind === "error" ? state.message : null;
 
   return (
-    <div data-testid="verified-email" data-state={state.kind}>
+    <div data-testid="verified-email" data-state={state.kind} ref={noticeRef} tabIndex={-1} className="outline-none">
       {(required || status != null) && (
         // Required and not proved (a proof returned above): Approve is blocked, so a warning.
         <Alert tone={required ? "warning" : "info"}>
@@ -156,7 +173,7 @@ export function VerifiedEmailNotice({
           adding={state.kind === "adding"}
           error={formError}
           onAdd={onAdd}
-          onCancel={changing ? onCancel : undefined}
+          onCancel={cancel}
           disabled={disabled}
         />
       )}

@@ -3,8 +3,9 @@
  * texts, offer texts, legal links): given the UI language, which of the map's
  * keys to use.
  *
- * Order: the full tag (`pt-BR`), then its base (`pt`), then another region of
- * the same base (`pt-PT`), then English (`en`, then another `en-*`). Tags are
+ * Order: the full tag (`pt-BR`), then its shorter prefixes down to the base
+ * (`zh-Hant-TW`, `zh-Hant`, `zh`), then another region of the same base
+ * (`pt-PT`), then English (`en`, then another `en-*`). Tags are
  * compared case-insensitively and `_` reads as `-` (`pt_br` is `pt-BR`).
  * Nothing else is guessed: a map holding neither the language nor English
  * gives nothing, and the caller decides what to fall back to.
@@ -32,10 +33,14 @@ export function localeCandidates(keys: readonly string[], lang: string): string[
   };
   const chain = (wanted: string) => {
     if (wanted === "") return;
-    const base = baseOf(wanted);
-    take((tag) => tag === wanted);
-    take((tag) => tag === base);
-    take((tag) => baseOf(tag) === base);
+    // The tag, then shorter and shorter prefixes of it (`zh-Hant-TW`,
+    // `zh-Hant`, `zh`), then any other tag of the same base.
+    const parts = wanted.split("-");
+    for (let n = parts.length; n >= 1; n--) {
+      const prefix = parts.slice(0, n).join("-");
+      take((tag) => tag === prefix);
+    }
+    take((tag) => baseOf(tag) === parts[0]);
   };
   chain(normalizeTag(lang));
   chain("en");

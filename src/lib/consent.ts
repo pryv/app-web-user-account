@@ -258,9 +258,10 @@ export function systemStreamLabel(streamId: string): string | null {
  * Human label for one granular permission entry. Stream permissions
  * render as "<level verb> “<stream name>”", the stream named by the first
  * source that knows it: the offer's own label for the entry, the deployment's
- * stream labels, this app's name for a system stream (`:system:email`), the
- * account's stream name, the request's `name` / `defaultName`, and last the
- * stream id. The level verb always comes from this
+ * stream labels, the account's stream name, the request's `name` /
+ * `defaultName`, and last the stream id. A system stream this app names
+ * (`:system:email`) takes the deployment's label, else this app's: no name
+ * from the request, offer labels included. The level verb always comes from this
  * app, never from a label. Known feature permissions get a dedicated wording;
  * unknown ones use the offer's label, else "The app cannot use …" for a
  * restriction and `feature: setting` otherwise.
@@ -271,14 +272,20 @@ export function permissionLabel(p: OfferPermission, sources: LabelSources = {}):
     const level = levelLabel(p.level);
     if (p.streamId === "*") return i18n.t("consent.permissionOnAllData", { level });
     const streamId = p.streamId;
+    const deployment = () => safeLabel(() => sources.labelFor?.(streamId));
+    const system = systemStreamLabel(streamId);
+    // A system stream is named by the deployment or by this app, never by the
+    // request (its offer labels included): a requester must not rename the
+    // permission a consent may make mandatory.
     const name =
-      entryLabel ??
-      safeLabel(() => sources.labelFor?.(streamId)) ??
-      systemStreamLabel(streamId) ??
-      safeLabel(() => sources.accountName?.(streamId)) ??
-      p.name ??
-      p.defaultName ??
-      streamId;
+      system != null
+        ? deployment() ?? system
+        : entryLabel ??
+          deployment() ??
+          safeLabel(() => sources.accountName?.(streamId)) ??
+          p.name ??
+          p.defaultName ??
+          streamId;
     return i18n.t("consent.permissionOnStream", { level, name });
   }
   const f = p as { feature: string; setting: string };

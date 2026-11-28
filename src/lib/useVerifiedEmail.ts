@@ -124,11 +124,15 @@ function awaitsProof(state: VerifiedEmailState): boolean {
   return state.kind === "waiting" || state.kind === "cooldown";
 }
 
-/** The states of the add-email form, the only ones `changing` is kept through. */
+/**
+ * The states of the add-email form, the only ones `changing` is kept through
+ * (with the mail sent to an address the form named that the account holds).
+ */
 function isFormState(state: VerifiedEmailState): boolean {
   return (
     state.kind === "missing" ||
     state.kind === "adding" ||
+    (state.kind === "sending" && state.viaAdd) ||
     state.kind === "taken" ||
     (state.kind === "error" && state.at === "add")
   );
@@ -208,14 +212,14 @@ export function useVerifiedEmail(
       // does not offer a send the core would refuse. Older cores do not say.
       if (hasUsableEmail(account)) {
         const email = account.email!.trim();
-        const until = pendingCooldownUntil(primary);
+        const until = pendingCooldownUntil(primary, account.serverDelta);
         put(
           endpoint,
           track,
           until != null ? { kind: "cooldown", email, viaAdd: false, until, sent: true } : { kind: "unproved", email },
         );
       } else if (target != null) {
-        const until = pendingCooldownUntil(target);
+        const until = pendingCooldownUntil(target, account.serverDelta);
         put(
           endpoint,
           track,
@@ -231,9 +235,10 @@ export function useVerifiedEmail(
     } catch (err: unknown) {
       if (!current()) return;
       console.warn(`${logLabel}: could not read the account's email:`, loggableError(err));
-      // A missed poll is tried again at the next one; a missed re-read of an
-      // address not verified yet leaves it as it was shown.
-      if (awaitsProof(track.state) || track.state.kind === "unproved") return;
+      // Said only for a read the page waits on (mount, retry, Cancel: all from
+      // `checking`). A missed poll or background re-read leaves what is shown,
+      // and never replaces a form or a message the person has in front of them.
+      if (track.state.kind !== "checking") return;
       put(endpoint, track, {
         kind: "error",
         at: "read",

@@ -52,6 +52,11 @@ export function hasUsableEmail(account: { email?: string | null } | null | undef
 export interface AccountEmails {
   email: string | null;
   emails: EmailView[];
+  /**
+   * The core's clock minus this device's, in seconds, as measured by the
+   * client on the read (absent when the client does not say).
+   */
+  serverDelta?: number;
 }
 
 /**
@@ -88,15 +93,23 @@ export function isProvedEmail(view: EmailView): boolean {
 }
 
 /**
- * When the next verification mail to this address can be asked for (epoch
- * seconds), as the core said when the account was read: null when no
- * cooldown runs, or when the core does not say (older cores). Read against
- * this device's clock, so only a hint: the core's `retryAfterSeconds` on a
- * refused resend decides.
+ * When the next verification mail to this address can be asked for, on this
+ * device's clock (epoch seconds): the core's `verificationCooldownUntil` is on
+ * the core's clock, so `serverDelta` (the core's clock minus this device's,
+ * see {@link AccountEmails}) moves it onto this one; a device running slow
+ * then does not keep "Send again" off past the core's own end. Null when no
+ * cooldown runs, or when the core does not say (older cores). The core's
+ * `retryAfterSeconds` on a refused resend still decides.
  */
-export function pendingCooldownUntil(view: EmailView | null, nowSeconds = Date.now() / 1000): number | null {
+export function pendingCooldownUntil(
+  view: EmailView | null,
+  serverDelta = 0,
+  nowSeconds = Date.now() / 1000,
+): number | null {
   const until = view?.verificationCooldownUntil;
-  return typeof until === "number" && Number.isFinite(until) && until > nowSeconds ? until : null;
+  if (typeof until !== "number" || !Number.isFinite(until)) return null;
+  const local = until - (Number.isFinite(serverDelta) ? serverDelta : 0);
+  return local > nowSeconds ? local : null;
 }
 
 /** The account's addresses, through `account.get` (a personal or delegate token). Throws when they cannot be read. */
@@ -104,7 +117,10 @@ export async function readAccountEmails(apiEndpoint: string): Promise<AccountEma
   const conn = new Pryv.Connection(apiEndpoint);
   // The client library types `account.get` params as `null`; the API expects an
   // (empty) object, as the profile page sends.
-  return accountEmailsOf(await conn.apiOne("account.get", {} as unknown as null, "account"));
+  const account = accountEmailsOf(await conn.apiOne("account.get", {} as unknown as null, "account"));
+  // Measured by the client from the answer's `meta.serverTime`.
+  const delta = (conn as { deltaTime?: unknown }).deltaTime;
+  return typeof delta === "number" && Number.isFinite(delta) ? { ...account, serverDelta: delta } : account;
 }
 
 type EmailsOperations = { add: string[] } | { resend: string[] } | { setPrimary: string } | { remove: string[] };

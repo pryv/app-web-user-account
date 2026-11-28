@@ -71,7 +71,9 @@ export function Alert({
     tone === "danger"
       ? "border-danger/40 bg-danger/10 text-danger"
       : tone === "warning"
-      ? "border-warning/40 bg-warning/10 text-warning"
+      ? // The warning colour is too light for body text on a light card: it
+        // marks the frame and the icon, the text stays in the ink colour.
+        "border-warning/60 bg-warning/10 text-ink"
       : tone === "success"
       ? "border-success/40 bg-success/10 text-success"
       : "border-info/40 bg-info/10 text-info";
@@ -82,7 +84,7 @@ export function Alert({
       role="alert"
       data-tone={tone}
     >
-      <Icon size={16} aria-hidden className="mt-[2px] shrink-0" />
+      <Icon size={16} aria-hidden className={`mt-[2px] shrink-0${tone === "warning" ? " text-warning" : ""}`} />
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

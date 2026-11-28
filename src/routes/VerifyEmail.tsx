@@ -5,8 +5,39 @@ import { Card, Button, Field, Alert } from "../components/ui";
 import { getService } from "../lib/service";
 import { parseAuthParams } from "../lib/authParams";
 import { verifyEmailToken, emailVerificationErrorMessage, ApiCallError } from "../lib/emailVerification";
-import { hasStoredSession } from "../lib/sessionStore";
+import { readStored, type PryvConnection } from "../lib/sessionStore";
 import { useSession } from "../lib/useSession";
+
+/** The same API endpoint, credentials aside (`https://tok@alice.core/` is `https://alice.core/`). */
+function sameEndpoint(a: string, b: string): boolean {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    const path = (u: URL) => u.pathname.replace(/\/+$/, "");
+    return x.origin === y.origin && path(x) === path(y);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a session of the account at `apiEndpoint` is held: this tab's, or
+ * one another tab stored since this page loaded, and its token still answers
+ * (an expired or revoked one does not count). Another account's session does
+ * not count either.
+ */
+async function sessionHolds(current: PryvConnection | null, apiEndpoint: string): Promise<boolean> {
+  for (const held of [current, readStored()]) {
+    if (held == null || !sameEndpoint(held.apiEndpoint, apiEndpoint)) continue;
+    try {
+      await held.accessInfo();
+      return true;
+    } catch {
+      // Not valid any more: try the other one, if any.
+    }
+  }
+  return false;
+}
 
 /**
  * Landing page for the verification email.
@@ -32,6 +63,8 @@ export default function VerifyEmail() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /** A session of the verified account is held and answers (null: not known yet). */
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
   // The token has been read into state; drop it from the address bar so the
   // history entry and any outbound Referer do not carry it. Same-path replace,
@@ -56,6 +89,7 @@ export default function VerifyEmail() {
       const apiEndpoint = await service.apiEndpointFor(username.trim().toLowerCase());
       const email = await verifyEmailToken(apiEndpoint, appId, token.trim());
       setDone(email);
+      void sessionHolds(connection, apiEndpoint).then(setSignedIn);
     } catch (err: unknown) {
       if (err instanceof ApiCallError && err.id === "invalid-access-token") {
         setError(t("emailVerification.errorLinkInvalid"));
@@ -74,8 +108,6 @@ export default function VerifyEmail() {
     onward.delete("verifyToken");
     onward.delete("username");
     const onwardSearch = onward.toString() ? `?${onward.toString()}` : "";
-    // Signed in here or in another tab: "Sign in" would only be in the way.
-    const signedIn = connection != null || hasStoredSession();
     return (
       <Card>
         <h1 className="mb-2 text-2xl">{t("emailVerification.doneTitle")}</h1>
@@ -84,7 +116,8 @@ export default function VerifyEmail() {
           <Link to={`/account/profile${onwardSearch}`} className="text-primary hover:underline">
             {t("emailVerification.goToAccount")}
           </Link>
-          {!signedIn && (
+          {/* Signed in to this account, here or in another tab: "Sign in" would only be in the way. */}
+          {signedIn === false && (
             <Link to={`/signin${onwardSearch}`} className="text-primary hover:underline">
               {t("emailVerification.goToSignIn")}
             </Link>

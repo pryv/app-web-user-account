@@ -49,6 +49,18 @@ describe("[VENT] VerifiedEmailNotice", () => {
     expect(screen.getByTestId("verified-email").textContent).toMatch(/welcome email/);
   });
 
+  it("[VEN6] Cancel gives the focus back to Use another address once the account is shown again", () => {
+    const handlers = { onAdd: vi.fn(), onSend: vi.fn(), onChange: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn() };
+    const props = { username: null, appName: "Diary", required: true, ...handlers };
+    const { rerender } = render(<VerifiedEmailNotice {...props} state={{ kind: "missing", suggested: null, changing: true }} />);
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    cancelButton.focus();
+    fireEvent.click(cancelButton);
+    rerender(<VerifiedEmailNotice {...props} state={{ kind: "checking" }} />);
+    rerender(<VerifiedEmailNotice {...props} state={{ kind: "unproved", email: "a@example.com" }} />);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Use another address" }));
+  });
+
   it("[VEN5] Send again is off during a cooldown, on once it is over", () => {
     show({ kind: "cooldown", email: "a@example.com", viaAdd: false, until: 2_000_000_000, sent: true });
     expect((screen.getByRole("button", { name: "Send again" }) as HTMLButtonElement).disabled).toBe(true);

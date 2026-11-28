@@ -14,6 +14,11 @@ describe("[LCMT] localeMatch", () => {
     expect(localeCandidates(["de"], "fr")).toEqual([]);
   });
 
+  it("[LCM4] a longer tag tries its shorter prefixes before other tags of its base", () => {
+    expect(localeCandidates(["zh-Hans", "zh-Hant", "en"], "zh-Hant-TW")).toEqual(["zh-Hant", "zh-Hans", "en"]);
+    expect(localeCandidates(["zh-Hans-TW", "zh", "zh-Hant"], "zh-Hant-TW")).toEqual(["zh-Hant", "zh", "zh-Hans-TW"]);
+  });
+
   it("[LCM2] tags compare case-insensitively, `_` read as `-`", () => {
     expect(localeCandidates(["PT_br", "en"], "pt-BR")).toEqual(["PT_br", "en"]);
     expect(localeCandidates(["pt-BR"], "PT")).toEqual(["pt-BR"]);

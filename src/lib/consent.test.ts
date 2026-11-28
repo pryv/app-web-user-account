@@ -267,6 +267,16 @@ describe("permissionLabel + pickText", () => {
     expect(permissionLabel({ streamId: ":system:email", level: "read" }, { labelFor: () => "E-mail" })).toBe(
       "Read “E-mail”",
     );
+    // Nor does the offer's own label for the entry, nor the account's stream name.
+    expect(
+      permissionLabel(
+        { streamId: ":system:email", level: "read" },
+        { entryLabel: () => "Your login", accountName: () => "Email (account)" },
+      ),
+    ).toBe("Read “Email address”");
+    expect(
+      permissionLabel({ streamId: ":system:email", level: "read" }, { entryLabel: () => "X", labelFor: () => "E-mail" }),
+    ).toBe("Read “E-mail”");
     expect(permissionLabel({ streamId: ":system:phone", level: "read" })).toBe("Read “:system:phone”");
   });
 });

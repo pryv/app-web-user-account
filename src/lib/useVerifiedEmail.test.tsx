@@ -16,7 +16,9 @@ const BOB = "https://tok@bob.core.test/";
 const net = vi.hoisted(() => ({
   /** Every call, as "<method>" or the emails operation, in order. */
   calls: [] as string[],
-  answer: (async () => ({})) as (endpoint: string, method: string, params: { update?: Record<string, unknown> }) => Promise<unknown>,
+  /** The core's clock minus this device's, as the client measures it (undefined: the client does not say). */
+  delta: undefined as number | undefined,
+  answer:(async () => ({})) as (endpoint: string, method: string, params: { update?: Record<string, unknown> }) => Promise<unknown>,
 }));
 vi.mock("pryv", () => ({
   default: {
@@ -25,6 +27,9 @@ vi.mock("pryv", () => ({
       apiEndpoint: string;
       constructor(apiEndpoint: string) {
         this.apiEndpoint = apiEndpoint;
+      }
+      get deltaTime() {
+        return net.delta;
       }
       async apiOne(method: string, params: { update?: Record<string, unknown> }) {
         const emails = params.update?.emails;
@@ -79,6 +84,7 @@ describe("useVerifiedEmail", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     net.calls = [];
+    net.delta = undefined;
     held = account(entry("alice@example.com", true, "registration"));
     net.answer = async () => held;
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -490,6 +496,59 @@ describe("useVerifiedEmail", () => {
       expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "unproved", email: "alice@example.com" });
       unmount();
     }
+  });
+
+  it("[RVC4] the core's cooldown is read on the core's clock: a device running slow or fast ends it with the core", async () => {
+    for (const delta of [600, -600]) {
+      const local = Date.now() / 1000;
+      net.delta = delta;
+      // 90 s left on the core's clock (core now = device now + delta).
+      held = account({ ...entry("alice@example.com", true, null, "pending"), verificationCooldownUntil: local + delta + 90 });
+      const { result, unmount } = hook();
+      await pass();
+      const state = result.current.stateOf(ALICE, true);
+      expect(state).toMatchObject({ kind: "cooldown", sent: true });
+      expect((state as { until: number }).until).toBeCloseTo(Date.now() / 1000 + 90, 0);
+      await pass(91_000);
+      expect(result.current.stateOf(ALICE, true)).toMatchObject({ kind: "waiting", canSendAgain: true });
+      unmount();
+    }
+    // Past on the core's clock, though ahead on a device running slow: no cooldown.
+    net.delta = 600;
+    held = account({ ...entry("alice@example.com", true, null, "pending"), verificationCooldownUntil: Date.now() / 1000 + 300 });
+    const { result } = hook();
+    await pass();
+    expect(result.current.stateOf(ALICE, true).kind).toBe("unproved");
+  });
+
+  it("[RVS1] a background re-read that fails never replaces the form the person opened", async () => {
+    const { result } = hook();
+    await pass();
+    let fail: (e: Error) => void = () => {};
+    net.answer = () =>
+      new Promise((_resolve, reject) => {
+        fail = reject;
+      });
+    act(() => void window.dispatchEvent(new Event("focus")));
+    await pass();
+    act(() => result.current.change(ALICE));
+    await act(async () => fail(new Error("network down")));
+    await pass();
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "missing", suggested: null, changing: true });
+  });
+
+  it("[RVS2] re-entering an address the account holds, from Use another address: Cancel kept after a refusal", async () => {
+    held = account(entry("alice@example.com", true, "registration"), pending("other@example.com"));
+    const { result } = hook();
+    await pass();
+    act(() => result.current.change(ALICE));
+    net.answer = async (_e, method) => {
+      if (method === "account.get") return held;
+      throw apiError("item-already-exists");
+    };
+    await act(async () => result.current.add(ALICE, "other@example.com"));
+    expect(net.calls).toContain('{"resend":["other@example.com"]}');
+    expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "taken", viaAdd: true, changing: true });
   });
 
   it("[RVC3] an added address in cooldown, back from Use another address: its cooldown is shown", async () => {
