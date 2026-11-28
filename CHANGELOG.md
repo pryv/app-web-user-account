@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.39.0 - 2026-11-28
+
+Connected apps show the current validation of an OAuth app beside the level at consent (open-pryv.io 2.0.0-rc.92
+or later); the consent pages requiring a verified email pick up a proof made elsewhere and keep a running cooldown;
+readable tone texts; regional UI languages find their texts.
+
 ### Added
 
 - **The current validation of a connected app, beside the level at consent.** Connected apps (each OAuth app's
@@ -12,8 +18,7 @@
   core stamped as minted for the app (a consent grant's `clientData.oauth.grantOf`, or an app session named
   `oauth:<clientId>` carrying its `dataGrantId`), never on an access merely named after it. The texts are this app's catalog
   (`oauth.validation.atConsent`, `current`, `notice_*`). A core without the route (404), a token it refuses (a
-  delegate's session) or any failure shows nothing new and no error. Needs the open-pryv.io release that adds the
-  route.
+  delegate's session) or any failure shows nothing new and no error. Needs open-pryv.io 2.0.0-rc.92 or later.
 
 ### Fixed
 
@@ -25,8 +30,8 @@
   (`emails[].verificationCooldownUntil`) and show the cooldown notice instead of "Send the verification email",
   for the account's address and for one being added; "Send again" comes back when it ends. The time is read on
   the core's clock (the client's measured offset), so a device clock running slow or fast does not move it; a
-  refused resend's `retryAfterSeconds` still decides. Needs a core of the release after open-pryv.io 2.0.0-rc.91; an older core
-  (no field) behaves as before. (#37)
+  refused resend's `retryAfterSeconds` still decides. Needs an open-pryv.io release after 2.0.0-rc.92 (rc.92 does
+  not send the field yet); an older core (no field) behaves as before. (#37)
 - **"Use another address" has a Cancel** that leaves the form, reads the account again and gives the focus back
   (an address being added and waited for is waited for again). (#37)
 - **The "Email verified" page offers "Sign in" unless a session of that account is held** (in this tab or another)
