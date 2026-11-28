@@ -310,7 +310,7 @@ function MyDelegates({
                 type="button"
                 disabled={busy === r.username}
                 onClick={() => void removeRow(r)}
-                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger-ink hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
               >
                 {r.action === "detach" ? <Trash2 size={14} aria-hidden /> : <X size={14} aria-hidden />}
                 {r.action === "detach" ? t("delegation.remove") : t("common.cancel")}

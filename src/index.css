@@ -32,6 +32,12 @@
   --color-muted: var(--color-pryv-dark-gray);
   --color-card: #ffffff;
   --color-divider: var(--color-pryv-light-gray);
+  /*
+   * Red for text (errors, destructive actions): `--color-danger` reads at
+   * about 4:1, so text takes this darker one (5.9:1 on the card, 5.2:1 on the
+   * danger tint); frames, tints and icons keep `--color-danger`.
+   */
+  --color-danger-ink: #a94442;
 
   /*
    * Layout widths. The auth and consent pages use the narrow column; the
@@ -65,6 +71,7 @@
     --color-muted: #a8aaae;
     --color-card: #1d2022;
     --color-divider: #2c2f33;
+    --color-danger-ink: #f28b87;
   }
 }
 
@@ -75,6 +82,7 @@
   --color-muted: #a8aaae;
   --color-card: #1d2022;
   --color-divider: #2c2f33;
+  --color-danger-ink: #f28b87;
 }
 
 @theme {
@@ -102,6 +110,7 @@
   --color-muted: #4a4a4a;
   --color-card: #ffffff;
   --color-divider: #c8c8c8;
+  --color-danger-ink: #a94442;
 
   /* Typography */
   --font-sans: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;

@@ -257,7 +257,7 @@ export default function Memberships() {
                   type="button"
                   disabled={revoking === m.membershipAccessId}
                   onClick={() => void revoke(m)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger-ink hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
                 >
                   <Trash2 size={14} aria-hidden />
                   {revoking === m.membershipAccessId ? t("memberships.revoking") : t("memberships.revoke")}
@@ -496,7 +496,7 @@ function MembershipRequest({
             )}
             <p className="mb-4 text-sm text-muted">{t("memberships.requestExplain")}</p>
             {request.teams.length > 0 && selected.length === 0 && (
-              <p className="mb-3 text-sm text-danger">{t("memberships.tickOneTeam")}</p>
+              <p className="mb-3 text-sm text-danger-ink">{t("memberships.tickOneTeam")}</p>
             )}
             {signedInAs != null && (
               <div className="mb-3 text-sm" data-testid="membership-approving-as">
@@ -543,9 +543,9 @@ function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checki
             data-testid="membership-sweep-status"
             className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
               state === "failed"
-                ? "bg-danger/10 text-danger"
+                ? "bg-danger/10 text-danger-ink"
                 : state === "done"
-                  ? "bg-success/10 text-success"
+                  ? "border border-success/60 bg-success/10 text-ink"
                   : "border border-info/60 bg-info/10 text-ink"
             }`}
           >
@@ -562,7 +562,7 @@ function SweepCard({ sweep: s, checking, onCheck }: { sweep: SweepRecord; checki
         )}
         {/* Another reason: said, with its id for a support request; its detail is never shown. */}
         {state === "failed" && (
-          <p className="mt-1 text-sm text-danger" data-testid="membership-sweep-stopped">
+          <p className="mt-1 text-sm text-danger-ink" data-testid="membership-sweep-stopped">
             {t("memberships.sweepStopped")} <code className="break-all">{s.failure?.reason ?? ""}</code>
           </p>
         )}

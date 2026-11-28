@@ -54,7 +54,7 @@ export function Button({
     variant === "primary"
       ? "bg-primary text-white hover:brightness-95 active:brightness-90"
       : variant === "danger"
-      ? "border border-danger text-danger hover:bg-danger/10 active:bg-danger/20"
+      ? "border border-danger text-danger-ink hover:bg-danger/10 active:bg-danger/20"
       : "text-primary hover:underline";
   return <button className={`${base} ${styles} ${className}`} {...props} />;
 }
@@ -67,18 +67,18 @@ export function Alert({
   children: ReactNode;
   tone?: "danger" | "warning" | "success" | "info";
 }) {
+  // The tone colours are too light for body text on a light card: they mark
+  // the frame and the icon, the text is ink (danger: the darker danger ink).
   const styles =
     tone === "danger"
-      ? "border-danger/40 bg-danger/10 text-danger"
-      : // The warning and info colours are too light for body text on a light
-        // card: they mark the frame and the icon, the text stays in the ink colour.
-        tone === "warning"
+      ? "border-danger/40 bg-danger/10 text-danger-ink"
+      : tone === "warning"
       ? "border-warning/60 bg-warning/10 text-ink"
       : tone === "success"
-      ? "border-success/40 bg-success/10 text-success"
+      ? "border-success/60 bg-success/10 text-ink"
       : "border-info/60 bg-info/10 text-ink";
   const Icon = tone === "danger" || tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
-  const iconTone = tone === "warning" ? " text-warning" : tone === "info" ? " text-info" : "";
+  const iconTone = tone === "warning" ? " text-warning" : tone === "info" ? " text-info" : tone === "success" ? " text-success" : "";
   return (
     <div
       className={`mb-4 flex gap-2 rounded border px-3 py-2 text-sm ${styles}`}
@@ -156,7 +156,7 @@ export function SelectField({
 
 /** Section label row, for the "USERNAME" / "EMAIL" headings. */
 export function SectionLabel({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "danger" }) {
-  const color = tone === "danger" ? "text-danger" : "text-muted";
+  const color = tone === "danger" ? "text-danger-ink" : "text-muted";
   return (
     <div className={`mb-1 text-xs uppercase tracking-wide ${color}`}>{children}</div>
   );

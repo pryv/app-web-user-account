@@ -247,7 +247,7 @@ export default function AuditTrail() {
               ? t("trail.accessFilter", { name: maskUrlCredentials(entryNaming({ access: focused, sessions: [] }).label) })
               : t("trail.accessFilterUnknown")}
             {focused?.deleted != null && (
-              <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">{t("trail.removed")}</span>
+              <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger-ink">{t("trail.removed")}</span>
             )}{" "}
             <Link
               to={{ pathname: "/account/audit", search: searchWith(search, clearFocus) }}
@@ -298,9 +298,9 @@ export default function AuditTrail() {
                     <td className="py-1 pr-4 font-mono text-xs">{auditAction(e)}</td>
                     <td className="py-1 pr-4">
                       {isAuditError(e) ? (
-                        <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger">{t("audit.statusError")}</span>
+                        <span className="rounded bg-danger/10 px-1.5 py-0.5 text-xs text-danger-ink">{t("audit.statusError")}</span>
                       ) : (
-                        <span className="rounded bg-success/10 px-1.5 py-0.5 text-xs text-success">{t("audit.statusOk")}</span>
+                        <span className="rounded border border-success/60 bg-success/10 px-1.5 py-0.5 text-xs text-ink">{t("audit.statusOk")}</span>
                       )}
                     </td>
                     <td className="py-1 pr-4 text-xs">

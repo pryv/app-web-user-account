@@ -254,7 +254,7 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
               </span>
             )}
             {details?.deleted != null && (
-              <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs normal-case tracking-normal text-danger">
+              <span className="ml-2 rounded bg-danger/10 px-1.5 py-0.5 text-xs normal-case tracking-normal text-danger-ink">
                 {t("audit.removedBadge")}
               </span>
             )}
@@ -264,7 +264,7 @@ function AuditAccessPage({ accessId }: { accessId: string | undefined }) {
               type="button"
               onClick={() => void revoke()}
               disabled={revoking}
-              className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded border border-danger px-3 py-1 text-sm text-danger-ink hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
             >
               <XCircle size={14} aria-hidden />
               {revoking ? t("audit.revoking") : t("audit.revoke")}

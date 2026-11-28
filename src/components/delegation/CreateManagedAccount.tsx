@@ -18,7 +18,7 @@ export function DelegateWarning() {
   // Subscribes to language changes; the copy itself comes from the lib.
   useTranslation();
   return (
-    <div className="mb-4 rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+    <div className="mb-4 rounded border border-danger/40 bg-danger/10 p-3 text-sm text-danger-ink">
       <p className="mb-2 font-medium">{delegateWarningLead()}</p>
       <ul className="list-disc space-y-1 pl-5">
         {delegateWarningLines().map((line) => (

@@ -100,7 +100,7 @@ export function AccessCard({
                 <span className={`${BADGE} border border-warning/60 bg-warning/10 text-ink`}>{t("accessCard.expired")}</span>
               )}
               {access.deleted != null && (
-                <span className={`${BADGE} bg-danger/10 text-danger`}>{t("accessCard.removed")}</span>
+                <span className={`${BADGE} bg-danger/10 text-danger-ink`}>{t("accessCard.removed")}</span>
               )}
               {alias != null && (
                 <span className={`${BADGE} border border-info/60 bg-info/10 text-ink`} title={t("accessCard.aliasHint")}>

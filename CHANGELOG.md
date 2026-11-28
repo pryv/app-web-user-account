@@ -36,11 +36,14 @@
   also on `/oauth2-authorize`). (#37)
 - **The required-verification notice is a warning** (`Alert` gains a `warning` tone: warning frame and icon,
   text in the ink colour for contrast) while Approve is blocked. (#37)
-- **Readable info and warning texts.** The info (`#5bc0de`) and warning (`#f0ad4e`) colours read at about 2:1 on
-  a light card, below the 4.5:1 text minimum: info and warning alerts, the access card's "expired" and alias
-  badges, the "Publisher Validated" badge, the pending email and membership-sweep badges and the current
-  validation's warning line now write their text in the ink colour (about 16:1 in light, 12:1 in dark), the tone
-  colour kept on their frame or icon.
+- **Readable info, warning, success and danger texts.** The tone colours read below the 4.5:1 text minimum on a
+  light card (info `#5bc0de` and warning `#f0ad4e` about 2:1, success `#5cb85c` about 2.5:1, danger `#d9534f`
+  about 4:1). Info, warning and success texts (alerts, the access card's "expired" and alias badges, the
+  validation badges, the email, membership-sweep and audit status badges, the current validation's warning line)
+  are now in the ink colour (about 16:1 in light, 12:1 in dark), the tone kept on their frame or icon. Red text
+  (errors, destructive buttons, "removed" badges) takes a new `--color-danger-ink` token (`#a94442` in light,
+  `#f28b87` in dark: at least 5.2:1 and 6.2:1 on the card and the danger tint); frames and tints keep
+  `--color-danger`. An operator re-branding the danger colour overrides `--color-danger-ink` too.
 - **Regional UI languages find their texts** (catalogue descriptions, offer texts, legal links): the full tag
   (`pt-BR`), then its shorter prefixes down to its base, then another region of it, then English, through one
   shared helper

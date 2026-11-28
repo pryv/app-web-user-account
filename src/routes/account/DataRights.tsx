@@ -116,7 +116,7 @@ export default function DataRights() {
         </Card>
       </div>
       <Card>
-        <div className="mb-1 text-xs uppercase tracking-wide text-danger">
+        <div className="mb-1 text-xs uppercase tracking-wide text-danger-ink">
           {t("data.deleteTitle")}
         </div>
         <p className="mb-3 text-sm text-muted">
@@ -136,7 +136,7 @@ export default function DataRights() {
           type="button"
           onClick={deleteAccount}
           disabled={!matched || deleting}
-          className="inline-flex items-center gap-2 rounded border border-danger px-4 py-2 text-sm text-danger hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded border border-danger px-4 py-2 text-sm text-danger-ink hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger disabled:opacity-50"
         >
           <Trash2 size={14} aria-hidden />
           {deleting ? t("common.deleting") : t("data.deleteButton")}
