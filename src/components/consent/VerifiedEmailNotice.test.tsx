@@ -49,6 +49,14 @@ describe("[VENT] VerifiedEmailNotice", () => {
     expect(screen.getByTestId("verified-email").textContent).toMatch(/welcome email/);
   });
 
+  it("[VEN5] Send again is off during a cooldown, on once it is over", () => {
+    show({ kind: "cooldown", email: "a@example.com", viaAdd: false, until: 2_000_000_000, sent: true });
+    expect((screen.getByRole("button", { name: "Send again" }) as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+    show({ kind: "waiting", email: "a@example.com", viaAdd: false, canSendAgain: true });
+    expect((screen.getByRole("button", { name: "Send again" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("[VEN4] Cancel only on the form opened by Use another address", () => {
     show({ kind: "missing", suggested: null });
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();

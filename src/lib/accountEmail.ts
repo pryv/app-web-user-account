@@ -87,6 +87,18 @@ export function isProvedEmail(view: EmailView): boolean {
   return emailBadge(view) === "verified";
 }
 
+/**
+ * When the next verification mail to this address can be asked for (epoch
+ * seconds), as the core said when the account was read: null when no
+ * cooldown runs, or when the core does not say (older cores). Read against
+ * this device's clock, so only a hint: the core's `retryAfterSeconds` on a
+ * refused resend decides.
+ */
+export function pendingCooldownUntil(view: EmailView | null, nowSeconds = Date.now() / 1000): number | null {
+  const until = view?.verificationCooldownUntil;
+  return typeof until === "number" && Number.isFinite(until) && until > nowSeconds ? until : null;
+}
+
 /** The account's addresses, through `account.get` (a personal or delegate token). Throws when they cannot be read. */
 export async function readAccountEmails(apiEndpoint: string): Promise<AccountEmails> {
   const conn = new Pryv.Connection(apiEndpoint);

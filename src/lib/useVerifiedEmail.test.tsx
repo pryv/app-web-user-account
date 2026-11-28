@@ -46,7 +46,7 @@ const entry = (value: string, primary: boolean, method: string | null, status = 
   value, primary, status, verifiedAt: null, verificationMethod: method,
 });
 const pending = (value: string) => entry(value, false, null, "pending");
-const account = (...emails: Array<ReturnType<typeof entry>>) => ({
+const account = (...emails: Array<ReturnType<typeof entry> & { verificationCooldownUntil?: unknown }>) => ({
   email: emails.find((e) => e.primary)?.value ?? null,
   emails,
 });
@@ -460,6 +460,56 @@ describe("useVerifiedEmail", () => {
     // Cancel outside a change does nothing.
     await act(async () => result.current.cancel(ALICE));
     expect(reads()).toBe(readsBefore + 1);
+  });
+
+  it("[RVC1] a cooldown the core reports on the address: shown after a reload, then Send again offered", async () => {
+    const now = Date.now() / 1000;
+    held = account({ ...entry("alice@example.com", true, null, "pending"), verificationCooldownUntil: now + 90 });
+    const { result } = hook();
+    await pass();
+    expect(result.current.stateOf(ALICE, true)).toEqual({
+      kind: "cooldown", email: "alice@example.com", viaAdd: false, until: now + 90, sent: true,
+    });
+    // Nothing is sent meanwhile; the link already mailed is watched for.
+    await act(async () => result.current.send(ALICE));
+    expect(net.calls.filter((c) => c.includes("resend"))).toEqual([]);
+    await pass(PROOF_POLL_MS);
+    expect(reads()).toBe(2);
+    await pass(90_000);
+    expect(result.current.stateOf(ALICE, true)).toEqual({
+      kind: "waiting", email: "alice@example.com", viaAdd: false, canSendAgain: true,
+    });
+  });
+
+  it("[RVC2] no cooldown running (null), one already over, or a core that does not say: not verified, as before", async () => {
+    const now = Date.now() / 1000;
+    for (const until of [null, now - 1, undefined, "soon"]) {
+      held = account({ ...entry("alice@example.com", true, null, "pending"), verificationCooldownUntil: until });
+      const { result, unmount } = hook();
+      await pass();
+      expect(result.current.stateOf(ALICE, true)).toEqual({ kind: "unproved", email: "alice@example.com" });
+      unmount();
+    }
+  });
+
+  it("[RVC3] an added address in cooldown, back from Use another address: its cooldown is shown", async () => {
+    held = account(entry(PLACEHOLDER, true, "registration"));
+    const { result } = hook();
+    await pass();
+    const until = Date.now() / 1000 + 60;
+    net.answer = async (_e, method, params) => {
+      const ops = params.update?.emails as { add?: string[] } | undefined;
+      if (method === "account.update" && ops?.add) {
+        held = account(entry(PLACEHOLDER, true, "registration"), { ...pending(ops.add[0]), verificationCooldownUntil: until });
+      }
+      return held;
+    };
+    await act(async () => result.current.add(ALICE, "alice@example.com"));
+    act(() => result.current.change(ALICE));
+    await act(async () => result.current.cancel(ALICE));
+    expect(result.current.stateOf(ALICE, true)).toEqual({
+      kind: "cooldown", email: "alice@example.com", viaAdd: true, until, sent: true,
+    });
   });
 
   it("Cancel after leaving an added address: that address is waited for again", async () => {

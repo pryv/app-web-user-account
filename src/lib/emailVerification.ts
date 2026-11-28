@@ -24,6 +24,11 @@ export interface EmailView {
   status: string;
   verifiedAt: number | null;
   verificationMethod: string | null;
+  /**
+   * Until when a new verification mail for this address is refused (epoch
+   * seconds), null when no cooldown runs. Absent on cores that do not list it.
+   */
+  verificationCooldownUntil?: number | null;
 }
 
 export type EmailBadge = "verified" | "pending" | "unconfirmed";

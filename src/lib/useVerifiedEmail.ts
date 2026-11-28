@@ -26,6 +26,7 @@ import {
   emailRefusal,
   hasUsableEmail,
   isProvedEmail,
+  pendingCooldownUntil,
   PLACEHOLDER_EMAIL,
   primaryEmailOf,
   readAccountEmails,
@@ -202,14 +203,26 @@ export function useVerifiedEmail(
       // Nothing proved: a link still waited for stays so; any other step the
       // person took meanwhile is left as it is.
       if (track.state.kind !== "checking" && track.state.kind !== "proved") return;
+      // A mail sent a moment ago (on this page before a reload, elsewhere, or
+      // the welcome mail) still runs its cooldown: shown as such, so a reload
+      // does not offer a send the core would refuse. Older cores do not say.
       if (hasUsableEmail(account)) {
-        // Not read yet: a resend cooldown still pending on the address. Once
-        // `account.get` lists it on `emails[]` (the entry of `primary`), an
-        // address in cooldown is put here as `{ kind: "cooldown", sent: true }`
-        // instead, so a reload keeps the notice a click would bring back.
-        put(endpoint, track, { kind: "unproved", email: account.email!.trim() });
+        const email = account.email!.trim();
+        const until = pendingCooldownUntil(primary);
+        put(
+          endpoint,
+          track,
+          until != null ? { kind: "cooldown", email, viaAdd: false, until, sent: true } : { kind: "unproved", email },
+        );
       } else if (target != null) {
-        put(endpoint, track, { kind: "waiting", email: target.value, viaAdd: true, canSendAgain: true });
+        const until = pendingCooldownUntil(target);
+        put(
+          endpoint,
+          track,
+          until != null
+            ? { kind: "cooldown", email: target.value, viaAdd: true, until, sent: true }
+            : { kind: "waiting", email: target.value, viaAdd: true, canSendAgain: true },
+        );
       } else {
         const others = account.emails.filter((e) => e !== primary && hasUsableEmail({ email: e.value }));
         const known = others.find(isProvedEmail) ?? others[others.length - 1];

@@ -21,6 +21,11 @@
   address is not verified, the account is read again when the page gets the focus back or becomes visible (no
   timer; a failed read keeps what is shown). (#37)
 - **The cooldown notice says the link is in the welcome email.** (#37)
+- **A verification mail's cooldown survives a reload**: the consent pages read it from the account
+  (`emails[].verificationCooldownUntil`) and show the cooldown notice instead of "Send the verification email",
+  for the account's address and for one being added; "Send again" comes back when it ends. A refused resend's
+  `retryAfterSeconds` still decides. Needs a core of the release after open-pryv.io 2.0.0-rc.91; an older core
+  (no field) behaves as before. (#37)
 - **"Use another address" has a Cancel** that leaves the form and reads the account again (an address waited for
   before is waited for again). (#37)
 - **The "Email verified" page offers "Sign in" only to someone not signed in** (in this tab or another). (#37)
